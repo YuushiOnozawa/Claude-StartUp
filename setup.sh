@@ -26,17 +26,26 @@ check_cmd() {
   else fail "$label  →  $hint"; MISSING_CMDS+=("$label"); fi
 }
 
-check_npm_global() {
-  local label="$1" pkg="$2" install_cmd="$3"
-  if npm list -g --depth=0 2>/dev/null | grep -q "$pkg"; then
+# パッケージマネージャアダプタ (将来 pip/cargo 等を足すときはここに 2 関数追加)
+npm_is_installed() { npm list -g "$1" --depth=0 >/dev/null 2>&1; }
+npm_install()      { npm install -g "$@"; }
+
+check_package() {
+  local label="$1" pm="$2" probe="$3"
+  shift 3
+  local pkgs=("$@")
+  local check_fn="${pm}_is_installed"
+  local install_fn="${pm}_install"
+
+  if "$check_fn" "$probe"; then
     ok "$label"
     return
   fi
-  echo "  → $label が未導入。自動インストール実行: $install_cmd"
-  if eval "$install_cmd" >/dev/null 2>&1; then
+  echo "  → $label が未導入。自動インストール実行: $pm install ${pkgs[*]}"
+  if "$install_fn" "${pkgs[@]}" >/dev/null; then
     ok "$label (自動インストール完了)"
   else
-    fail "$label  →  手動で実行: $install_cmd"
+    fail "$label  →  手動で実行: $pm install ${pkgs[*]}"
     MISSING_NPM+=("$label")
   fi
 }
@@ -84,14 +93,14 @@ check_cmd "npm"  "npm"  "Node.js に同梱"
 
 # --- git hooks / commit quality ---
 if command -v npm &>/dev/null; then
-  check_npm_global "commitlint" "@commitlint/cli" \
-    "npm install -g @commitlint/cli @commitlint/config-conventional"
+  check_package "commitlint" npm "@commitlint/cli" \
+    "@commitlint/cli" "@commitlint/config-conventional"
 fi
 
 # ── 将来のツール追加はここに追記 ──────────────────────────────
 # check_cmd "gh"  "gh"  "brew install gh  /  https://cli.github.com/"
 # check_cmd "jq"  "jq"  "brew install jq  /  apt install jq"
-# check_npm_global "lefthook" "lefthook" "npm install -g lefthook"
+# check_package "lefthook" npm "lefthook" "lefthook"
 # ──────────────────────────────────────────────────────────────
 
 # ──────────────────────────────────────
