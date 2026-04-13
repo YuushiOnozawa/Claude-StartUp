@@ -27,9 +27,18 @@ check_cmd() {
 }
 
 check_npm_global() {
-  local label="$1" pkg="$2" hint="$3"
-  if npm list -g --depth=0 2>/dev/null | grep -q "$pkg"; then ok "$label"
-  else fail "$label  →  $hint"; MISSING_NPM+=("$label"); fi
+  local label="$1" pkg="$2" install_cmd="$3"
+  if npm list -g --depth=0 2>/dev/null | grep -q "$pkg"; then
+    ok "$label"
+    return
+  fi
+  echo "  → $label が未導入。自動インストール実行: $install_cmd"
+  if eval "$install_cmd" >/dev/null 2>&1; then
+    ok "$label (自動インストール完了)"
+  else
+    fail "$label  →  手動で実行: $install_cmd"
+    MISSING_NPM+=("$label")
+  fi
 }
 
 # ──────────────────────────────────────
