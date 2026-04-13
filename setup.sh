@@ -26,9 +26,10 @@ check_cmd() {
   else fail "$label  →  $hint"; MISSING_CMDS+=("$label"); fi
 }
 
-# パッケージマネージャアダプタ (将来 pip/cargo 等を足すときはここに 2 関数追加)
-npm_is_installed() { npm list -g "$1" --depth=0 >/dev/null 2>&1; }
-npm_install()      { npm install -g "$@"; }
+# パッケージマネージャアダプタ (将来 pip/cargo 等を足すときはここに 3 関数追加)
+npm_is_installed()  { npm list -g "$1" --depth=0 >/dev/null 2>&1; }
+npm_install()       { npm install -g "$@"; }
+npm_install_hint()  { echo "npm install -g $*"; }
 
 check_package() {
   local label="$1" pm="$2" probe="$3"
@@ -36,16 +37,17 @@ check_package() {
   local pkgs=("$@")
   local check_fn="${pm}_is_installed"
   local install_fn="${pm}_install"
+  local hint_fn="${pm}_install_hint"
 
   if "$check_fn" "$probe"; then
     ok "$label"
     return
   fi
-  echo "  → $label が未導入。自動インストール実行: $pm install ${pkgs[*]}"
+  echo "  → $label が未導入。自動インストール実行: $("$hint_fn" "${pkgs[@]}")"
   if "$install_fn" "${pkgs[@]}" >/dev/null; then
     ok "$label (自動インストール完了)"
   else
-    fail "$label  →  手動で実行: $pm install ${pkgs[*]}"
+    fail "$label  →  手動で実行: $("$hint_fn" "${pkgs[@]}")"
     MISSING_NPM+=("$label")
   fi
 }
@@ -62,12 +64,12 @@ if [[ -n "$REPO_URL" ]]; then
     echo "→ $CLAUDE_DIR が存在します。git init して $REPO_URL を取得します..."
     git -C "$CLAUDE_DIR" init -q
     git -C "$CLAUDE_DIR" remote add origin "$REPO_URL"
-    git -C "$CLAUDE_DIR" fetch origin
-    default_branch="$(git -C "$CLAUDE_DIR" remote show origin | grep 'HEAD branch' | awk '{print $NF}')"
+    default_branch="$(git -C "$CLAUDE_DIR" ls-remote --symref origin HEAD 2>/dev/null | awk '/^ref:/ {sub(/refs\/heads\//, "", $2); print $2; exit}')"
     if [[ -z "$default_branch" ]]; then
       echo "エラー: デフォルトブランチを取得できませんでした。"
       exit 1
     fi
+    git -C "$CLAUDE_DIR" fetch origin
     git -C "$CLAUDE_DIR" stash -q 2>/dev/null || true
     git -C "$CLAUDE_DIR" checkout "$default_branch"
     ok "セットアップ完了（ローカル変更は git stash に退避済み）"
