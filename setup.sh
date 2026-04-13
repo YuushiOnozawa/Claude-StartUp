@@ -70,7 +70,7 @@ if [[ -n "$REPO_URL" ]]; then
     echo "→ $CLAUDE_DIR が存在します。git init して $REPO_URL を取得します..."
     git -C "$CLAUDE_DIR" init -q
     git -C "$CLAUDE_DIR" remote add origin "$REPO_URL"
-    default_branch="$(git -C "$CLAUDE_DIR" ls-remote --symref origin HEAD 2>/dev/null | awk '/^ref:/ {sub(/refs\/heads\//, "", $2); print $2; exit}')" || true
+    default_branch="$(git -C "$CLAUDE_DIR" ls-remote --symref origin HEAD | awk '/^ref:/ {sub(/refs\/heads\//, "", $2); print $2; exit}')" || true
     if [[ -z "$default_branch" ]]; then
       echo "エラー: デフォルトブランチを取得できませんでした。"
       exit 1
