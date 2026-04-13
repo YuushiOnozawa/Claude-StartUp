@@ -64,15 +64,27 @@ if [[ -n "$REPO_URL" ]]; then
     echo "→ $CLAUDE_DIR が存在します。git init して $REPO_URL を取得します..."
     git -C "$CLAUDE_DIR" init -q
     git -C "$CLAUDE_DIR" remote add origin "$REPO_URL"
-    default_branch="$(git -C "$CLAUDE_DIR" ls-remote --symref origin HEAD 2>/dev/null | awk '/^ref:/ {sub(/refs\/heads\//, "", $2); print $2; exit}')"
+    default_branch="$(git -C "$CLAUDE_DIR" ls-remote --symref origin HEAD 2>/dev/null | awk '/^ref:/ {sub(/refs\/heads\//, "", $2); print $2; exit}')" || true
     if [[ -z "$default_branch" ]]; then
       echo "エラー: デフォルトブランチを取得できませんでした。"
       exit 1
     fi
     git -C "$CLAUDE_DIR" fetch origin
-    git -C "$CLAUDE_DIR" stash -q 2>/dev/null || true
+
+    # checkout は既存ファイルを無警告で上書きしうるため、衝突するファイルがあれば先に停止させる
+    conflicts=()
+    while IFS= read -r f; do
+      [[ -e "$CLAUDE_DIR/$f" ]] && conflicts+=("$f")
+    done < <(git -C "$CLAUDE_DIR" ls-tree -r --name-only "origin/$default_branch")
+    if (( ${#conflicts[@]} > 0 )); then
+      echo "エラー: 以下の既存ファイルがリポジトリのファイルと衝突します:"
+      printf '  - %s\n' "${conflicts[@]}"
+      echo "  $CLAUDE_DIR のバックアップを取ってから再実行してください。"
+      exit 1
+    fi
+
     git -C "$CLAUDE_DIR" checkout "$default_branch"
-    ok "セットアップ完了（ローカル変更は git stash に退避済み）"
+    ok "セットアップ完了"
   else
     echo "→ $REPO_URL を $CLAUDE_DIR に clone 中..."
     git clone "$REPO_URL" "$CLAUDE_DIR"
