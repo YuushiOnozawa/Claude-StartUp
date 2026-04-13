@@ -27,19 +27,25 @@ check_cmd() {
 }
 
 # パッケージマネージャアダプタ (将来 pip/cargo 等を足すときはここに 3 関数追加)
-npm_is_installed()  { npm list -g "$1" --depth=0 >/dev/null 2>&1; }
+npm_is_installed() {
+  # npm list -g に複数パッケージを渡すと片方欠損でも exit 0 を返すバージョンがあるため、1 つずつ確認する
+  local pkg
+  for pkg in "$@"; do
+    npm list -g "$pkg" --depth=0 >/dev/null 2>&1 || return 1
+  done
+}
 npm_install()       { npm install -g "$@"; }
 npm_install_hint()  { echo "npm install -g $*"; }
 
 check_package() {
-  local label="$1" pm="$2" probe="$3"
-  shift 3
+  local label="$1" pm="$2"
+  shift 2
   local pkgs=("$@")
   local check_fn="${pm}_is_installed"
   local install_fn="${pm}_install"
   local hint_fn="${pm}_install_hint"
 
-  if "$check_fn" "$probe"; then
+  if "$check_fn" "${pkgs[@]}"; then
     ok "$label"
     return
   fi
@@ -107,7 +113,7 @@ check_cmd "npm"  "npm"  "Node.js に同梱"
 
 # --- git hooks / commit quality ---
 if command -v npm &>/dev/null; then
-  check_package "commitlint" npm "@commitlint/cli" \
+  check_package "commitlint" npm \
     "@commitlint/cli" "@commitlint/config-conventional"
 fi
 
