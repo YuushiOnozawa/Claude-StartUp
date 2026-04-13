@@ -1,0 +1,75 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Bash(git show *)",
+      "Bash(git branch *)",
+      "Bash(git remote *)",
+      "Bash(git stash list)",
+      "Bash(git tag)",
+      "Bash(ls *)",
+      "Bash(pwd)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(find *)",
+      "Bash(mkdir -p *)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.github.com)",
+      "WebFetch(domain:npmjs.com)",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:docs.python.org)",
+      "WebFetch(domain:developer.mozilla.org)",
+      "WebFetch(domain:docs.anthropic.com)"
+    ],
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push --force-with-lease *)",
+      "Bash(git reset --hard *)",
+      "Bash(git clean -f *)",
+      "Bash(rm -rf *)",
+      "Bash(rm -r *)",
+      "Bash(sudo *)",
+      "Bash(wget *)",
+      "Bash(curl * | bash)",
+      "Bash(curl * | sh)",
+      "Bash(* | bash)",
+      "Bash(* | sh)",
+      "Read(~/**/.env)",
+      "Read(~/**/.env.*)",
+      "Edit(~/**/.env)",
+      "Edit(~/**/.env.*)",
+      "Write(~/**/.env)",
+      "Write(~/**/.env.*)",
+      "Bash(cat .env*)",
+      "Read(~/.ssh/**)",
+      "Edit(~/.ssh/**)",
+      "Write(~/.ssh/**)",
+      "Bash(cat ~/.ssh/*)",
+      "Read(~/.claude/.credentials.json)",
+      "Edit(~/.claude/.credentials.json)",
+      "Write(~/.claude/.credentials.json)"
+    ]
+  },
+  "effortLevel": "high",
+  "model": "opus",
+  "enabledPlugins": {
+    "commit-skill@local-skills": true
+  },
+  "extraKnownMarketplaces": {
+    "anthropic-agent-skills": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/skills"
+      }
+    },
+    "local-skills": {
+      "source": {
+        "source": "directory",
+        "path": "~/.claude/local-plugins"
+      }
+    }
+  }
+}

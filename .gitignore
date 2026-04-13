@@ -1,0 +1,26 @@
+# 認証情報
+.credentials.json
+
+# Claude Code 内部状態
+.claude/
+cache/
+file-history/
+history.jsonl
+ide/
+session-env/
+sessions/
+shell-snapshots/
+
+# マシン固有データ
+backups/
+memory/*
+!memory/.gitkeep
+
+# マーケットプレイスプラグイン（再取得可能）
+plugins/
+
+# 会話履歴（大容量・個人的）
+projects/
+
+# 作業中の計画（一時的）
+plans/
