@@ -63,6 +63,11 @@ check_package() {
 # ──────────────────────────────────────
 echo "=== Step 1: リポジトリのセットアップ ==="
 if [[ -n "$REPO_URL" ]]; then
+  if ! command -v git &>/dev/null; then
+    echo "エラー: git が見つかりません。リポジトリ取得には git が必要です。" >&2
+    echo "先に git をインストールしてから再実行してください。" >&2
+    exit 1
+  fi
   if [[ -d "$CLAUDE_DIR/.git" ]]; then
     echo "ℹ  $CLAUDE_DIR は既に git リポジトリです。clone をスキップ。"
   elif [[ -d "$CLAUDE_DIR" ]]; then
