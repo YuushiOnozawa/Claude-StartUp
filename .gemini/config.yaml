@@ -1,0 +1,17 @@
+# Gemini Code Assist 設定
+# 参考: https://developers.google.com/gemini-code-assist/docs/customize-gemini-behavior-github
+# すべて既定値だが、挙動を明示する目的で記載する。
+
+have_fun: false
+
+code_review:
+  disable: false
+  comment_severity_threshold: MEDIUM
+  max_review_comments: -1
+  pull_request_opened:
+    help: false       # ヘルプ自動投稿しない
+    summary: false    # 変更サマリ自動投稿しない（必要なら /gemini summary を手動）
+    code_review: true # PR 作成時にコードレビューを自動実行
+    include_drafts: true
+
+ignore_patterns: []
