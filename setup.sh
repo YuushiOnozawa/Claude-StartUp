@@ -165,7 +165,7 @@ fi
 # RTK hook と RTK.md の初期化 (冪等)
 if command -v rtk &>/dev/null; then
   echo "  → rtk init -g --auto-patch で hook と RTK.md を初期化..."
-  if rtk init -g --auto-patch >/dev/null 2>&1; then
+  if rtk init -g --auto-patch >/dev/null; then
     ok "RTK hook 初期化完了"
   else
     fail "RTK hook 初期化失敗  →  手動: rtk init -g"
