@@ -40,26 +40,26 @@ npm_install_hint()  { echo "npm install -g $*"; }
 # ~/.local/bin を PATH に恒久追加 (冪等)
 ensure_local_bin_in_path() {
   local local_bin="$HOME/.local/bin"
-  case ":$PATH:" in
-    *":$local_bin:"*) return 0 ;;
-  esac
   local rc
   case "$(basename "${SHELL:-/bin/bash}")" in
     zsh)  rc="$HOME/.zshrc" ;;
     bash) rc="$HOME/.bashrc" ;;
     *)    rc="$HOME/.profile" ;;
   esac
-  if [[ -f "$rc" ]] && grep -q 'Claude-StartUp: local bin' "$rc"; then
-    export PATH="$local_bin:$PATH"
-    return 0
+  # rc への永続化: 現 PATH に通っているかに関わらず、マーカー未記録なら必ず書き込む
+  if ! { [[ -f "$rc" ]] && grep -q 'Claude-StartUp: local bin' "$rc"; }; then
+    {
+      echo ''
+      echo '# Claude-StartUp: local bin (RTK 等)'
+      echo 'case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac'
+    } >> "$rc"
+    echo "  ℹ  $rc に ~/.local/bin 用の PATH 追加を書き込みました (次回シェル起動から恒久有効)"
   fi
-  {
-    echo ''
-    echo '# Claude-StartUp: local bin (RTK 等)'
-    echo 'case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac'
-  } >> "$rc"
-  echo "  ℹ  $rc に ~/.local/bin 用の PATH 追加を書き込みました (次回シェル起動から恒久有効)"
-  export PATH="$local_bin:$PATH"
+  # 現セッションの PATH 補完 (重複防止)
+  case ":$PATH:" in
+    *":$local_bin:"*) ;;
+    *) export PATH="$local_bin:$PATH" ;;
+  esac
 }
 
 check_package() {
