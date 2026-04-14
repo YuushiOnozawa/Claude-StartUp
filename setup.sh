@@ -26,10 +26,36 @@ check_cmd() {
   else fail "$label  →  $hint"; MISSING_CMDS+=("$label"); fi
 }
 
-check_npm_global() {
-  local label="$1" pkg="$2" hint="$3"
-  if npm list -g --depth=0 2>/dev/null | grep -q "$pkg"; then ok "$label"
-  else fail "$label  →  $hint"; MISSING_NPM+=("$label"); fi
+# パッケージマネージャアダプタ (将来 pip/cargo 等を足すときはここに 3 関数追加)
+npm_is_installed() {
+  # npm list -g に複数パッケージを渡すと片方欠損でも exit 0 を返すバージョンがあるため、1 つずつ確認する
+  local pkg
+  for pkg in "$@"; do
+    npm list -g "$pkg" --depth=0 >/dev/null 2>&1 || return 1
+  done
+}
+npm_install()       { npm install -g "$@"; }
+npm_install_hint()  { echo "npm install -g $*"; }
+
+check_package() {
+  local label="$1" pm="$2"
+  shift 2
+  local pkgs=("$@")
+  local check_fn="${pm}_is_installed"
+  local install_fn="${pm}_install"
+  local hint_fn="${pm}_install_hint"
+
+  if "$check_fn" "${pkgs[@]}"; then
+    ok "$label"
+    return
+  fi
+  echo "  → $label が未導入。自動インストール実行: $("$hint_fn" "${pkgs[@]}")"
+  if "$install_fn" "${pkgs[@]}" >/dev/null; then
+    ok "$label (自動インストール完了)"
+  else
+    fail "$label  →  手動で実行: $("$hint_fn" "${pkgs[@]}")"
+    MISSING_NPM+=("$label")
+  fi
 }
 
 # ──────────────────────────────────────
@@ -37,6 +63,11 @@ check_npm_global() {
 # ──────────────────────────────────────
 echo "=== Step 1: リポジトリのセットアップ ==="
 if [[ -n "$REPO_URL" ]]; then
+  if ! command -v git &>/dev/null; then
+    echo "エラー: git が見つかりません。リポジトリ取得には git が必要です。" >&2
+    echo "先に git をインストールしてから再実行してください。" >&2
+    exit 1
+  fi
   if [[ -d "$CLAUDE_DIR/.git" ]]; then
     echo "ℹ  $CLAUDE_DIR は既に git リポジトリです。clone をスキップ。"
   elif [[ -d "$CLAUDE_DIR" ]]; then
@@ -44,15 +75,27 @@ if [[ -n "$REPO_URL" ]]; then
     echo "→ $CLAUDE_DIR が存在します。git init して $REPO_URL を取得します..."
     git -C "$CLAUDE_DIR" init -q
     git -C "$CLAUDE_DIR" remote add origin "$REPO_URL"
-    git -C "$CLAUDE_DIR" fetch origin
-    default_branch="$(git -C "$CLAUDE_DIR" remote show origin | grep 'HEAD branch' | awk '{print $NF}')"
+    default_branch="$(git -C "$CLAUDE_DIR" ls-remote --symref origin HEAD | awk '/^ref:/ {sub(/refs\/heads\//, "", $2); print $2; exit}')" || true
     if [[ -z "$default_branch" ]]; then
       echo "エラー: デフォルトブランチを取得できませんでした。"
       exit 1
     fi
-    git -C "$CLAUDE_DIR" stash -q 2>/dev/null || true
+    git -C "$CLAUDE_DIR" fetch origin
+
+    # checkout は既存ファイルを無警告で上書きしうるため、衝突するファイルがあれば先に停止させる
+    conflicts=()
+    while IFS= read -r f; do
+      [[ -e "$CLAUDE_DIR/$f" ]] && conflicts+=("$f")
+    done < <(git -C "$CLAUDE_DIR" ls-tree -r --name-only "origin/$default_branch")
+    if (( ${#conflicts[@]} > 0 )); then
+      echo "エラー: 以下の既存ファイルがリポジトリのファイルと衝突します:"
+      printf '  - %s\n' "${conflicts[@]}"
+      echo "  $CLAUDE_DIR のバックアップを取ってから再実行してください。"
+      exit 1
+    fi
+
     git -C "$CLAUDE_DIR" checkout "$default_branch"
-    ok "セットアップ完了（ローカル変更は git stash に退避済み）"
+    ok "セットアップ完了"
   else
     echo "→ $REPO_URL を $CLAUDE_DIR に clone 中..."
     git clone "$REPO_URL" "$CLAUDE_DIR"
@@ -75,14 +118,14 @@ check_cmd "npm"  "npm"  "Node.js に同梱"
 
 # --- git hooks / commit quality ---
 if command -v npm &>/dev/null; then
-  check_npm_global "commitlint" "@commitlint/cli" \
-    "npm install -g @commitlint/cli @commitlint/config-conventional"
+  check_package "commitlint" npm \
+    "@commitlint/cli" "@commitlint/config-conventional"
 fi
 
 # ── 将来のツール追加はここに追記 ──────────────────────────────
 # check_cmd "gh"  "gh"  "brew install gh  /  https://cli.github.com/"
 # check_cmd "jq"  "jq"  "brew install jq  /  apt install jq"
-# check_npm_global "lefthook" "lefthook" "npm install -g lefthook"
+# check_package "lefthook" npm "lefthook" "lefthook"
 # ──────────────────────────────────────────────────────────────
 
 # ──────────────────────────────────────
