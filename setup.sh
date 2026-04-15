@@ -37,6 +37,31 @@ npm_is_installed() {
 npm_install()       { npm install -g "$@"; }
 npm_install_hint()  { echo "npm install -g $*"; }
 
+# ~/.local/bin を PATH に恒久追加 (冪等)
+ensure_local_bin_in_path() {
+  local local_bin="$HOME/.local/bin"
+  local rc
+  case "$(basename "${SHELL:-/bin/bash}")" in
+    zsh)  rc="$HOME/.zshrc" ;;
+    bash) rc="$HOME/.bashrc" ;;
+    *)    rc="$HOME/.profile" ;;
+  esac
+  # rc への永続化: 現 PATH に通っているかに関わらず、マーカー未記録なら必ず書き込む
+  if ! { [[ -f "$rc" ]] && grep -q 'Claude-StartUp: local bin' "$rc"; }; then
+    {
+      echo ''
+      echo '# Claude-StartUp: local bin (RTK 等)'
+      echo 'case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac'
+    } >> "$rc"
+    echo "  ℹ  $rc に ~/.local/bin 用の PATH 追加を書き込みました (次回シェル起動から恒久有効)"
+  fi
+  # 現セッションの PATH 補完 (重複防止)
+  case ":$PATH:" in
+    *":$local_bin:"*) ;;
+    *) export PATH="$local_bin:$PATH" ;;
+  esac
+}
+
 check_package() {
   local label="$1" pm="$2"
   shift 2
@@ -120,6 +145,31 @@ check_cmd "npm"  "npm"  "Node.js に同梱"
 if command -v npm &>/dev/null; then
   check_package "commitlint" npm \
     "@commitlint/cli" "@commitlint/config-conventional"
+fi
+
+# --- RTK (Rust Token Killer): トークン削減プロキシ ---
+if ! command -v rtk &>/dev/null; then
+  echo "  → RTK が未導入。公式インストーラを実行: curl -fsSL …/install.sh | sh"
+  if curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh; then
+    ensure_local_bin_in_path
+    ok "RTK (自動インストール完了)"
+  else
+    fail "RTK  →  手動: https://github.com/rtk-ai/rtk"
+    MISSING_CMDS+=("rtk")
+  fi
+else
+  ok "rtk"
+  ensure_local_bin_in_path
+fi
+
+# RTK hook と RTK.md の初期化 (冪等)
+if command -v rtk &>/dev/null; then
+  echo "  → rtk init -g --auto-patch で hook と RTK.md を初期化..."
+  if rtk init -g --auto-patch >/dev/null; then
+    ok "RTK hook 初期化完了"
+  else
+    fail "RTK hook 初期化失敗  →  手動: rtk init -g"
+  fi
 fi
 
 # ── 将来のツール追加はここに追記 ──────────────────────────────
