@@ -60,6 +60,18 @@ rtk gain --history     # 書き換えられたコマンド履歴
 
 既に Claude Code が起動中のセッションからハーネスを再展開したい場合は、**方式 A（ワンライナー）ではなく 方式 B（`bash setup.sh`）を使う**。`settings.json` の `Bash(curl * | sh)` deny ルールが先に効くため、方式 A は Claude 経由ではブロックされる。新規マシンでの初回セットアップは deny ルールが展開前なので方式 A で問題ない。
 
+## Opus 4.6 の挙動調整
+
+`settings.json` で `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1` を設定し、adaptive thinking を無効化している。`effortLevel: high` と adaptive thinking の併用で CLAUDE.md ルールやスキル定義が無視される挙動（[claude-code#23936](https://github.com/anthropics/claude-code/issues/23936)）の回避が目的。
+
+不具合を感じる場合は、`@2.1.98` などの安定版にダウングレードすることも検討する:
+
+```bash
+npm install -g @anthropic-ai/claude-code@2.1.98
+```
+
+ただしバージョン固定は `setup.sh` には組み込まない（更新を逃す副作用が大きいため、個人判断で実施する）。
+
 ## Git 管理外
 
 `.gitignore` 参照。認証情報・会話履歴・マシン固有データ・RTK 生成物は除外済み。
