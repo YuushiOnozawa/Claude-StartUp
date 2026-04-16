@@ -28,7 +28,7 @@ bash setup.sh <repo-url>
 | `CLAUDE.md` | Claude Code グローバル動作原則 |
 | `settings.json` | パーミッション設定 |
 | `setup.sh` | 新マシン展開スクリプト |
-| `local-plugins/skills/commit/` | `/commit` スキル |
+| `skills/commit/` | `/commit` スキル |
 | `agents/` | グローバルサブエージェント定義 |
 | `memory/` | クロスセッション知識（自動管理） |
 
