@@ -1,0 +1,19 @@
+{
+  "name": "local-skills",
+  "owner": {
+    "name": "YuushiOnozawa"
+  },
+  "metadata": {
+    "description": "ローカルカスタムスキル集",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "commit-skill",
+      "description": "Conventional Commits 準拠の git commit ワークフロー skill",
+      "source": "./",
+      "strict": false,
+      "skills": ["./skills/commit"]
+    }
+  ]
+}
