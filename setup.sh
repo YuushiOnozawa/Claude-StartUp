@@ -172,6 +172,33 @@ if command -v rtk &>/dev/null; then
   fi
 fi
 
+# --- kizami (長期記憶): 会話履歴の自動保存・recall ---
+check_cmd "pnpm" "pnpm" "npm install -g pnpm"
+if ! command -v kizami &>/dev/null; then
+  echo "  → kizami が未導入。clone してビルドします..."
+  KIZAMI_DIR="$HOME/srcs/kizami"
+  if [[ ! -d "$KIZAMI_DIR" ]]; then
+    git clone https://github.com/okamyuji/kizami.git "$KIZAMI_DIR"
+  fi
+  if (cd "$KIZAMI_DIR" && pnpm install && pnpm add sqlite-vec @huggingface/transformers && pnpm build && npm link); then
+    ok "kizami (自動インストール完了)"
+  else
+    fail "kizami  →  手動: https://github.com/okamyuji/kizami"
+    MISSING_CMDS+=("kizami")
+  fi
+else
+  ok "kizami"
+fi
+
+if command -v kizami &>/dev/null; then
+  echo "  → kizami setup --hybrid で hook と DB を初期化..."
+  if kizami setup --hybrid; then
+    ok "kizami hybrid セットアップ完了"
+  else
+    fail "kizami setup 失敗  →  手動: kizami setup --hybrid"
+  fi
+fi
+
 # ── 将来のツール追加はここに追記 ──────────────────────────────
 # check_cmd "gh"  "gh"  "brew install gh  /  https://cli.github.com/"
 # check_cmd "jq"  "jq"  "brew install jq  /  apt install jq"
