@@ -214,6 +214,12 @@ if command -v kizami &>/dev/null; then
     ok "kizami hybrid セットアップ完了"
   else
     fail "kizami setup 失敗  →  手動: kizami setup --hybrid"
+    MISSING_CMDS+=("kizami")
+  fi
+else
+  if [[ ! " ${MISSING_CMDS[*]} " =~ " kizami " ]]; then
+    fail "kizami コマンドが PATH に見つかりません"
+    MISSING_CMDS+=("kizami")
   fi
 fi
 
