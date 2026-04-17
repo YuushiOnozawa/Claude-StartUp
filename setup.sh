@@ -173,24 +173,37 @@ if command -v rtk &>/dev/null; then
 fi
 
 # --- kizami (長期記憶): 会話履歴の自動保存・recall ---
-if ! command -v kizami &>/dev/null; then
-  echo "  → kizami が未導入。一時ディレクトリで clone・ビルドします..."
-  KIZAMI_TMP="$(mktemp -d)"
-  if (
-    trap 'rm -rf "$KIZAMI_TMP"' EXIT
-    git clone https://github.com/okamyuji/kizami.git "$KIZAMI_TMP" &&
-    cd "$KIZAMI_TMP" &&
-    npm install &&
-    npm install sqlite-vec @huggingface/transformers &&
-    npm run build &&
-    npm install -g .
-  ); then
-    ok "kizami (自動インストール完了)"
+if ! command -v pnpm &>/dev/null; then
+  echo "  → pnpm が未導入。自動インストール: npm install -g pnpm"
+  if npm install -g pnpm >/dev/null; then
+    ok "pnpm (自動インストール完了)"
   else
-    fail "kizami  →  手動: https://github.com/okamyuji/kizami"
-    MISSING_CMDS+=("kizami")
+    fail "pnpm  →  手動: npm install -g pnpm"
+    MISSING_CMDS+=("pnpm")
   fi
-  rm -rf "$KIZAMI_TMP"
+fi
+
+if ! command -v kizami &>/dev/null; then
+  if ! command -v pnpm &>/dev/null; then
+    fail "kizami  →  pnpm が必要です。先に pnpm をインストールしてください"
+    MISSING_CMDS+=("kizami")
+  else
+    echo "  → kizami が未導入。一時ディレクトリで clone・ビルドします..."
+    KIZAMI_TMP="$(mktemp -d)"
+    if (
+      trap 'rm -rf "$KIZAMI_TMP"' EXIT
+      git clone https://github.com/okamyuji/kizami.git "$KIZAMI_TMP" &&
+      cd "$KIZAMI_TMP" &&
+      pnpm add sqlite-vec @huggingface/transformers &&
+      pnpm build &&
+      npm install -g .
+    ); then
+      ok "kizami (自動インストール完了)"
+    else
+      fail "kizami  →  手動: https://github.com/okamyuji/kizami"
+      MISSING_CMDS+=("kizami")
+    fi
+  fi
 else
   ok "kizami"
 fi
