@@ -19,7 +19,14 @@ curl -fsSL https://raw.githubusercontent.com/YuushiOnozawa/Claude-StartUp/main/s
 bash setup.sh <repo-url>
 ```
 
-依存ツール（node / npm / commitlint）の確認と clone を自動処理する。未導入の npm グローバルパッケージは自動インストールする。
+依存ツールの確認と clone を自動処理する。未導入のパッケージは自動インストールを試みる。
+
+### 導入されるツール
+
+| ツール | 用途 |
+|--------|------|
+| [RTK](#rtk（rust-token-killer）) | Bash 出力圧縮によるトークン削減 |
+| [kizami](#kizami（長期記憶）) | 会話ベースの長期記憶 |
 
 ## ファイル構成
 
@@ -34,7 +41,7 @@ bash setup.sh <repo-url>
 
 ## RTK（Rust Token Killer）
 
-`setup.sh` は [rtk-ai/rtk](https://github.com/rtk-ai/rtk) を自動導入する。Claude Code の PreToolUse hook で `git status` → `rtk git status` のように Bash コマンドを透過的に書き換え、出力を圧縮してトークン消費を 60〜90% 削減する Rust 製 CLI。
+[rtk-ai/rtk](https://github.com/rtk-ai/rtk) — PreToolUse hook で Bash コマンドを透過的に書き換え、出力を圧縮してトークン消費を 60〜90% 削減する Rust 製 CLI。
 
 導入確認:
 
@@ -48,17 +55,31 @@ rtk gain --history     # 書き換えられたコマンド履歴
 
 `setup.sh` は `~/.local/bin` が PATH に無ければ、`$SHELL` に応じた rc ファイル（`zshrc` / `bashrc` / `profile`）1 本にマーカー付きで 3 行だけ追記する。次回シェル起動から恒久有効。不要な場合は該当 rc の `# Claude-StartUp: local bin (RTK 等)` ブロックを手動削除する。
 
-### rtk init が書き込む差分の扱い
-
-`rtk init -g --auto-patch` は各マシンで以下を書き換えるが、いずれも **環境ごとのローカル状態** のためリポジトリにはコミットしない（`git diff` に残っても無視してよい）:
-
-- `settings.json` に `hooks.PreToolUse` RTK エントリ追加
-- `CLAUDE.md` 末尾に `@RTK.md` import 追加
-- `RTK.md` 本体生成（`.gitignore` 済み）
-
 ### 再セットアップ時の注意（鶏卵問題）
 
 既に Claude Code が起動中のセッションからハーネスを再展開したい場合は、**方式 A（ワンライナー）ではなく 方式 B（`bash setup.sh`）を使う**。`settings.json` の `Bash(curl * | sh)` deny ルールが先に効くため、方式 A は Claude 経由ではブロックされる。新規マシンでの初回セットアップは deny ルールが展開前なので方式 A で問題ない。
+
+## kizami（長期記憶）
+
+[okamyuji/kizami](https://github.com/okamyuji/kizami) — 会話履歴をセッション終了時に自動保存し、過去の文脈を recall できる長期記憶システム。Hybrid モード（SQLite + ベクトル検索）でセットアップされる。
+
+導入確認:
+
+```bash
+kizami list            # 保存済み会話の一覧
+kizami stats           # DB 統計情報
+```
+
+## 外部ツールが書き込むローカル差分の扱い
+
+各ツールの init / setup コマンドは環境ごとにファイルを書き換えるが、いずれも **ローカル状態** のためリポジトリにはコミットしない（`git diff` に残っても無視してよい）。
+
+| 書き換え対象 | RTK | kizami |
+|---|---|---|
+| `settings.json`（hook 追加） | ○ | ○ |
+| `CLAUDE.md`（import 追記） | ○ | - |
+| ツール専用定義ファイルの生成（`.gitignore` 対象） | ○ | - |
+| DB・設定ファイルの初期化 | - | ○ |
 
 ## Opus 4.6 の挙動調整
 
