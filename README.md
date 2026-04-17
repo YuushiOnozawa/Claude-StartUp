@@ -19,7 +19,14 @@ curl -fsSL https://raw.githubusercontent.com/YuushiOnozawa/Claude-StartUp/main/s
 bash setup.sh <repo-url>
 ```
 
-依存ツール（node / npm / pnpm / commitlint）の確認と clone を自動処理する。未導入の npm グローバルパッケージは自動インストールする。
+依存ツールの確認と clone を自動処理する。未導入のパッケージは自動インストールを試みる。
+
+### 導入されるツール
+
+| ツール | 用途 |
+|--------|------|
+| [RTK](#rtk（rust-token-killer）) | Bash 出力圧縮によるトークン削減 |
+| [kizami](#kizami（長期記憶）) | 会話ベースの長期記憶 |
 
 ## ファイル構成
 
@@ -34,7 +41,7 @@ bash setup.sh <repo-url>
 
 ## RTK（Rust Token Killer）
 
-`setup.sh` は [rtk-ai/rtk](https://github.com/rtk-ai/rtk) を自動導入する。Claude Code の PreToolUse hook で `git status` → `rtk git status` のように Bash コマンドを透過的に書き換え、出力を圧縮してトークン消費を 60〜90% 削減する Rust 製 CLI。
+[rtk-ai/rtk](https://github.com/rtk-ai/rtk) — PreToolUse hook で Bash コマンドを透過的に書き換え、出力を圧縮してトークン消費を 60〜90% 削減する Rust 製 CLI。
 
 導入確認:
 
@@ -54,7 +61,7 @@ rtk gain --history     # 書き換えられたコマンド履歴
 
 ## kizami（長期記憶）
 
-`setup.sh` は [okamyuji/kizami](https://github.com/okamyuji/kizami) を自動導入する。Claude Code の会話履歴をセッション終了時に自動保存し、過去の文脈を recall できる会話ベースの長期記憶システム。Hybrid モード（SQLite + ベクトル検索）でセットアップされる。
+[okamyuji/kizami](https://github.com/okamyuji/kizami) — 会話履歴をセッション終了時に自動保存し、過去の文脈を recall できる長期記憶システム。Hybrid モード（SQLite + ベクトル検索）でセットアップされる。
 
 導入確認:
 
@@ -69,10 +76,10 @@ kizami stats           # DB 統計情報
 
 | 書き換え対象 | RTK | kizami |
 |---|---|---|
-| `settings.json`（hook 追加） | o | o |
-| `CLAUDE.md`（import 追記） | o | — |
-| `RTK.md` 生成（`.gitignore` 済み） | o | — |
-| DB・設定ファイル初期化 | — | o |
+| `settings.json`（hook 追加） | ○ | ○ |
+| `CLAUDE.md`（import 追記） | ○ | - |
+| ツール専用定義ファイルの生成（`.gitignore` 対象） | ○ | - |
+| DB・設定ファイルの初期化 | - | ○ |
 
 ## Opus 4.6 の挙動調整
 
