@@ -175,17 +175,18 @@ fi
 # --- kizami (長期記憶): 会話履歴の自動保存・recall ---
 check_cmd "pnpm" "pnpm" "npm install -g pnpm"
 if ! command -v kizami &>/dev/null; then
-  echo "  → kizami が未導入。clone してビルドします..."
-  KIZAMI_DIR="$HOME/srcs/kizami"
-  if [[ ! -d "$KIZAMI_DIR" ]]; then
-    git clone https://github.com/okamyuji/kizami.git "$KIZAMI_DIR"
-  fi
-  if (cd "$KIZAMI_DIR" && pnpm install && pnpm add sqlite-vec @huggingface/transformers && pnpm build && npm link); then
+  echo "  → kizami が未導入。一時ディレクトリで clone・ビルドします..."
+  KIZAMI_TMP="$(mktemp -d)"
+  trap 'rm -rf "$KIZAMI_TMP"' EXIT
+  if git clone https://github.com/okamyuji/kizami.git "$KIZAMI_TMP" &&
+     (cd "$KIZAMI_TMP" && pnpm install && pnpm add sqlite-vec @huggingface/transformers && pnpm build && npm link); then
     ok "kizami (自動インストール完了)"
   else
     fail "kizami  →  手動: https://github.com/okamyuji/kizami"
     MISSING_CMDS+=("kizami")
   fi
+  rm -rf "$KIZAMI_TMP"
+  trap - EXIT
 else
   ok "kizami"
 fi
