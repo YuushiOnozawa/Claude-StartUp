@@ -179,7 +179,7 @@ if ! command -v kizami &>/dev/null; then
   KIZAMI_TMP="$(mktemp -d)"
   trap 'rm -rf "$KIZAMI_TMP"' EXIT
   if git clone https://github.com/okamyuji/kizami.git "$KIZAMI_TMP" &&
-     (cd "$KIZAMI_TMP" && pnpm install && pnpm add sqlite-vec @huggingface/transformers && pnpm build && npm link); then
+     (cd "$KIZAMI_TMP" && pnpm install && pnpm add sqlite-vec @huggingface/transformers && pnpm build && npm install -g .); then
     ok "kizami (自動インストール完了)"
   else
     fail "kizami  →  手動: https://github.com/okamyuji/kizami"
