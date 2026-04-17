@@ -189,11 +189,15 @@ if ! command -v kizami &>/dev/null; then
     MISSING_CMDS+=("kizami")
   else
     echo "  → kizami が未導入。一時ディレクトリで clone・ビルドします..."
-    KIZAMI_TMP="$(mktemp -d)"
-    if (
+    KIZAMI_TMP="$(mktemp -d)" || true
+    if [[ -z "$KIZAMI_TMP" || ! -d "$KIZAMI_TMP" ]]; then
+      fail "kizami  →  一時ディレクトリの作成に失敗しました"
+      MISSING_CMDS+=("kizami")
+    elif (
       trap 'rm -rf "$KIZAMI_TMP"' EXIT
       git clone https://github.com/okamyuji/kizami.git "$KIZAMI_TMP" &&
       cd "$KIZAMI_TMP" &&
+      pnpm install &&
       pnpm add sqlite-vec @huggingface/transformers &&
       pnpm build &&
       npm install -g .
@@ -208,13 +212,16 @@ else
   ok "kizami"
 fi
 
+# kizami の npm グローバルインストール先を PATH に反映
 if command -v kizami &>/dev/null; then
   echo "  → kizami setup --hybrid で hook と DB を初期化..."
-  if kizami setup --hybrid; then
+  if kizami setup --hybrid >/dev/null; then
     ok "kizami hybrid セットアップ完了"
   else
     fail "kizami setup 失敗  →  手動: kizami setup --hybrid"
-    MISSING_CMDS+=("kizami")
+    if [[ ! " ${MISSING_CMDS[*]} " =~ " kizami " ]]; then
+      MISSING_CMDS+=("kizami")
+    fi
   fi
 else
   if [[ ! " ${MISSING_CMDS[*]} " =~ " kizami " ]]; then
