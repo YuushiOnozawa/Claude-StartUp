@@ -212,7 +212,7 @@ else
   ok "kizami"
 fi
 
-# kizami の npm グローバルインストール先を PATH に反映
+# kizami のインストール確認と hybrid セットアップ
 if command -v kizami &>/dev/null; then
   echo "  → kizami setup --hybrid で hook と DB を初期化..."
   if kizami setup --hybrid >/dev/null; then
