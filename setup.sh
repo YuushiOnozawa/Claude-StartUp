@@ -200,7 +200,7 @@ if ! command -v kizami &>/dev/null; then
       pnpm install &&
       pnpm add sqlite-vec @huggingface/transformers &&
       pnpm build &&
-      tarball="$(npm pack | tail -1)" &&
+      tarball="$(pnpm pack | tail -n 1)" &&
       npm install -g "$tarball"
     ); then
       ok "kizami (自動インストール完了)"
