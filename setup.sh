@@ -237,7 +237,7 @@ echo "--- knowledge-rag pipeline ---"
 
 # Python 3.11+ 確認
 PYTHON_CMD=""
-for py_candidate in python3.12 python3.13 python3.11 python3; do
+for py_candidate in python3.13 python3.12 python3.11 python3; do
   if command -v "$py_candidate" &>/dev/null; then
     if "$py_candidate" -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)" 2>/dev/null; then
       PYTHON_CMD="$py_candidate"
@@ -270,6 +270,7 @@ if [[ -n "$PYTHON_CMD" ]]; then
     echo "  → venv 作成: $KRAG_VENV"
     mkdir -p "$(dirname "$KRAG_VENV")"
     if "$PYTHON_CMD" -m venv "$KRAG_VENV"; then
+      "$KRAG_VENV/bin/pip" install --quiet --upgrade pip
       ok "venv 作成完了"
     else
       fail "venv 作成失敗  →  apt install python3-venv が必要かもしれません"
@@ -324,7 +325,10 @@ if command -v ollama &>/dev/null; then
     if ! ollama list &>/dev/null; then
       echo "  → Ollama サーバーを起動中..."
       ollama serve &>/dev/null &
-      sleep 2
+      for i in {1..10}; do
+        if ollama list &>/dev/null; then break; fi
+        sleep 1
+      done
     fi
     echo "  → qwen2.5:3b モデル (~1.9GB) をダウンロードします..."
     echo "    ⚠  大容量ダウンロードです。ネットワーク環境を確認してください。"
@@ -341,7 +345,7 @@ fi
 LLM_MCP_DIR="$HOME/.llm-tools-mcp"
 LLM_MCP_CONF="$LLM_MCP_DIR/mcp.json"
 
-if [[ -x "$KRAG_VENV/bin/python" ]] && command -v jq &>/dev/null; then
+if [[ -x "$KRAG_VENV/bin/python" ]]; then
   KRAG_PYTHON_ABS="$KRAG_VENV/bin/python"
 
   if [[ -f "$LLM_MCP_CONF" ]] && \
