@@ -270,7 +270,7 @@ if [[ -n "$PYTHON_CMD" ]]; then
     echo "  → venv 作成: $KRAG_VENV"
     mkdir -p "$(dirname "$KRAG_VENV")"
     if "$PYTHON_CMD" -m venv "$KRAG_VENV"; then
-      "$KRAG_VENV/bin/pip" install --quiet --upgrade pip
+      "$KRAG_VENV/bin/pip" install --quiet --upgrade pip 2>/dev/null || true
       ok "venv 作成完了"
     else
       fail "venv 作成失敗  →  apt install python3-venv が必要かもしれません"
@@ -325,8 +325,8 @@ if command -v ollama &>/dev/null; then
     if ! ollama list &>/dev/null; then
       echo "  → Ollama サーバーを起動中..."
       ollama serve &>/dev/null &
-      for i in {1..10}; do
-        if ollama list &>/dev/null; then break; fi
+      for _i in {1..10}; do
+        ollama list &>/dev/null && break
         sleep 1
       done
     fi
@@ -345,7 +345,7 @@ fi
 LLM_MCP_DIR="$HOME/.llm-tools-mcp"
 LLM_MCP_CONF="$LLM_MCP_DIR/mcp.json"
 
-if [[ -x "$KRAG_VENV/bin/python" ]]; then
+if [[ -x "$KRAG_VENV/bin/python" ]] && command -v jq &>/dev/null; then
   KRAG_PYTHON_ABS="$KRAG_VENV/bin/python"
 
   if [[ -f "$LLM_MCP_CONF" ]] && \
