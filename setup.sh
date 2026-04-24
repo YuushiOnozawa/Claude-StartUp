@@ -321,22 +321,19 @@ if command -v ollama &>/dev/null; then
   elif ollama list 2>/dev/null | grep -q "qwen2.5:3b"; then
     ok "ollama model qwen2.5:3b"
   else
-    # ollama serve がまだ起動していなければバックグラウンド起動
+    # ollama serve が起動していなければモデル取得をスキップ
     if ! ollama list &>/dev/null; then
-      echo "  → Ollama サーバーを起動中..."
-      ollama serve &>/dev/null &
-      for _i in {1..10}; do
-        ollama list &>/dev/null && break
-        sleep 1
-      done
-    fi
-    echo "  → qwen2.5:3b モデル (~1.9GB) をダウンロードします..."
-    echo "    ⚠  大容量ダウンロードです。ネットワーク環境を確認してください。"
-    if ollama pull qwen2.5:3b; then
-      ok "ollama model qwen2.5:3b (ダウンロード完了)"
-    else
-      fail "ollama model  →  手動: ollama pull qwen2.5:3b"
+      fail "ollama model  →  ollama serve を起動してから再実行してください"
       MISSING_CMDS+=("ollama-model")
+    else
+      echo "  → qwen2.5:3b モデル (~1.9GB) をダウンロードします..."
+      echo "    ⚠  大容量ダウンロードです。ネットワーク環境を確認してください。"
+      if ollama pull qwen2.5:3b; then
+        ok "ollama model qwen2.5:3b (ダウンロード完了)"
+      else
+        fail "ollama model  →  手動: ollama pull qwen2.5:3b"
+        MISSING_CMDS+=("ollama-model")
+      fi
     fi
   fi
 fi
