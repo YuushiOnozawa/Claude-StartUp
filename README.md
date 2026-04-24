@@ -11,7 +11,7 @@ curl -fsSL https://raw.githubusercontent.com/YuushiOnozawa/Claude-StartUp/main/s
   | bash -s -- https://github.com/YuushiOnozawa/Claude-StartUp.git
 ```
 
-`~/.claude/` 展開・依存ツール確認・npm グローバルパッケージ（commitlint 等）の自動インストールを一括実行する。
+`~/.claude/` 展開・依存ツール確認・パッケージの自動インストール（commitlint, RTK, kizami, knowledge-rag pipeline）を一括実行する。
 
 ### 方式 B: ローカル clone 済みの場合
 
@@ -27,6 +27,7 @@ bash setup.sh <repo-url>
 |--------|------|
 | [RTK](#rtk（rust-token-killer）) | Bash 出力圧縮によるトークン削減 |
 | [kizami](#kizami（長期記憶）) | 会話ベースの長期記憶 |
+| [knowledge-rag](#knowledge-rag（知識検索）) | RAG ベースのドキュメント検索 |
 
 ## ファイル構成
 
@@ -70,16 +71,50 @@ kizami list            # 保存済み会話の一覧
 kizami stats           # DB 統計情報
 ```
 
+## knowledge-rag（知識検索）
+
+[lyonzin/knowledge-rag](https://github.com/lyonzin/knowledge-rag) — MCP サーバーとして動作する RAG ベースの知識検索システム。Ollama + llm CLI 経由でローカル LLM からも検索可能。
+
+### 構成
+
+| コンポーネント | 説明 |
+|---|---|
+| knowledge-rag | MCP サーバー（ChromaDB + BM25 ハイブリッド検索） |
+| Ollama + qwen2.5:3b | ローカル LLM（tool calling 対応） |
+| llm + llm-ollama + llm-tools-mcp | CLI から MCP 経由で検索するパイプライン |
+
+すべて `~/.local/share/knowledge-rag/venv/` の Python venv にインストールされる。
+
+### 動作確認
+
+```bash
+# Claude から直接 MCP ツールとして利用可能（自動登録済み）
+
+# CLI からの検索（Ollama 経由）
+~/.local/share/knowledge-rag/venv/bin/llm -m qwen2.5:3b -T MCP \
+  "search_knowledge ツールで query='検索語' を検索し、結果を日本語で要約して"
+```
+
+### セットアップオプション
+
+| 環境変数 | 説明 |
+|---|---|
+| `SKIP_OLLAMA_MODEL=1` | Ollama モデル（~1.9GB）のダウンロードをスキップ |
+
+Ollama サーバーが起動していない場合、モデル取得はスキップされる。事前に `ollama serve` を起動してから `setup.sh` を実行すること。
+
 ## 外部ツールが書き込むローカル差分の扱い
 
 各ツールの init / setup コマンドは環境ごとにファイルを書き換えるが、いずれも **ローカル状態** のためリポジトリにはコミットしない（`git diff` に残っても無視してよい）。
 
-| 書き換え対象 | RTK | kizami |
-|---|---|---|
-| `settings.json`（hook 追加） | ○ | ○ |
-| `CLAUDE.md`（import 追記） | ○ | - |
-| ツール専用定義ファイルの生成（`.gitignore` 対象） | ○ | - |
-| DB・設定ファイルの初期化 | - | ○ |
+| 書き換え対象 | RTK | kizami | knowledge-rag |
+|---|---|---|---|
+| `settings.json`（hook 追加） | ○ | ○ | - |
+| `CLAUDE.md`（import 追記） | ○ | - | - |
+| ツール専用定義ファイルの生成（`.gitignore` 対象） | ○ | - | - |
+| DB・設定ファイルの初期化 | - | ○ | - |
+| `~/.llm-tools-mcp/mcp.json` | - | - | ○ |
+| venv（`~/.local/share/knowledge-rag/venv/`） | - | - | ○ |
 
 ## Opus 4.6 の挙動調整
 
