@@ -36,7 +36,7 @@ if [[ -n "$KRAG_PYTHON_CMD" ]]; then
   if [[ -d "$KRAG_VENV" ]] && ! "$KRAG_VENV/bin/python" -c "import sys" &>/dev/null; then
     echo "  → 既存 venv が壊れています。再作成します..."
     # パス検証ガード: rm -rf の対象が想定パスと一致することを確認
-    [[ "$KRAG_VENV" == "$HOME/.local/share/knowledge-rag/venv" ]] || { fail "KRAG_VENV が想定外: $KRAG_VENV"; return 1; }
+    [[ "$KRAG_VENV" == "$HOME/.local/share/knowledge-rag/venv" ]] || { fail "KRAG_VENV が想定外: $KRAG_VENV"; MISSING_CMDS+=("knowledge-rag-venv"); return 0; }
     rm -rf "$KRAG_VENV"
   fi
 
