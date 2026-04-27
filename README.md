@@ -1,6 +1,6 @@
 # Claude Code Harness
 
-個人用 `~/.claude/` 共通設定。`setup.sh` で新マシンに展開する。
+個人用 `~/.claude/` 共通設定。`setup.sh` + `setup/` モジュール群で新マシンに展開する。
 
 ## セットアップ
 
@@ -35,7 +35,8 @@ bash setup.sh <repo-url>
 |------|------|
 | `CLAUDE.md` | Claude Code グローバル動作原則 |
 | `settings.json` | パーミッション設定 |
-| `setup.sh` | 新マシン展開スクリプト |
+| `setup.sh` | 新マシン展開オーケストレータ |
+| `setup/` | ツール別セットアップモジュール（自動検出・番号プレフィックス順） |
 | `skills/commit/` | `/commit` スキル |
 | `agents/` | グローバルサブエージェント定義 |
 | `memory/` | クロスセッション知識（自動管理） |
