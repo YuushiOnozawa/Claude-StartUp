@@ -27,7 +27,7 @@ if ! command -v kizami &>/dev/null; then
     MISSING_CMDS+=("kizami")
   else
     echo "  → kizami が未導入。一時ディレクトリで clone・ビルドします..."
-    KIZAMI_TMP="$(mktemp -d)"
+    KIZAMI_TMP="$(mktemp -d)" || true  # set -e 下でも L32 ガードを通すため
     if [[ -z "$KIZAMI_TMP" || ! -d "$KIZAMI_TMP" ]]; then
       fail "kizami  →  一時ディレクトリの作成に失敗しました"
       MISSING_CMDS+=("kizami")

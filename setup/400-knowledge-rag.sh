@@ -29,14 +29,15 @@ fi
 check_cmd "jq" "jq" "brew install jq  /  apt install jq"
 
 # venv 作成 + pip パッケージ
-KRAG_VENV="$HOME/.local/share/knowledge-rag/venv"
+KRAG_VENV_EXPECTED="$HOME/.local/share/knowledge-rag/venv"
+KRAG_VENV="$KRAG_VENV_EXPECTED"
 
 if [[ -n "$KRAG_PYTHON_CMD" ]]; then
   # 既存 venv が壊れている場合は再作成
   if [[ -d "$KRAG_VENV" ]] && ! "$KRAG_VENV/bin/python" -c "import sys" &>/dev/null; then
     echo "  → 既存 venv が壊れています。再作成します..."
     # パス検証ガード: rm -rf の対象が想定パスと一致することを確認
-    [[ "$KRAG_VENV" == "$HOME/.local/share/knowledge-rag/venv" ]] || { fail "KRAG_VENV が想定外: $KRAG_VENV"; MISSING_CMDS+=("knowledge-rag-venv"); return 0; }
+    [[ "$KRAG_VENV" == "$KRAG_VENV_EXPECTED" ]] || { fail "KRAG_VENV が想定外: $KRAG_VENV"; MISSING_CMDS+=("knowledge-rag-venv"); return 0; }
     rm -rf "$KRAG_VENV"
   fi
 
@@ -92,7 +93,7 @@ fi
 if command -v ollama &>/dev/null; then
   if [[ "${SKIP_OLLAMA_MODEL:-}" == "1" ]]; then
     echo "  ℹ  SKIP_OLLAMA_MODEL=1 のためモデル取得をスキップ"
-  elif ollama list 2>/dev/null | grep -qE '^qwen2.5:3b[[:space:]]'; then
+  elif ollama list 2>/dev/null | grep -qE '^qwen2.5:3b([[:space:]]|$)'; then
     ok "ollama model qwen2.5:3b"
   else
     # ollama serve が起動していなければモデル取得をスキップ
