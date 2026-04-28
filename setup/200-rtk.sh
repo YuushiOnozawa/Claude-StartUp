@@ -5,7 +5,7 @@
 
 # --- RTK (Rust Token Killer): トークン削減プロキシ ---
 if ! command -v rtk &>/dev/null; then
-  echo "  → RTK が未導入。公式インストーラを実行: curl -fsSL …/install.sh | sh"
+  echo "  → RTK が未導入。公式インストーラを実行: curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh"
   if curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh; then
     ensure_local_bin_in_path
     ok "RTK (自動インストール完了)"

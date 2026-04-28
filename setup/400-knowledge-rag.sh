@@ -120,22 +120,32 @@ LLM_MCP_CONF="$LLM_MCP_DIR/mcp.json"
 if [[ -x "$KRAG_VENV/bin/python" ]] && command -v jq &>/dev/null; then
   KRAG_PYTHON_ABS="$KRAG_VENV/bin/python"
 
-  if [[ -f "$LLM_MCP_CONF" ]] && \
+  if [[ -s "$LLM_MCP_CONF" ]] && \
      jq -e '.mcpServers["knowledge-rag"]' "$LLM_MCP_CONF" >/dev/null 2>&1; then
     ok "llm-tools-mcp config"
   else
     echo "  → llm-tools-mcp 設定を書き込み: $LLM_MCP_CONF"
     mkdir -p "$LLM_MCP_DIR"
-    if [[ -f "$LLM_MCP_CONF" ]]; then
-      jq --arg py "$KRAG_PYTHON_ABS" \
+    if [[ -s "$LLM_MCP_CONF" ]]; then
+      if jq --arg py "$KRAG_PYTHON_ABS" \
         '.mcpServers["knowledge-rag"] = {"type":"stdio","command":$py,"args":["-m","mcp_server.server"]}' \
-        "$LLM_MCP_CONF" > "$LLM_MCP_CONF.tmp" && mv "$LLM_MCP_CONF.tmp" "$LLM_MCP_CONF"
+        "$LLM_MCP_CONF" > "$LLM_MCP_CONF.tmp" && mv "$LLM_MCP_CONF.tmp" "$LLM_MCP_CONF"; then
+        ok "llm-tools-mcp config (書き込み完了)"
+      else
+        rm -f "$LLM_MCP_CONF.tmp"
+        fail "llm-tools-mcp config  →  jq 編集失敗"
+        MISSING_CMDS+=("llm-tools-mcp-config")
+      fi
     else
-      jq -n --arg py "$KRAG_PYTHON_ABS" \
+      if jq -n --arg py "$KRAG_PYTHON_ABS" \
         '{"mcpServers":{"knowledge-rag":{"type":"stdio","command":$py,"args":["-m","mcp_server.server"]}}}' \
-        > "$LLM_MCP_CONF"
+        > "$LLM_MCP_CONF"; then
+        ok "llm-tools-mcp config (書き込み完了)"
+      else
+        fail "llm-tools-mcp config  →  jq 生成失敗"
+        MISSING_CMDS+=("llm-tools-mcp-config")
+      fi
     fi
-    ok "llm-tools-mcp config (書き込み完了)"
   fi
 elif ! command -v jq &>/dev/null; then
   fail "llm-tools-mcp config  →  jq が必要です"
