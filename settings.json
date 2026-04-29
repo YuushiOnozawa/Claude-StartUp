@@ -53,7 +53,7 @@
       "Write(~/.claude/.credentials.json)"
     ]
   },
-  "effortLevel": "high",
+  "effortLevel": "medium",
   "env": {
     "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1"
   },
