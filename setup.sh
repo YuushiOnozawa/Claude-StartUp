@@ -138,7 +138,7 @@ echo "=== Step 2: 依存ツールの確認 ==="
 
 # setup/ 内の *.sh を番号プレフィックス順で自動検出・実行
 # 新ツール追加時: setup/NNN-xxx.sh を作成するだけ（setup.sh の編集不要）
-SETUP_DIR="$CLAUDE_DIR/setup"
+SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/setup"
 [[ -d "$SETUP_DIR" ]] || { echo "ERROR: $SETUP_DIR が見つかりません" >&2; exit 1; }
 shopt -u nullglob  # glob 不一致時にリテラル文字列が返るよう保証
 for mod in "$SETUP_DIR"/*.sh; do
