@@ -147,3 +147,10 @@ if [[ -x "$KRAG_VENV/bin/python" ]] && command -v jq &>/dev/null; then
 elif ! command -v jq &>/dev/null; then
   fail "llm-tools-mcp config  →  jq が必要です"
 fi
+
+# knowledge-distill hook スクリプトの実行権限を保証
+KRAG_HOOK="$HOME/.claude/hooks/knowledge-distill.sh"
+if [[ -f "$KRAG_HOOK" ]]; then
+  chmod +x "$KRAG_HOOK"
+  ok "knowledge-distill hook"
+fi
