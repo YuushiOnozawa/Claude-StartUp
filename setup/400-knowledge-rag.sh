@@ -147,3 +147,37 @@ if [[ -x "$KRAG_VENV/bin/python" ]] && command -v jq &>/dev/null; then
 elif ! command -v jq &>/dev/null; then
   fail "llm-tools-mcp config  →  jq が必要です"
 fi
+
+# knowledge-distill hook (SessionEnd → Obsidian 蒸留)
+KRAG_HOOK="$HOME/.claude/hooks/knowledge-distill.sh"
+CLAUDE_SETTINGS="$HOME/.claude/settings.json"
+DISTILL_CMD="bash -c 'trap \"\" INT TERM; ~/.claude/hooks/knowledge-distill.sh 2>> ~/.local/share/knowledge-rag/error.log'"
+
+# hook スクリプトの実行権限を保証
+if [[ -f "$KRAG_HOOK" ]]; then
+  chmod +x "$KRAG_HOOK"
+fi
+
+# SessionEnd hook を settings.json に追加（冪等）
+if [[ -f "$CLAUDE_SETTINGS" ]] && command -v jq &>/dev/null; then
+  if jq -e --arg cmd "$DISTILL_CMD" \
+    '.hooks.SessionEnd // [] | .[].hooks // [] | .[] | select(.command == $cmd)' \
+    "$CLAUDE_SETTINGS" >/dev/null 2>&1; then
+    ok "knowledge-distill SessionEnd hook"
+  else
+    mkdir -p "$HOME/.local/share/knowledge-rag"
+    if jq --arg cmd "$DISTILL_CMD" '
+      if .hooks.SessionEnd then
+        .hooks.SessionEnd[0].hooks += [{"type":"command","command":$cmd}]
+      else
+        .hooks.SessionEnd = [{"hooks":[{"type":"command","command":$cmd}]}]
+      end
+    ' "$CLAUDE_SETTINGS" > "$CLAUDE_SETTINGS.tmp" && mv "$CLAUDE_SETTINGS.tmp" "$CLAUDE_SETTINGS"; then
+      ok "knowledge-distill SessionEnd hook (追加完了)"
+    else
+      rm -f "$CLAUDE_SETTINGS.tmp"
+      fail "knowledge-distill SessionEnd hook  →  jq 編集失敗"
+      MISSING_CMDS+=("knowledge-distill-hook")
+    fi
+  fi
+fi
