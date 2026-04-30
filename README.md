@@ -28,6 +28,7 @@ bash setup.sh <repo-url>
 | [RTK](#rtk（rust-token-killer）) | Bash 出力圧縮によるトークン削減 |
 | [kizami](#kizami（長期記憶）) | 会話ベースの長期記憶 |
 | [knowledge-rag](#knowledge-rag（知識検索）) | RAG ベースのドキュメント検索 |
+| [pCloud (rclone)](#pcloud（obsidian-vault-アクセス）) | Obsidian Vault への FUSE マウント（WSL2） |
 
 ## ファイル構成
 
@@ -37,6 +38,7 @@ bash setup.sh <repo-url>
 | `settings.json` | パーミッション設定 |
 | `setup.sh` | 新マシン展開オーケストレータ |
 | `setup/` | ツール別セットアップモジュール（自動検出・番号プレフィックス順） |
+| `docs/` | 手動手順ドキュメント（setup.sh では自動化できない操作） |
 | `skills/commit/` | `/commit` スキル |
 | `agents/` | グローバルサブエージェント定義 |
 | `memory/` | クロスセッション知識（自動管理） |
@@ -103,6 +105,28 @@ kizami stats           # DB 統計情報
 | `SKIP_OLLAMA_MODEL=1` | Ollama モデル（~1.9GB）のダウンロードをスキップ |
 
 Ollama サーバーが起動していない場合、モデル取得はスキップされる。事前に `ollama serve` を起動してから `setup.sh` を実行すること。
+
+## pCloud（Obsidian Vault アクセス）
+
+WSL2 内から pCloud に保存した Obsidian Vault にアクセスするための FUSE マウント設定。
+
+- `setup.sh` で rclone をインストールし `~/pcloud` マウントポイントを作成する
+- OAuth 認証は対話式のため **初回のみ手動で実行**が必要（詳細: `docs/pcloud-rclone-setup.md`）
+
+```bash
+# 認証設定（初回のみ）
+rclone config
+
+# マウント
+rclone mount pcloud: ~/pcloud --daemon --vfs-cache-mode writes
+
+# アンマウント
+fusermount -u ~/pcloud
+```
+
+マウント後は `~/pcloud/<Vault名>/` にファイルを書き込むだけで pCloud が自動同期し、Windows・スマホ等の Obsidian から参照できる。
+
+> **WSL2 の注意**: apt 版 rclone (v1.60) は WSL2 で FUSE マウントが動作しないバグがある。`setup.sh` は公式インストーラ経由で v1.73+ を導入する。
 
 ## 外部ツールが書き込むローカル差分の扱い
 
