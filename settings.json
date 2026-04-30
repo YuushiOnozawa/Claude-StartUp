@@ -50,7 +50,10 @@
       "Bash(cat ~/.ssh/*)",
       "Read(~/.claude/.credentials.json)",
       "Edit(~/.claude/.credentials.json)",
-      "Write(~/.claude/.credentials.json)"
+      "Write(~/.claude/.credentials.json)",
+      "Read(~/.config/rclone/rclone.conf)",
+      "Edit(~/.config/rclone/rclone.conf)",
+      "Write(~/.config/rclone/rclone.conf)"
     ]
   },
   "effortLevel": "medium",
