@@ -81,4 +81,7 @@ Windows・スマホ等の Obsidian が自動的に参照する。
 ## 注意事項
 
 - マウントは WSL セッションをまたいで維持されない場合がある（必要に応じて再マウント）
-- `rclone config` の設定は `~/.config/rclone/rclone.conf` に保存される
+- `rclone config` の設定は `~/.config/rclone/rclone.conf` に保存される（OAuth トークン含む）。
+  パーミッションを確認: `chmod 600 ~/.config/rclone/rclone.conf`
+- `rclone authorize` 実行後、ターミナルに表示される JSON トークンはスクロールバックに残る。
+  コピペ後は `clear`（または Ctrl+L）でターミナルをクリアすることを推奨。
