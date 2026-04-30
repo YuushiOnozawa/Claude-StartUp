@@ -8,8 +8,7 @@ WSL2 内で pCloud の Vault ディレクトリにアクセスするための設
 - `setup.sh` 実行済み（rclone インストール・`~/pcloud` マウントポイント作成済み）
 
 > **注意**: apt 版 rclone (v1.60.x) は WSL2 で FUSE マウントが動作しない既知のバグがある。
-> `setup.sh` は公式インストーラ (`curl https://rclone.org/install.sh | sudo bash`) を使用する。
-> `unzip` が必要: `sudo apt-get install -y unzip`
+> `setup.sh` は公式インストーラ経由で最新版を導入する（unzip の有無も自動で処理）。
 
 ---
 
