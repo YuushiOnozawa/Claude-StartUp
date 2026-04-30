@@ -33,10 +33,9 @@ fi
 if rclone listremotes 2>/dev/null | grep -q '^pcloud:'; then
   ok "rclone pcloud リモート設定済み"
 else
-  echo "  ℹ  pCloud リモートが未設定です。以下を実行してください:"
+  echo "  ℹ  pCloud リモートが未設定です（要: 手動で OAuth 認証）:"
   echo "       rclone config"
-  echo "     → n (new remote) → 名前: pcloud → type: pcloud → OAuth 認証"
-  MISSING_CMDS+=("rclone-pcloud-config")
+  echo "     → n → 名前: pcloud → type: pcloud → OAuth 認証"
 fi
 
 # マウントコマンドのヒント
