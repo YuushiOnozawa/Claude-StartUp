@@ -9,10 +9,13 @@ echo "--- pCloud (rclone) ---"
 # rclone インストール確認
 if ! command -v rclone &>/dev/null; then
   echo "  → rclone が未導入。インストールします..."
-  if sudo apt-get install -y rclone; then
+  # apt 版は WSL2 で FUSE マウントが動作しないため公式インストーラを使用
+  # unzip は公式インストーラの展開に必要
+  sudo apt-get install -y unzip >/dev/null 2>&1 || true
+  if curl -fsSL https://rclone.org/install.sh | sudo bash; then
     ok "rclone (インストール完了)"
   else
-    fail "rclone  →  手動: sudo apt-get install -y rclone"
+    fail "rclone  →  手動: curl https://rclone.org/install.sh | sudo bash"
     MISSING_CMDS+=("rclone")
     return 0
   fi
