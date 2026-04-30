@@ -9,7 +9,7 @@ echo "--- pCloud (rclone) ---"
 # rclone インストール確認
 if ! command -v rclone &>/dev/null; then
   echo "  → rclone が未導入。インストールします..."
-  if sudo apt-get install -y rclone >/dev/null 2>&1; then
+  if sudo apt-get install -y rclone; then
     ok "rclone (インストール完了)"
   else
     fail "rclone  →  手動: sudo apt-get install -y rclone"
