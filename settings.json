@@ -67,7 +67,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'trap \"\" INT TERM; ~/.claude/hooks/knowledge-distill.sh 2>> ~/.local/share/knowledge-rag/error.log'"
+            "command": "bash -c 'trap \"\" INT TERM; ~/.claude/hooks/knowledge-distill.sh 2>> ~/.local/share/knowledge-rag/error.log &'"
           }
         ]
       }

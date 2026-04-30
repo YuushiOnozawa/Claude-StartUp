@@ -31,15 +31,16 @@ CONVERSATION=$(jq -rn '
       "Claude: \($text)"
     else empty
     end
-  ] | join("\n")
-' "$TRANSCRIPT_PATH" 2>/dev/null | head -c 6000)
+  ] | join("\n") | .[0:4000]
+' "$TRANSCRIPT_PATH" 2>/dev/null)
 
 if [[ -z "$CONVERSATION" ]]; then
   exit 0
 fi
 
 # Metadata
-PROJECT=$(echo "$INPUT" | jq -r '.cwd // ""' 2>/dev/null | xargs basename 2>/dev/null || echo "unknown")
+PROJECT_CWD=$(echo "$INPUT" | jq -r '.cwd // "unknown"' 2>/dev/null)
+PROJECT=$(basename "$PROJECT_CWD" 2>/dev/null || echo "unknown")
 DATE=$(date +%Y-%m-%d)
 TIME=$(date +%H%M)
 OUTPUT_DIR="$HOME/pcloud/obsidian/sessions"
