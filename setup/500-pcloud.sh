@@ -11,7 +11,7 @@ echo "--- pCloud (rclone) ---"
 RCLONE_NEEDS_INSTALL=false
 if command -v rclone &>/dev/null; then
   RCLONE_VER="$(rclone --version 2>/dev/null | head -1)"
-  if echo "$RCLONE_VER" | grep -q 'v1\.60'; then
+  if echo "$RCLONE_VER" | grep -qE 'v1\.60\.'; then
     echo "  → rclone v1.60 (apt版, WSL2 FUSE非対応) を検出。最新版に置換します..."
     sudo apt-get remove -y rclone >/dev/null 2>&1 || true
     RCLONE_NEEDS_INSTALL=true
@@ -50,7 +50,7 @@ PCLOUD_MOUNT="$HOME/pcloud"
 if [[ -d "$PCLOUD_MOUNT" ]]; then
   ok "マウントポイント $PCLOUD_MOUNT (作成済み)"
 else
-  mkdir -p "$PCLOUD_MOUNT"
+  mkdir -p -m 700 "$PCLOUD_MOUNT"
   ok "マウントポイント作成: $PCLOUD_MOUNT"
 fi
 
@@ -61,6 +61,13 @@ else
   fail "pCloud リモート未設定  →  OAuth 認証が必要です"
   echo "       手順: docs/pcloud-rclone-setup.md を参照してください"
   echo "       rclone config → n → 名前: pcloud → type: pcloud → OAuth 認証"
+fi
+
+# rclone.conf パーミッション確認
+RCLONE_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/rclone/rclone.conf"
+if [[ -f "$RCLONE_CONF" ]]; then
+  chmod 600 "$RCLONE_CONF"
+  ok "rclone.conf パーミッション確認 (600)"
 fi
 
 # マウントコマンドのヒント
