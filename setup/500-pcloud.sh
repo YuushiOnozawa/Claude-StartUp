@@ -7,11 +7,35 @@ echo ""
 echo "--- pCloud (rclone) ---"
 
 # rclone インストール確認
-if ! command -v rclone &>/dev/null; then
+# apt 版 (v1.60.x) は WSL2 で FUSE マウントが動作しないため公式インストーラを使用
+RCLONE_NEEDS_INSTALL=false
+if command -v rclone &>/dev/null; then
+  RCLONE_VER="$(rclone --version 2>/dev/null | head -1)"
+  if echo "$RCLONE_VER" | grep -q 'v1\.60'; then
+    echo "  → rclone v1.60 (apt版, WSL2 FUSE非対応) を検出。最新版に置換します..."
+    sudo apt-get remove -y rclone >/dev/null 2>&1 || true
+    RCLONE_NEEDS_INSTALL=true
+  else
+    ok "rclone ($RCLONE_VER)"
+  fi
+else
   echo "  → rclone が未導入。インストールします..."
-  # apt 版は WSL2 で FUSE マウントが動作しないため公式インストーラを使用
+  RCLONE_NEEDS_INSTALL=true
+fi
+
+if $RCLONE_NEEDS_INSTALL; then
   # unzip は公式インストーラの展開に必要
-  command -v unzip &>/dev/null || sudo apt-get install -y unzip >/dev/null 2>&1 || true
+  if ! command -v unzip &>/dev/null; then
+    echo "  → unzip が未導入。インストールします..."
+    if sudo apt-get install -y unzip > /dev/null; then
+      ok "unzip (インストール完了)"
+    else
+      fail "unzip  →  手動: sudo apt-get install -y unzip"
+      MISSING_CMDS+=("unzip")
+      return 0
+    fi
+  fi
+
   if curl -fsSL https://rclone.org/install.sh | sudo bash; then
     ok "rclone (インストール完了)"
   else
@@ -19,8 +43,6 @@ if ! command -v rclone &>/dev/null; then
     MISSING_CMDS+=("rclone")
     return 0
   fi
-else
-  ok "rclone"
 fi
 
 # マウントポイントの作成
@@ -36,9 +58,9 @@ fi
 if rclone listremotes 2>/dev/null | grep -q '^pcloud:'; then
   ok "rclone pcloud リモート設定済み"
 else
-  echo "  ℹ  pCloud リモートが未設定です（要: 手動で OAuth 認証）:"
-  echo "       rclone config"
-  echo "     → n → 名前: pcloud → type: pcloud → OAuth 認証"
+  fail "pCloud リモート未設定  →  OAuth 認証が必要です"
+  echo "       手順: docs/pcloud-rclone-setup.md を参照してください"
+  echo "       rclone config → n → 名前: pcloud → type: pcloud → OAuth 認証"
 fi
 
 # マウントコマンドのヒント
