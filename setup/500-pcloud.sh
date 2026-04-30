@@ -11,7 +11,7 @@ echo "--- pCloud (rclone) ---"
 RCLONE_NEEDS_INSTALL=false
 if command -v rclone &>/dev/null; then
   RCLONE_VER="$(rclone --version 2>/dev/null | head -1)"
-  if echo "$RCLONE_VER" | grep -qE 'v1\.60\.'; then
+  if echo "$RCLONE_VER" | grep -qE 'v1\.60(\.|$| )'; then
     echo "  → rclone v1.60 (apt版, WSL2 FUSE非対応) を検出。最新版に置換します..."
     sudo apt-get remove -y rclone >/dev/null 2>&1 || true
     RCLONE_NEEDS_INSTALL=true
@@ -50,9 +50,10 @@ PCLOUD_MOUNT="$HOME/pcloud"
 if [[ -d "$PCLOUD_MOUNT" ]]; then
   ok "マウントポイント $PCLOUD_MOUNT (作成済み)"
 else
-  mkdir -p -m 700 "$PCLOUD_MOUNT"
+  mkdir -p "$PCLOUD_MOUNT"
   ok "マウントポイント作成: $PCLOUD_MOUNT"
 fi
+chmod 700 "$PCLOUD_MOUNT"
 
 # pCloud リモート設定の確認
 if rclone listremotes 2>/dev/null | grep -q '^pcloud:'; then
