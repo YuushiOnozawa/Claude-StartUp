@@ -27,7 +27,7 @@ rclone config
 |---|---|
 | `n/s/q>` | `n` |
 | `name>` | `pcloud` |
-| `Storage>` | `33`（Pcloud） |
+| `Storage>` | `pcloud` |
 | `client_id>` | （空白のまま Enter） |
 | `client_secret>` | （空白のまま Enter） |
 | Edit advanced config? `y/n` | `n` |

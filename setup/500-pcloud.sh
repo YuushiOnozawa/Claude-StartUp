@@ -11,7 +11,7 @@ if ! command -v rclone &>/dev/null; then
   echo "  → rclone が未導入。インストールします..."
   # apt 版は WSL2 で FUSE マウントが動作しないため公式インストーラを使用
   # unzip は公式インストーラの展開に必要
-  sudo apt-get install -y unzip >/dev/null 2>&1 || true
+  command -v unzip &>/dev/null || sudo apt-get install -y unzip >/dev/null 2>&1 || true
   if curl -fsSL https://rclone.org/install.sh | sudo bash; then
     ok "rclone (インストール完了)"
   else
