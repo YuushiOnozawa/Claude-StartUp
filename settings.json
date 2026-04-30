@@ -61,6 +61,18 @@
   "env": {
     "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1"
   },
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'trap \"\" INT TERM; ~/.claude/hooks/knowledge-distill.sh 2>> ~/.local/share/knowledge-rag/error.log'"
+          }
+        ]
+      }
+    ]
+  },
   "extraKnownMarketplaces": {
     "anthropic-agent-skills": {
       "source": {
