@@ -71,6 +71,22 @@ if [[ -f "$RCLONE_CONF" ]]; then
   ok "rclone.conf パーミッション確認 (600)"
 fi
 
-# マウントコマンドのヒント
-echo "  ℹ  マウント:   rclone mount pcloud: $PCLOUD_MOUNT --daemon --vfs-cache-mode writes"
+# ~/.profile への自動マウント設定
+PROFILE="$HOME/.profile"
+MOUNT_SNIPPET='
+# pCloud マウント (rclone)
+if command -v rclone &>/dev/null && rclone listremotes 2>/dev/null | grep -q '"'"'^pcloud:'"'"'; then
+  if ! mountpoint -q "$HOME/pcloud" 2>/dev/null; then
+    rclone mount pcloud: "$HOME/pcloud" --vfs-cache-mode writes --daemon --log-level ERROR
+  fi
+fi'
+MOUNT_MARKER='# pCloud マウント (rclone)'
+
+if [[ -f "$PROFILE" ]] && grep -q "$MOUNT_MARKER" "$PROFILE"; then
+  ok "~/.profile pCloud 自動マウント (設定済み)"
+else
+  echo "$MOUNT_SNIPPET" >> "$PROFILE"
+  ok "~/.profile pCloud 自動マウント追加"
+fi
+
 echo "  ℹ  アンマウント: fusermount -u $PCLOUD_MOUNT"
