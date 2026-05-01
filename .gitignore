@@ -15,6 +15,7 @@ shell-snapshots/
 backups/
 memory/*
 !memory/.gitkeep
+config.yaml
 
 # マーケットプレイスプラグイン（再取得可能）
 plugins/
