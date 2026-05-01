@@ -1,0 +1,5 @@
+{
+  "name": "code-review-command",
+  "description": "code-review コマンドのローカルオーバーライド。インラインコメント（GitHub Review API）+ 日本語対応",
+  "version": "1.0.0"
+}
