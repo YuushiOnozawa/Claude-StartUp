@@ -40,6 +40,7 @@ bash setup.sh <repo-url>
 | `setup/` | ツール別セットアップモジュール（自動検出・番号プレフィックス順） |
 | `docs/` | 手動手順ドキュメント（setup.sh では自動化できない操作） |
 | `skills/commit/` | `/commit` スキル |
+| `local-plugins/` | ローカルプラグイン群（`~/.claude/local-plugins/` に配置する前提）。`commit-skill` / `pr-review-skill` / `pr-review-respond-skill` / `code-review-command` を含む |
 | `agents/` | グローバルサブエージェント定義 |
 | `memory/` | クロスセッション知識（自動管理） |
 

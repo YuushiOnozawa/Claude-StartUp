@@ -29,13 +29,14 @@ To do this, follow these steps precisely:
 7. Use a Haiku agent to repeat the eligibility check from #1, to make sure that the pull request is still eligible for code review.
 8. Finally, post the review to GitHub using the Review API with inline comments per issue:
    a. Get the PR head commit SHA: `gh pr view --json headRefOid --jq '.headRefOid'`
-   b. Get repo info: `gh repo view --json nameWithOwner --jq '.nameWithOwner'` (format: OWNER/REPO)
-   c. For each issue, determine:
+   b. Get PR number: `gh pr view --json number --jq '.number'`
+   c. Get repo info: `gh repo view --json nameWithOwner --jq '.nameWithOwner'` (format: OWNER/REPO)
+   d. For each issue, determine:
       - `path`: ファイルパス（リポジトリルートからの相対パス）
       - `line`: 該当行番号（PR の差分内の行。差分外の行はインラインコメント不可）
       - `body`: 1〜2文の日本語指摘。参照コードや CLAUDE.md があればリンクを含める
-   d. 差分外の行に紐づく指摘（またはファイル全体に関わる指摘）はインラインコメントにせず、サマリ本文に含める
-   e. 以下の形式で JSON ファイルを生成し `gh api` で投稿する:
+   e. 差分外の行に紐づく指摘（またはファイル全体に関わる指摘）はインラインコメントにせず、サマリ本文に含める
+   f. 以下の形式で JSON ファイルを生成し `gh api` で投稿する:
 
 ```bash
 cat > /tmp/pr-review-payload.json << 'ENDJSON'
@@ -56,7 +57,7 @@ ENDJSON
 gh api repos/OWNER/REPO/pulls/PR_NUM/reviews --method POST --input /tmp/pr-review-payload.json
 ```
 
-   f. 指摘が 0 件の場合は `gh pr comment` で以下を投稿して終了:
+   g. 指摘が 0 件の場合は `gh pr comment` で以下を投稿して終了:
 
 ```
 ### コードレビュー
