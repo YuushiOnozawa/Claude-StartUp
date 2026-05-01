@@ -75,8 +75,8 @@ fi
 PROFILE="$HOME/.profile"
 MOUNT_SNIPPET='
 # pCloud マウント (rclone)
-if command -v rclone &>/dev/null && rclone listremotes 2>/dev/null | grep -q '"'"'^pcloud:'"'"'; then
-  if ! mountpoint -q "$HOME/pcloud" 2>/dev/null; then
+if command -v rclone >/dev/null 2>&1 && rclone listremotes 2>/dev/null | grep -q '"'"'^pcloud:'"'"'; then
+  if ! mountpoint -q "$HOME/pcloud" 2>/dev/null && ! grep -qs " $HOME/pcloud " /proc/mounts; then
     rclone mount pcloud: "$HOME/pcloud" --vfs-cache-mode writes --daemon --log-level ERROR
   fi
 fi'
