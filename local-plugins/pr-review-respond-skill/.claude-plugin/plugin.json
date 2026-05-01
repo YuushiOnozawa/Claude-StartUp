@@ -1,0 +1,5 @@
+{
+  "name": "pr-review-respond-skill",
+  "description": "PR レビューコメント対応サイクル skill (取得 / code-reviewer 評価 / 方針確認 / 実装 / コミット / push / 返信)",
+  "version": "1.0.0"
+}

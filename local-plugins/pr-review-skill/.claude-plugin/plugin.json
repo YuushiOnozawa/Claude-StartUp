@@ -1,0 +1,5 @@
+{
+  "name": "pr-review-skill",
+  "description": "PR レビュースキル (Gemini Code Assist 結果確認 + /code-review 実行 + 統合サマリ提示)",
+  "version": "1.0.0"
+}
