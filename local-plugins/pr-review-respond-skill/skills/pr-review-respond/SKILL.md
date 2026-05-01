@@ -29,7 +29,16 @@ gh pr view --json number,headRefName,baseRefName,url
 
 ## ステップ 2: 新規レビューコメント取得
 
-行別コメント (inline review) を取得し、**自分の最新返信以降のコメント**を対象に絞る:
+### PR レビューサマリ（全体コメント）の取得
+
+```bash
+gh api repos/$OWNER/$REPO/pulls/$PR_NUM/reviews \
+  --jq '.[] | select(.user.login != "YuushiOnozawa") | {id, user: .user.login, state, submitted_at, body}'
+```
+
+### 行別コメント (inline review) の取得
+
+自分の最新返信以降のコメントを対象に絞る:
 
 ```bash
 gh api repos/$OWNER/$REPO/pulls/$PR_NUM/comments \

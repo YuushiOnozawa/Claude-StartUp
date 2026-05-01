@@ -42,7 +42,7 @@ fi
 PROJECT_CWD=$(echo "$INPUT" | jq -r '.cwd // "unknown"' 2>/dev/null)
 PROJECT=$(basename "$PROJECT_CWD" 2>/dev/null || echo "unknown")
 DATE=$(date +%Y-%m-%d)
-TIME=$(date +%H%M)
+TIME=$(date +%H%M%S)
 OUTPUT_DIR="$HOME/pcloud/obsidian/sessions"
 OUTPUT_FILE="${OUTPUT_DIR}/${DATE}-${TIME}-${PROJECT}.md"
 
