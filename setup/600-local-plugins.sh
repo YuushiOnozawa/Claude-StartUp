@@ -14,6 +14,8 @@ if ! command -v jq &>/dev/null; then
 fi
 
 # パス設定（SETUP_DIR は setup.sh で定義済み）
+_lp_owner="$(git -C "$(dirname "$SETUP_DIR")" config user.name 2>/dev/null || true)"
+[[ -z "$_lp_owner" ]] && _lp_owner="${USER:-local}"
 _LP_SRC="$(dirname "$SETUP_DIR")/local-plugins"
 _LP_DEST="$HOME/.claude/local-plugins"
 _LP_MARKETPLACE="$_LP_DEST/.claude-plugin/marketplace.json"
@@ -44,6 +46,8 @@ for _lp_plugin_dir in "$_LP_SRC"/*/; do
     if [[ -f "$_lp_plugin_json" ]]; then
       _lp_p_name="$(jq -r '.name' "$_lp_plugin_json")"
       _lp_p_desc="$(jq -r '.description' "$_lp_plugin_json")"
+      # plugin.json の name が空・null の場合はスキップ（壊れたエントリを防ぐ）
+      [[ -z "$_lp_p_name" || "$_lp_p_name" == "null" ]] && continue
 
       # skills/ 下の全サブディレクトリを "./skills/<name>" の配列に
       _lp_skills_arr="[]"
@@ -76,9 +80,10 @@ _lp_skill_count="$(jq 'length' <<< "$_lp_skill_entries")"
 if [[ "$_lp_skill_count" -gt 0 ]]; then
   jq -n \
     --argjson plugins "$_lp_skill_entries" \
+    --arg owner "$_lp_owner" \
     '{
       "name": "local-skills",
-      "owner": {"name": "YuushiOnozawa"},
+      "owner": {"name": $owner},
       "metadata": {"description": "ローカルカスタムスキル集", "version": "1.0.0"},
       "plugins": $plugins
     }' > "$_LP_MARKETPLACE"
@@ -98,7 +103,7 @@ _lp_update_settings() {
   # extraKnownMarketplaces["local-skills"] を追加（なければ）
   jq '.extraKnownMarketplaces["local-skills"] //=
     {"source":{"source":"directory","path":"~/.claude/local-plugins"}}' \
-    "$f" > "$tmp" && mv "$tmp" "$f"
+    "$f" > "$tmp" && mv "$tmp" "$f" || { rm -f "$tmp"; return 1; }
 
   # 各プラグインを enabledPlugins に追加（新規のみ、既存の false は保持）
   for _pd in "$_LP_SRC"/*/; do
@@ -106,7 +111,7 @@ _lp_update_settings() {
     _pj="$_pd/.claude-plugin/plugin.json"
     [[ -f "$_pj" ]] || continue
     _key="$(jq -r '.name' "$_pj")@local-skills"
-    jq --arg key "$_key" '.enabledPlugins[$key] //= true' "$f" > "$tmp" && mv "$tmp" "$f"
+    jq --arg key "$_key" '.enabledPlugins[$key] //= true' "$f" > "$tmp" && mv "$tmp" "$f" || { rm -f "$tmp"; return 1; }
   done
 }
 
@@ -126,7 +131,8 @@ if [[ -f "$_LP_LOCAL_SETTINGS" ]]; then
   fi
 fi
 
+unset -f _lp_update_settings
 unset _LP_SRC _LP_DEST _LP_MARKETPLACE _LP_SETTINGS _LP_LOCAL_SETTINGS
-unset _lp_skill_entries _lp_skill_count
+unset _lp_owner _lp_skill_entries _lp_skill_count
 unset _lp_plugin_dir _lp_plugin_name _lp_plugin_json
 unset _lp_p_name _lp_p_desc _lp_skills_arr _lp_s _lp_skill_dir _lp_skill_name
