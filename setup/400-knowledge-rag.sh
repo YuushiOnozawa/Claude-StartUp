@@ -154,3 +154,26 @@ if [[ -f "$KRAG_HOOK" ]]; then
   chmod +x "$KRAG_HOOK"
   ok "knowledge-distill hook"
 fi
+
+# config.yaml の自動生成（初回のみ、既存は上書きしない）
+KRAG_REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+KRAG_CONFIG="$KRAG_REPO_DIR/config.yaml"
+KRAG_CONFIG_EXAMPLE="$KRAG_REPO_DIR/config.example.yaml"
+
+if [[ -f "$KRAG_CONFIG" ]]; then
+  ok "config.yaml (既存)"
+elif [[ -f "$KRAG_CONFIG_EXAMPLE" ]]; then
+  echo "  → config.yaml を生成: $KRAG_CONFIG"
+  if sed "s|documents_dir: \"./documents\"|documents_dir: \"${HOME}/pcloud/obsidian\"|" \
+    "$KRAG_CONFIG_EXAMPLE" > "$KRAG_CONFIG" && \
+    grep -q "documents_dir: \"${HOME}/pcloud/obsidian\"" "$KRAG_CONFIG"; then
+    ok "config.yaml (documents_dir=${HOME}/pcloud/obsidian)"
+  else
+    fail "config.yaml  →  sed 置換失敗"
+    rm -f "$KRAG_CONFIG"
+    MISSING_CMDS+=("knowledge-rag-config")
+  fi
+else
+  fail "config.yaml  →  config.example.yaml が見つかりません"
+  MISSING_CMDS+=("knowledge-rag-config")
+fi
