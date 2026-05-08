@@ -95,3 +95,25 @@ tags: [session, auto-distilled]
 
 ${RESULT}
 EOF
+
+# knowledge-rag への自動登録（llm + MCP ツール経由）
+# KRAG_DISTILL_MODEL: 使用モデル（デフォルト: qwen2.5:3b）
+# KRAG_DISTILL_STRICT: 1 のとき失敗でexit 1（Issue #30 ハイスペックモード連動用）
+LLM="$HOME/.local/share/knowledge-rag/venv/bin/llm"
+if [[ -x "$LLM" ]]; then
+  KRAG_MODEL="${KRAG_DISTILL_MODEL:-qwen2.5:3b}"
+  KRAG_STRICT="${KRAG_DISTILL_STRICT:-0}"
+  KRAG_REL="sessions/${DATE}-${TIME}-${PROJECT}.md"
+  KRAG_LOG="$HOME/.claude/hooks/knowledge-distill.log"
+
+  {
+    echo "add_documentツールを使って次のMarkdownをknowledge-ragに登録してください。"
+    echo "filepath: ${KRAG_REL}"
+    echo "category: sessions"
+    echo "content:"
+    cat "$OUTPUT_FILE"
+  } | KNOWLEDGE_RAG_DIR="$HOME/.local/share/knowledge-rag" \
+    "$LLM" prompt -m "$KRAG_MODEL" -T MCP --no-stream \
+    >>"$KRAG_LOG" 2>&1 \
+    || [[ "$KRAG_STRICT" != "1" ]]
+fi

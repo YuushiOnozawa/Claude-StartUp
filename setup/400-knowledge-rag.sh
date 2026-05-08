@@ -175,8 +175,9 @@ if [[ -f "$KRAG_HOOK" ]]; then
 fi
 
 # config.yaml の自動生成（初回のみ、既存は上書きしない）
+# 生成先は venv 親ディレクトリ (~/.local/share/knowledge-rag/) — KnowledgeOrchestrator が自動発見できる場所
 KRAG_REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-KRAG_CONFIG="$KRAG_REPO_DIR/config.yaml"
+KRAG_CONFIG="$HOME/.local/share/knowledge-rag/config.yaml"
 KRAG_CONFIG_EXAMPLE="$KRAG_REPO_DIR/config.example.yaml"
 
 if [[ -f "$KRAG_CONFIG" ]]; then
