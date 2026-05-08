@@ -75,8 +75,8 @@ fi
 PROFILE="$HOME/.profile"
 MOUNT_MARKER='# pCloud マウント (rclone)'
 if [[ -f "$PROFILE" ]] && grep -q "$MOUNT_MARKER" "$PROFILE"; then
-  # マーカー行から次の空行までを削除
-  sed -i "/^${MOUNT_MARKER}/,/^$/d" "$PROFILE"
+  # 旧スニペットは 6 行固定（マーカー行 + 5 行）なので行数指定で安全に削除
+  sed -i "/^${MOUNT_MARKER}/,+5d" "$PROFILE"
   ok "~/.profile 旧スニペット削除"
 fi
 
@@ -88,8 +88,11 @@ SYSTEMD_ENABLED=false
 if grep -qs '^\s*systemd\s*=\s*true' "$WSL_CONF" 2>/dev/null; then
   SYSTEMD_ENABLED=true
 else
-  echo "  → /etc/wsl.conf に systemd=true が未設定。自動追記します..."
-  if ! grep -qs '^\[boot\]' "$WSL_CONF" 2>/dev/null; then
+  echo "  → /etc/wsl.conf に systemd=true が未設定。設定します..."
+  if grep -qs '^\s*systemd\s*=' "$WSL_CONF" 2>/dev/null; then
+    # systemd= 行が既にある場合は true に置換（false や他の値を上書き）
+    sudo sed -i 's/^\s*systemd\s*=.*/systemd=true/' "$WSL_CONF"
+  elif ! grep -qs '^\[boot\]' "$WSL_CONF" 2>/dev/null; then
     printf '\n[boot]\nsystemd=true\n' | sudo tee -a "$WSL_CONF" >/dev/null
   else
     sudo sed -i '/^\[boot\]/a systemd=true' "$WSL_CONF"
