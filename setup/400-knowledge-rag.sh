@@ -148,11 +148,30 @@ elif ! command -v jq &>/dev/null; then
   fail "llm-tools-mcp config  →  jq が必要です"
 fi
 
-# knowledge-distill hook スクリプトの実行権限を保証
+# knowledge-distill hook スクリプトの実行権限を保証し SessionEnd に登録
 KRAG_HOOK="$HOME/.claude/hooks/knowledge-distill.sh"
 if [[ -f "$KRAG_HOOK" ]]; then
   chmod +x "$KRAG_HOOK"
-  ok "knowledge-distill hook"
+  ok "knowledge-distill hook (chmod)"
+
+  # settings.json の SessionEnd に未登録なら追加
+  KRAG_SETTINGS="$HOME/.claude/settings.json"
+  if [[ -f "$KRAG_SETTINGS" ]] && command -v jq &>/dev/null; then
+    KRAG_HOOK_CMD="bash -c 'trap \"\" INT TERM; bash ${HOME}/.claude/hooks/knowledge-distill.sh 2>> ${HOME}/.claude/hooks/knowledge-distill.log'"
+    _krag_tmp="${KRAG_SETTINGS}.tmp"
+    if jq --arg cmd "$KRAG_HOOK_CMD" '
+      .hooks.SessionEnd //= [] |
+      if (.hooks.SessionEnd | map(.hooks[]?.command // "") | any(contains("knowledge-distill.sh"))) then .
+      else .hooks.SessionEnd += [{"hooks": [{"type": "command", "command": $cmd}]}]
+      end
+    ' "$KRAG_SETTINGS" > "$_krag_tmp" && mv "$_krag_tmp" "$KRAG_SETTINGS"; then
+      ok "settings.json (SessionEnd: knowledge-distill)"
+    else
+      rm -f "$_krag_tmp"
+      fail "settings.json の SessionEnd 更新に失敗"
+      MISSING_CMDS+=("knowledge-distill-hook-settings")
+    fi
+  fi
 fi
 
 # config.yaml の自動生成（初回のみ、既存は上書きしない）
