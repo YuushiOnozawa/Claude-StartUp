@@ -165,7 +165,8 @@ if [[ -f "$KRAG_CONFIG" ]]; then
 elif [[ -f "$KRAG_CONFIG_EXAMPLE" ]]; then
   echo "  → config.yaml を生成: $KRAG_CONFIG"
   if sed "s|documents_dir: \"./documents\"|documents_dir: \"${HOME}/pcloud/obsidian\"|" \
-    "$KRAG_CONFIG_EXAMPLE" > "$KRAG_CONFIG"; then
+    "$KRAG_CONFIG_EXAMPLE" > "$KRAG_CONFIG" && \
+    grep -q "documents_dir: \"${HOME}/pcloud/obsidian\"" "$KRAG_CONFIG"; then
     ok "config.yaml (documents_dir=${HOME}/pcloud/obsidian)"
   else
     fail "config.yaml  →  sed 置換失敗"
