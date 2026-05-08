@@ -105,19 +105,15 @@ if [[ -x "$LLM" ]]; then
   KRAG_STRICT="${KRAG_DISTILL_STRICT:-0}"
   KRAG_REL="sessions/${DATE}-${TIME}-${PROJECT}.md"
   KRAG_LOG="$HOME/.claude/hooks/knowledge-distill.log"
-  KRAG_PROMPT="add_documentツールを使って次のMarkdownをknowledge-ragに登録してください。
-filepath: ${KRAG_REL}
-category: sessions
-content:
-$(cat "$OUTPUT_FILE")"
 
-  if [[ "$KRAG_STRICT" == "1" ]]; then
-    KNOWLEDGE_RAG_DIR="$HOME/.local/share/knowledge-rag" \
-      "$LLM" prompt -m "$KRAG_MODEL" -T MCP --no-stream "$KRAG_PROMPT" \
-      2>>"$KRAG_LOG" || exit 1
-  else
-    KNOWLEDGE_RAG_DIR="$HOME/.local/share/knowledge-rag" \
-      "$LLM" prompt -m "$KRAG_MODEL" -T MCP --no-stream "$KRAG_PROMPT" \
-      2>>"$KRAG_LOG" || true
-  fi
+  {
+    echo "add_documentツールを使って次のMarkdownをknowledge-ragに登録してください。"
+    echo "filepath: ${KRAG_REL}"
+    echo "category: sessions"
+    echo "content:"
+    cat "$OUTPUT_FILE"
+  } | KNOWLEDGE_RAG_DIR="$HOME/.local/share/knowledge-rag" \
+    "$LLM" prompt -m "$KRAG_MODEL" -T MCP --no-stream \
+    >>"$KRAG_LOG" 2>&1 \
+    || [[ "$KRAG_STRICT" != "1" ]]
 fi
