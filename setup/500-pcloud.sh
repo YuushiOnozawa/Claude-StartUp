@@ -71,22 +71,69 @@ if [[ -f "$RCLONE_CONF" ]]; then
   ok "rclone.conf パーミッション確認 (600)"
 fi
 
-# ~/.profile への自動マウント設定
+# ~/.profile の既存スニペットを削除（移行後の冪等処理）
 PROFILE="$HOME/.profile"
-MOUNT_SNIPPET='
-# pCloud マウント (rclone)
-if command -v rclone >/dev/null 2>&1 && rclone listremotes 2>/dev/null | grep -q '"'"'^pcloud:'"'"'; then
-  if ! mountpoint -q "$HOME/pcloud" 2>/dev/null && ! grep -qs " $HOME/pcloud " /proc/mounts; then
-    rclone mount pcloud: "$HOME/pcloud" --vfs-cache-mode writes --daemon --log-level ERROR
-  fi
-fi'
 MOUNT_MARKER='# pCloud マウント (rclone)'
-
 if [[ -f "$PROFILE" ]] && grep -q "$MOUNT_MARKER" "$PROFILE"; then
-  ok "~/.profile pCloud 自動マウント (設定済み)"
-else
-  echo "$MOUNT_SNIPPET" >> "$PROFILE"
-  ok "~/.profile pCloud 自動マウント追加"
+  # 旧スニペットは 6 行固定（マーカー行 + 5 行）なので行数指定で安全に削除
+  sed -i "/^${MOUNT_MARKER}/,+5d" "$PROFILE"
+  ok "~/.profile 旧スニペット削除"
 fi
 
-echo "  ℹ  アンマウント: fusermount -u $PCLOUD_MOUNT"
+# --- systemd ユーザーサービスへ移行 ---
+
+# WSL2 systemd 有効化確認
+WSL_CONF="/etc/wsl.conf"
+SYSTEMD_ENABLED=false
+if grep -qs '^\s*systemd\s*=\s*true' "$WSL_CONF" 2>/dev/null; then
+  SYSTEMD_ENABLED=true
+else
+  echo "  → /etc/wsl.conf に systemd=true が未設定。設定します..."
+  if grep -qs '^\s*systemd\s*=' "$WSL_CONF" 2>/dev/null; then
+    # systemd= 行が既にある場合は true に置換（false や他の値を上書き）
+    sudo sed -i 's/^\s*systemd\s*=.*/systemd=true/' "$WSL_CONF"
+  elif ! grep -qs '^\[boot\]' "$WSL_CONF" 2>/dev/null; then
+    printf '\n[boot]\nsystemd=true\n' | sudo tee -a "$WSL_CONF" >/dev/null
+  else
+    sudo sed -i '/^\[boot\]/a systemd=true' "$WSL_CONF"
+  fi
+  ok "/etc/wsl.conf に systemd=true を追記"
+  echo "  ⚠  WSL を再起動してください: PowerShell で 'wsl --shutdown' を実行後、再度 setup.sh を実行"
+  echo "     再起動後に systemd ユーザーサービスが有効になります"
+  SYSTEMD_ENABLED=false
+fi
+
+# systemd ユーザーサービスのセットアップ
+SERVICE_DIR="$HOME/.config/systemd/user"
+SERVICE_FILE="$SERVICE_DIR/rclone-pcloud.service"
+mkdir -p "$SERVICE_DIR"
+
+cat > "$SERVICE_FILE" <<'SERVICE'
+[Unit]
+Description=rclone pCloud mount
+After=network.target
+AssertPathIsDirectory=%h/pcloud
+
+[Service]
+Type=notify
+ExecStart=rclone mount pcloud: %h/pcloud --vfs-cache-mode writes --log-level ERROR
+ExecStop=fusermount -u %h/pcloud
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+SERVICE
+
+ok "systemd サービスファイル生成: $SERVICE_FILE"
+
+if $SYSTEMD_ENABLED && systemctl --user is-system-running &>/dev/null; then
+  systemctl --user daemon-reload
+  systemctl --user enable --now rclone-pcloud
+  ok "rclone-pcloud サービス: 有効化・起動完了"
+  echo "  ℹ  状態確認: systemctl --user status rclone-pcloud"
+  echo "  ℹ  アンマウント: systemctl --user stop rclone-pcloud"
+else
+  echo "  ℹ  WSL 再起動後に以下を実行してサービスを有効化してください:"
+  echo "     systemctl --user enable --now rclone-pcloud"
+fi
