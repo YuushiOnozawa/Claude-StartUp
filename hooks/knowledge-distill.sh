@@ -53,6 +53,50 @@ OUTPUT_FILE="${OUTPUT_DIR}/${DATE}-${TIME}-${PROJECT}.md"
 
 mkdir -p "$OUTPUT_DIR"
 
+# Raw session log（LLM不要・Ollama障害時もここまでは実行される）
+RAW_DIR="${OUTPUT_DIR}/raw"
+RAW_FILE="${RAW_DIR}/${DATE}-${TIME}-${PROJECT}.md"
+mkdir -p "$RAW_DIR"
+
+{
+  printf -- '---\ndate: %s\nproject: %s\ntags: [session, raw-log]\n---\n\n# セッション記録 %s %s\n\n' \
+    "$DATE" "$PROJECT" "$DATE" "$TIME"
+  jq -rn '
+    [inputs |
+      ((.role // .type) | ascii_downcase) as $r |
+      (
+        (.message.content // .content // "") |
+        if type == "array" then
+          map(
+            if .type == "text" then .text
+            elif .type == "tool_use" then
+              "**Tool**: " + .name + " \u2192 " +
+              (
+                .input |
+                (.url // .query // .command // .file_path // .pattern //
+                 (to_entries[0].value // "")) |
+                if type == "string" then .[0:80] else tostring[0:80] end
+              )
+            else empty
+            end
+          ) | join("\n")
+        elif type == "string" then .
+        else ""
+        end
+      ) as $body |
+      if ($body | length) > 0 then
+        if ($r == "human" or $r == "user") then "## User\n\($body)"
+        elif $r == "assistant" then "## Claude\n\($body)"
+        else empty
+        end
+      else empty
+      end
+    ] | join("\n\n---\n\n")
+  ' "$TRANSCRIPT_PATH" 2>/dev/null
+} > "$RAW_FILE" \
+  && log_info "raw log saved: $RAW_FILE" \
+  || { log_warn "raw log generation failed (non-fatal)"; rm -f "$RAW_FILE"; }
+
 # Check Ollama is running
 if ! curl -sf --max-time 3 http://localhost:11434/api/tags >/dev/null 2>&1; then
   log_warn "Ollama not running, skipping"
