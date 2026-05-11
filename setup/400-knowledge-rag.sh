@@ -174,6 +174,31 @@ if [[ -f "$KRAG_HOOK" ]]; then
   fi
 fi
 
+# check-queue hook スクリプトの実行権限を保証し UserPromptSubmit に登録
+KRAG_CQ_HOOK="$HOME/.claude/hooks/check-queue.sh"
+if [[ -f "$KRAG_CQ_HOOK" ]]; then
+  chmod +x "$KRAG_CQ_HOOK"
+  ok "check-queue hook (chmod)"
+
+  KRAG_SETTINGS="$HOME/.claude/settings.json"
+  if [[ -f "$KRAG_SETTINGS" ]] && command -v jq &>/dev/null; then
+    KRAG_CQ_CMD="bash ${HOME}/.claude/hooks/check-queue.sh"
+    _krag_tmp="${KRAG_SETTINGS}.tmp"
+    if jq --arg cmd "$KRAG_CQ_CMD" '
+      .hooks.UserPromptSubmit //= [] |
+      if (.hooks.UserPromptSubmit | map(.hooks[]?.command // "") | any(contains("check-queue.sh"))) then .
+      else .hooks.UserPromptSubmit += [{"hooks": [{"type": "command", "command": $cmd}]}]
+      end
+    ' "$KRAG_SETTINGS" > "$_krag_tmp" && mv "$_krag_tmp" "$KRAG_SETTINGS"; then
+      ok "settings.json (UserPromptSubmit: check-queue)"
+    else
+      rm -f "$_krag_tmp"
+      fail "settings.json の UserPromptSubmit 更新に失敗"
+      MISSING_CMDS+=("check-queue-hook-settings")
+    fi
+  fi
+fi
+
 # config.yaml の自動生成（初回のみ、既存は上書きしない）
 # 生成先は venv 親ディレクトリ (~/.local/share/knowledge-rag/) — KnowledgeOrchestrator が自動発見できる場所
 KRAG_REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

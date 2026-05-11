@@ -4,8 +4,35 @@
 
 set -euo pipefail
 
+HOOK_DIR="$(dirname "$0")"
+
 # shellcheck source=lib/logging.sh
-source "$(dirname "$0")/lib/logging.sh"
+source "${HOOK_DIR}/lib/logging.sh"
+# shellcheck source=lib/queue.sh
+source "${HOOK_DIR}/lib/queue.sh"
+
+HOOK_NAME="knowledge-distill"
+
+# キューdrain（リトライ実行時はスキップして無限ループを防ぐ）
+if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
+  _distill_retry_callback() {
+    local item_file="$1"
+    local t c
+    t=$(jq -r '.transcript_path' "$item_file" 2>/dev/null)
+    c=$(jq -r '.cwd // ""' "$item_file" 2>/dev/null)
+    log_info "retrying queued item: $(basename "$t")"
+    jq -n --arg transcript_path "$t" --arg cwd "$c" \
+      '{"transcript_path":$transcript_path,"cwd":$cwd}' \
+      | KRAG_DISTILL_RETRY=1 bash "${_DISTILL_HOOK_DIR}/knowledge-distill.sh"
+  }
+  _DISTILL_HOOK_DIR="$HOOK_DIR"
+
+  queue_drain "$HOOK_NAME" "pcloud" "_distill_retry_callback"
+
+  if curl -sf --max-time 3 http://localhost:11434/api/tags >/dev/null 2>&1; then
+    queue_drain "$HOOK_NAME" "ollama" "_distill_retry_callback"
+  fi
+fi
 
 # Read SessionEnd JSON from stdin
 INPUT=$(cat)
@@ -21,7 +48,7 @@ fi
 # Content may be a string or array of content blocks
 CONVERSATION=$(jq -rn '
   [inputs |
-    ((.role // .type) | ascii_downcase) as $r |
+    ((.role // .type // "") | ascii_downcase) as $r |
     (
       (.message.content // .content // "") |
       if type == "array" then map(select(.type == "text") | .text) | join(" ")
@@ -54,7 +81,13 @@ OUTPUT_FILE="${OUTPUT_DIR}/${DATE}-${TIME}-${PROJECT}.md"
 # pCloud マウント確認（マウント管理は systemd サービスの責務）
 if ! mountpoint -q "$HOME/pcloud"; then
   log_error "pCloud not mounted at $HOME/pcloud"
-  exit 1
+  if queue_push "$HOOK_NAME" "pcloud" "$TRANSCRIPT_PATH" "$PROJECT_CWD"; then
+    log_info "queued for retry: $TRANSCRIPT_PATH"
+    queue_notify_send "knowledge-distill" "pCloud 未マウントのため保留中 ($PROJECT)"
+  else
+    log_error "queue_push failed"
+  fi
+  exit 0
 fi
 
 mkdir -p "$OUTPUT_DIR"
@@ -105,7 +138,13 @@ mkdir -p "$RAW_DIR"
 
 # Check Ollama is running
 if ! curl -sf --max-time 3 http://localhost:11434/api/tags >/dev/null 2>&1; then
-  log_warn "Ollama not running, skipping"
+  log_warn "Ollama not running, queuing for retry"
+  if queue_push "$HOOK_NAME" "ollama" "$TRANSCRIPT_PATH" "$PROJECT_CWD"; then
+    log_info "queued for retry (ollama): $TRANSCRIPT_PATH"
+    queue_notify_send "knowledge-distill" "Ollama 未起動のため distill を保留中 ($PROJECT)"
+  else
+    log_error "queue_push failed"
+  fi
   exit 0
 fi
 
