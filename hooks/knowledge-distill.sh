@@ -4,11 +4,15 @@
 
 set -euo pipefail
 
+# shellcheck source=lib/logging.sh
+source "$(dirname "$0")/lib/logging.sh"
+
 # Read SessionEnd JSON from stdin
 INPUT=$(cat)
 TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
 
 if [[ -z "$TRANSCRIPT_PATH" ]] || [[ ! -f "$TRANSCRIPT_PATH" ]]; then
+  log_info "no transcript, skipping"
   exit 0
 fi
 
@@ -35,6 +39,7 @@ CONVERSATION=$(jq -rn '
 ' "$TRANSCRIPT_PATH" 2>/dev/null)
 
 if [[ -z "$CONVERSATION" ]]; then
+  log_info "empty conversation, skipping"
   exit 0
 fi
 
@@ -50,7 +55,7 @@ mkdir -p "$OUTPUT_DIR"
 
 # Check Ollama is running
 if ! curl -sf --max-time 3 http://localhost:11434/api/tags >/dev/null 2>&1; then
-  echo "knowledge-distill: Ollama not running, skipping" >&2
+  log_warn "Ollama not running, skipping"
   exit 0
 fi
 
@@ -81,6 +86,7 @@ RESULT=$(curl -s --max-time 120 http://localhost:11434/api/generate \
   | jq -r '.response // ""' 2>/dev/null)
 
 if [[ -z "$RESULT" ]] || [[ "$RESULT" == "記録なし" ]]; then
+  log_info "no knowledge extracted, skipping"
   exit 0
 fi
 
@@ -96,6 +102,8 @@ tags: [session, auto-distilled]
 ${RESULT}
 EOF
 
+log_info "saved: $OUTPUT_FILE"
+
 # knowledge-rag への自動登録（llm + MCP ツール経由）
 # KRAG_DISTILL_MODEL: 使用モデル（デフォルト: qwen2.5:3b）
 # KRAG_DISTILL_STRICT: 1 のとき失敗でexit 1（Issue #30 ハイスペックモード連動用）
@@ -104,7 +112,7 @@ if [[ -x "$LLM" ]]; then
   KRAG_MODEL="${KRAG_DISTILL_MODEL:-qwen2.5:3b}"
   KRAG_STRICT="${KRAG_DISTILL_STRICT:-0}"
   KRAG_REL="sessions/${DATE}-${TIME}-${PROJECT}.md"
-  KRAG_LOG="$HOME/.claude/hooks/knowledge-distill.log"
+  KRAG_LOG="$_HOOK_LOG"
 
   {
     echo "add_documentツールを使って次のMarkdownをknowledge-ragに登録してください。"
