@@ -14,7 +14,7 @@ source "${HOOK_DIR}/lib/queue.sh"
 HOOK_NAME="knowledge-distill"
 
 # キューdrain（リトライ実行時はスキップして無限ループを防ぐ）
-if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud" 2>/dev/null; then
+if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
   _distill_retry_callback() {
     local item_file="$1"
     local t c
@@ -48,7 +48,7 @@ fi
 # Content may be a string or array of content blocks
 CONVERSATION=$(jq -rn '
   [inputs |
-    ((.role // .type) | ascii_downcase) as $r |
+    ((.role // .type // "") | ascii_downcase) as $r |
     (
       (.message.content // .content // "") |
       if type == "array" then map(select(.type == "text") | .text) | join(" ")

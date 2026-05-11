@@ -18,14 +18,15 @@ queue_push() {
 
   local ts
   ts=$(date +%Y%m%d-%H%M%S)
-  local item_file="${queue_dir}/${ts}.json"
+  local item_file="${queue_dir}/${ts}-${RANDOM}.json"
+  local tmp_file="${item_file}.tmp"
 
   jq -n \
     --arg transcript_path "$transcript_path" \
     --arg cwd "$cwd" \
     --arg reason "$reason" \
     '{"transcript_path":$transcript_path,"cwd":$cwd,"reason":$reason,"retry_count":0}' \
-    > "$item_file" && return 0 || return 1
+    > "$tmp_file" && mv "$tmp_file" "$item_file" && return 0 || { rm -f "$tmp_file"; return 1; }
 }
 
 # queue_count: キューのアイテム数を返す
