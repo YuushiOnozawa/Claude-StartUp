@@ -13,7 +13,7 @@ log() {
   local level="$1"; shift
   local msg="$*"
   printf '%s [%s] %s: %s\n' "$(date +%Y-%m-%dT%H:%M:%S)" "$level" "$_HOOK_NAME" "$msg" \
-    | tee -a "$_HOOK_LOG" >&2
+    | tee -a "$_HOOK_LOG" >&2 || true
 }
 
 log_info()  { log "INFO"  "$@"; }
