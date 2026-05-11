@@ -51,6 +51,12 @@ TIME=$(date +%H%M%S)
 OUTPUT_DIR="$HOME/pcloud/obsidian/sessions"
 OUTPUT_FILE="${OUTPUT_DIR}/${DATE}-${TIME}-${PROJECT}.md"
 
+# pCloud マウント確認（マウント管理は systemd サービスの責務）
+if ! mountpoint -q "$HOME/pcloud"; then
+  log_error "pCloud not mounted at $HOME/pcloud"
+  exit 1
+fi
+
 mkdir -p "$OUTPUT_DIR"
 
 # Raw session log（LLM不要・Ollama障害時もここまでは実行される）
