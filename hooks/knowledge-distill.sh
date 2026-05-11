@@ -52,7 +52,7 @@ OUTPUT_DIR="$HOME/pcloud/obsidian/sessions"
 OUTPUT_FILE="${OUTPUT_DIR}/${DATE}-${TIME}-${PROJECT}.md"
 
 # pCloud マウント確認（マウント管理は systemd サービスの責務）
-if ! mountpoint -q "$HOME/pcloud" 2>/dev/null; then
+if ! mountpoint -q "$HOME/pcloud"; then
   log_error "pCloud not mounted at $HOME/pcloud"
   exit 1
 fi
