@@ -63,7 +63,7 @@ mkdir -p "$RAW_DIR"
     "$DATE" "$PROJECT" "$DATE" "$TIME"
   jq -rn '
     [inputs |
-      ((.role // .type) | ascii_downcase) as $r |
+      ((.role // .type // "") | ascii_downcase) as $r |
       (
         (.message.content // .content // "") |
         if type == "array" then
@@ -72,7 +72,7 @@ mkdir -p "$RAW_DIR"
             elif .type == "tool_use" then
               "**Tool**: " + .name + " \u2192 " +
               (
-                .input |
+                (.input // {}) |
                 (.url // .query // .command // .file_path // .pattern //
                  (to_entries[0].value // "")) |
                 if type == "string" then .[0:80] else tostring[0:80] end
