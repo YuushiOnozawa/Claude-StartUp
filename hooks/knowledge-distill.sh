@@ -3,9 +3,9 @@
 # Extracts knowledge from session transcript and saves to Obsidian via Ollama.
 
 set -euo pipefail
-# Exit code policy (Category B / Issue #51):
-#   exit 0 — expected skip (no transcript, pCloud unmounted, Ollama down → queued for retry)
-#   exit 1 — unexpected error (set -euo pipefail; unhandled failures surface to Claude Code logs)
+# 終了コード方針（カテゴリ B / Issue #51）:
+#   exit 0 — 想定内スキップ（transcript なし、pCloud 未マウント→キュー、Ollama 未起動→キュー）
+#   非ゼロ  — 想定外エラー（set -euo pipefail による自動終了。Claude Code ログに記録）
 
 HOOK_DIR="$(dirname "$0")"
 
