@@ -3,6 +3,9 @@
 # Extracts knowledge from session transcript and saves to Obsidian via Ollama.
 
 set -euo pipefail
+# 終了コード方針（カテゴリ B / Issue #51）:
+#   exit 0 — 想定内スキップ（transcript なし・会話内容なし）、またはキュー追加（pCloud/Ollama 条件・成否問わず）
+#   非ゼロ  — 想定外エラー（set -euo pipefail による自動終了。Claude Code ログに記録）
 
 HOOK_DIR="$(dirname "$0")"
 
