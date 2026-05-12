@@ -171,11 +171,27 @@ PROMPT="次の会話から重要な知識を日本語で抽出してください
 会話：
 ${CONVERSATION}"
 
-RESULT=$(curl -s --max-time 120 http://localhost:11434/api/generate \
+_OLLAMA_TMP=$(mktemp)
+trap 'rm -f "$_OLLAMA_TMP"' EXIT
+_CURL_EXIT=0
+curl -s --max-time 120 http://localhost:11434/api/generate \
   -H 'Content-Type: application/json' \
   -d "$(jq -n --arg model "qwen2.5:3b" --arg prompt "$PROMPT" \
     '{"model":$model,"prompt":$prompt,"stream":false}')" \
-  | jq -r '.response // ""' 2>/dev/null)
+  > "$_OLLAMA_TMP" || _CURL_EXIT=$?
+
+if [[ $_CURL_EXIT -ne 0 ]]; then
+  log_warn "Ollama API failed (exit=$_CURL_EXIT), queuing for retry"
+  if queue_push "$HOOK_NAME" "ollama" "$TRANSCRIPT_PATH" "$PROJECT_CWD"; then
+    log_info "queued for retry (ollama-timeout): $TRANSCRIPT_PATH"
+    queue_notify_send "knowledge-distill" "Ollama タイムアウトのため distill を保留中 ($PROJECT)"
+  else
+    log_error "queue_push failed after ollama timeout"
+  fi
+  exit 0
+fi
+
+RESULT=$(jq -r '.response // ""' "$_OLLAMA_TMP" 2>/dev/null)
 
 if [[ -z "$RESULT" ]] || [[ "$RESULT" == "記録なし" ]]; then
   log_info "no knowledge extracted, skipping"
