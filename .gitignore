@@ -20,6 +20,9 @@ config.yaml
 # マーケットプレイスプラグイン（再取得可能）
 plugins/
 
+# Claude Code プラグインメタデータ（自動生成）
+**/.claude-plugin/
+
 # 会話履歴（大容量・個人的）
 projects/
 
