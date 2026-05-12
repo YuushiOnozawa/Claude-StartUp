@@ -116,7 +116,7 @@ AssertPathIsDirectory=%h/pcloud
 
 [Service]
 Type=notify
-ExecStart=rclone mount pcloud: %h/pcloud --vfs-cache-mode writes --log-level ERROR
+ExecStart=rclone mount pcloud: %h/pcloud --vfs-cache-mode writes --allow-non-empty --log-level ERROR
 ExecStop=fusermount -u %h/pcloud
 Restart=on-failure
 RestartSec=5
