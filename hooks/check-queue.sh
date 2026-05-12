@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # check-queue: UserPromptSubmit hook
 # キューに未通知の保留アイテムがあれば Claude に通知する（1アイテム1回）
+# Exit code policy: always exit 0 — UserPromptSubmit hook must never block user input.
 
 # stdin を消費（UserPromptSubmit は JSON を渡してくるが今回は不使用）
 INPUT=$(cat)
