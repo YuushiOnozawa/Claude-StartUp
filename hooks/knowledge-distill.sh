@@ -172,12 +172,13 @@ PROMPT="次の会話から重要な知識を日本語で抽出してください
 ${CONVERSATION}"
 
 _OLLAMA_TMP=$(mktemp)
+trap 'rm -f "$_OLLAMA_TMP"' EXIT
+_CURL_EXIT=0
 curl -s --max-time 120 http://localhost:11434/api/generate \
   -H 'Content-Type: application/json' \
   -d "$(jq -n --arg model "qwen2.5:3b" --arg prompt "$PROMPT" \
     '{"model":$model,"prompt":$prompt,"stream":false}')" \
-  > "$_OLLAMA_TMP"
-_CURL_EXIT=$?
+  > "$_OLLAMA_TMP" || _CURL_EXIT=$?
 
 if [[ $_CURL_EXIT -ne 0 ]]; then
   log_warn "Ollama API failed (exit=$_CURL_EXIT), queuing for retry"
@@ -187,12 +188,10 @@ if [[ $_CURL_EXIT -ne 0 ]]; then
   else
     log_error "queue_push failed after ollama timeout"
   fi
-  rm -f "$_OLLAMA_TMP"
   exit 0
 fi
 
 RESULT=$(jq -r '.response // ""' "$_OLLAMA_TMP" 2>/dev/null)
-rm -f "$_OLLAMA_TMP"
 
 if [[ -z "$RESULT" ]] || [[ "$RESULT" == "記録なし" ]]; then
   log_info "no knowledge extracted, skipping"
