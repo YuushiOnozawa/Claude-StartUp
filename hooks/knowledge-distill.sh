@@ -191,8 +191,8 @@ if [[ $_CURL_EXIT -ne 0 ]]; then
   exit 0
 fi
 
-RESULT=$(jq -r '.response // ""' "$_OLLAMA_TMP" 2>/dev/null)
-_JQ_EXIT=$?
+_JQ_EXIT=0
+RESULT=$(jq -r '.response // ""' "$_OLLAMA_TMP" 2>/dev/null) || _JQ_EXIT=$?
 
 if [[ $_JQ_EXIT -ne 0 ]]; then
   log_warn "Ollama response parse failed (exit=$_JQ_EXIT), queuing for retry"
