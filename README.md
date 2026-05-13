@@ -148,13 +148,25 @@ fusermount -u ~/pcloud
 
 また `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1` を設定し、adaptive thinking を無効化している。これは `effortLevel: high` 時に発生する不具合（[claude-code#23936](https://github.com/anthropics/claude-code/issues/23936)）の回避に加え、使用するモデルや設定レベルに関わらず、思考プロセスの安定化とトークン消費の抑制を確実にするための措置。
 
-不具合を感じる場合は、`@2.1.98` などの安定版にダウングレードすることも検討する:
+## Claude Code バージョン固定
+
+**v2.1.100 以降はトークン消費が約 40% 増加するバグ（[#46917](https://github.com/anthropics/claude-code/issues/46917)）が未修正のため、v2.1.98 を推奨する。**
+
+原因はサーバーサイドの User-Agent ルーティング変更。増加分は billing だけでなく実際のコンテキストウィンドウを消費するため、長いセッションほど影響が大きい。
+
+インストール:
 
 ```bash
 npm install -g @anthropic-ai/claude-code@2.1.98
 ```
 
-ただしバージョン固定は `setup.sh` には組み込まない（更新を逃す副作用が大きいため、個人判断で実施する）。
+自動アップデートの無効化は `settings.json` の `env` に以下を追加済み:
+
+```json
+"DISABLE_AUTOUPDATER": "1"
+```
+
+バージョン固定は `setup.sh` には組み込まない（更新を逃す副作用が大きいため、個人判断で実施する）。
 
 ## Git 管理外
 
