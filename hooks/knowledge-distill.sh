@@ -192,6 +192,18 @@ if [[ $_CURL_EXIT -ne 0 ]]; then
 fi
 
 RESULT=$(jq -r '.response // ""' "$_OLLAMA_TMP" 2>/dev/null)
+_JQ_EXIT=$?
+
+if [[ $_JQ_EXIT -ne 0 ]]; then
+  log_warn "Ollama response parse failed (exit=$_JQ_EXIT), queuing for retry"
+  if queue_push "$HOOK_NAME" "ollama" "$TRANSCRIPT_PATH" "$PROJECT_CWD"; then
+    log_info "queued for retry (ollama-json): $TRANSCRIPT_PATH"
+    queue_notify_send "knowledge-distill" "Ollama JSON パースエラーのため distill を保留中 ($PROJECT)"
+  else
+    log_error "queue_push failed after ollama json parse error"
+  fi
+  exit 0
+fi
 
 if [[ -z "$RESULT" ]] || [[ "$RESULT" == "記録なし" ]]; then
   log_info "no knowledge extracted, skipping"
