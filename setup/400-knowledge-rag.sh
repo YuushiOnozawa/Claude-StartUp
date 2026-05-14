@@ -112,7 +112,7 @@ if command -v ollama &>/dev/null; then
     fi
 
     for _model in "${_OLLAMA_MODELS[@]}"; do
-      if ollama list 2>/dev/null | grep -qE "^${_model}([[:space:]]|$)"; then
+      if ollama list 2>/dev/null | grep -qE "^${_model//./\\.}([[:space:]]|$)"; then
         ok "ollama model ${_model}"
       else
         echo "  → ${_model} をダウンロードします..."
@@ -128,6 +128,7 @@ if command -v ollama &>/dev/null; then
 
     # primary model（リスト末尾）を knowledge-distill 用に保存
     _PRIMARY_MODEL="${_OLLAMA_MODELS[-1]}"
+    mkdir -p "$HOME/.local/share/knowledge-rag"
     echo "${_PRIMARY_MODEL}" > "$HOME/.local/share/knowledge-rag/model"
     ok "primary model → ${_PRIMARY_MODEL}"
   fi

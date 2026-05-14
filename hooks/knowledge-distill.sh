@@ -173,7 +173,7 @@ ${CONVERSATION}"
 
 # 使用モデルを解決（優先順: env var > model ファイル > fallback）
 _KRAG_MODEL_FILE="$HOME/.local/share/knowledge-rag/model"
-_DISTILL_MODEL="${KRAG_DISTILL_MODEL:-$(cat "$_KRAG_MODEL_FILE" 2>/dev/null || echo "qwen2.5:3b")}"
+_DISTILL_MODEL="${KRAG_DISTILL_MODEL:-$(grep . "$_KRAG_MODEL_FILE" 2>/dev/null || echo "qwen2.5:3b")}"
 
 _OLLAMA_TMP=$(mktemp)
 trap 'rm -f "$_OLLAMA_TMP"' EXIT
