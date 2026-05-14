@@ -86,27 +86,51 @@ else
   ok "ollama"
 fi
 
-# Ollama モデル (qwen2.5:3b, ~1.9GB)
+# Ollama モデルリスト（ティア別）
+# 追加・変更はここだけ編集すればよい
+# OLLAMA_TIER=low  → デフォルト（現PC向け）
+# OLLAMA_TIER=high → TargetPC: RTX 3070 / 8GB VRAM
+OLLAMA_MODELS_LOW=(
+  "qwen2.5:3b"   # ~1.9GB  知識蒸留・軽量用途
+)
+OLLAMA_MODELS_HIGH=(
+  "qwen2.5:3b"   # ~1.9GB  軽量・高速用途
+  "qwen2.5:7b"   # ~4.7GB  高品質知識蒸留（primary）
+)
+
 if command -v ollama &>/dev/null; then
   if [[ "${SKIP_OLLAMA_MODEL:-}" == "1" ]]; then
     echo "  ℹ  SKIP_OLLAMA_MODEL=1 のためモデル取得をスキップ"
-  elif ollama list 2>/dev/null | grep -qE '^qwen2\.5:3b([[:space:]]|$)'; then
-    ok "ollama model qwen2.5:3b"
+  elif ! ollama list &>/dev/null; then
+    fail "ollama model  →  ollama serve を起動してから再実行してください"
+    MISSING_CMDS+=("ollama-model")
   else
-    # ollama serve が起動していなければモデル取得をスキップ
-    if ! ollama list &>/dev/null; then
-      fail "ollama model  →  ollama serve を起動してから再実行してください"
-      MISSING_CMDS+=("ollama-model")
+    if [[ "${OLLAMA_TIER:-low}" == "high" ]]; then
+      _OLLAMA_MODELS=("${OLLAMA_MODELS_HIGH[@]}")
     else
-      echo "  → qwen2.5:3b モデル (~1.9GB) をダウンロードします..."
-      echo "    ⚠  大容量ダウンロードです。ネットワーク環境を確認してください。"
-      if ollama pull qwen2.5:3b; then
-        ok "ollama model qwen2.5:3b (ダウンロード完了)"
-      else
-        fail "ollama model  →  手動: ollama pull qwen2.5:3b"
-        MISSING_CMDS+=("ollama-model")
-      fi
+      _OLLAMA_MODELS=("${OLLAMA_MODELS_LOW[@]}")
     fi
+
+    for _model in "${_OLLAMA_MODELS[@]}"; do
+      if ollama list 2>/dev/null | grep -qE "^${_model//./\\.}([[:space:]]|$)"; then
+        ok "ollama model ${_model}"
+      else
+        echo "  → ${_model} をダウンロードします..."
+        echo "    ⚠  大容量ダウンロードです。ネットワーク環境を確認してください。"
+        if ollama pull "${_model}"; then
+          ok "ollama model ${_model} (ダウンロード完了)"
+        else
+          fail "ollama model  →  手動: ollama pull ${_model}"
+          MISSING_CMDS+=("ollama-model")
+        fi
+      fi
+    done
+
+    # primary model（リスト末尾）を knowledge-distill 用に保存
+    _PRIMARY_MODEL="${_OLLAMA_MODELS[-1]}"
+    mkdir -p "$HOME/.local/share/knowledge-rag"
+    echo "${_PRIMARY_MODEL}" > "$HOME/.local/share/knowledge-rag/model"
+    ok "primary model → ${_PRIMARY_MODEL}"
   fi
 fi
 

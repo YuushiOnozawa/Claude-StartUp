@@ -171,12 +171,16 @@ PROMPT="次の会話から重要な知識を日本語で抽出してください
 会話：
 ${CONVERSATION}"
 
+# 使用モデルを解決（優先順: env var > model ファイル > fallback）
+_KRAG_MODEL_FILE="$HOME/.local/share/knowledge-rag/model"
+_DISTILL_MODEL="${KRAG_DISTILL_MODEL:-$(grep . "$_KRAG_MODEL_FILE" 2>/dev/null || echo "qwen2.5:3b")}"
+
 _OLLAMA_TMP=$(mktemp)
 trap 'rm -f "$_OLLAMA_TMP"' EXIT
 _CURL_EXIT=0
 curl -s --max-time 120 http://localhost:11434/api/generate \
   -H 'Content-Type: application/json' \
-  -d "$(jq -n --arg model "qwen2.5:3b" --arg prompt "$PROMPT" \
+  -d "$(jq -n --arg model "$_DISTILL_MODEL" --arg prompt "$PROMPT" \
     '{"model":$model,"prompt":$prompt,"stream":false}')" \
   > "$_OLLAMA_TMP" || _CURL_EXIT=$?
 
@@ -225,11 +229,11 @@ EOF
 log_info "saved: $OUTPUT_FILE"
 
 # knowledge-rag への自動登録（llm + MCP ツール経由）
-# KRAG_DISTILL_MODEL: 使用モデル（デフォルト: qwen2.5:3b）
+# KRAG_DISTILL_MODEL: 使用モデル（env var > ~/.local/share/knowledge-rag/model > qwen2.5:3b）
 # KRAG_DISTILL_STRICT: 1 のとき失敗でexit 1（Issue #30 ハイスペックモード連動用）
 LLM="$HOME/.local/share/knowledge-rag/venv/bin/llm"
 if [[ -x "$LLM" ]]; then
-  KRAG_MODEL="${KRAG_DISTILL_MODEL:-qwen2.5:3b}"
+  KRAG_MODEL="$_DISTILL_MODEL"
   KRAG_STRICT="${KRAG_DISTILL_STRICT:-0}"
   KRAG_REL="sessions/${DATE}-${TIME}-${PROJECT}.md"
   KRAG_LOG="$_HOOK_LOG"
