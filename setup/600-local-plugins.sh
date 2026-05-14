@@ -1,9 +1,30 @@
-# setup/600-local-plugins.sh — local-plugins のデプロイと設定生成
+# setup/600-local-plugins.sh — skills のコピーと local-plugins のデプロイ・設定生成
 # Requires: ok, fail, MISSING_CMDS (append-only), SETUP_DIR
 
 [[ "${BASH_SOURCE[0]}" == "$0" ]] && { echo "ERROR: setup.sh から source してください" >&2; exit 1; }
 
 # --- local-plugins: ~/.claude/local-plugins へのデプロイ ---
+echo ""
+echo "--- skills ---"
+
+# repo/skills/ → ~/.claude/skills/ にコピー（Skill ツールの参照先）
+_skills_src="$(dirname "$SETUP_DIR")/skills"
+if [[ -d "$_skills_src" ]]; then
+  _skill_count=0
+  for _skill_dir in "$_skills_src"/*/; do
+    [[ -d "$_skill_dir" ]] || continue
+    _skill_name="$(basename "$_skill_dir")"
+    rm -rf "$HOME/.claude/skills/$_skill_name"
+    mkdir -p "$HOME/.claude/skills/$_skill_name"
+    cp -r "$_skill_dir/." "$HOME/.claude/skills/$_skill_name/"
+    _skill_count=$((_skill_count + 1))
+  done
+  ok "skills $_skill_count 件を ~/.claude/skills/ にコピー"
+else
+  echo "  ℹ  skills/ ディレクトリが見つかりません。スキルのコピーをスキップ。"
+fi
+unset _skills_src _skill_dir _skill_name _skill_count
+
 echo ""
 echo "--- local-plugins ---"
 
