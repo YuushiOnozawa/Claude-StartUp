@@ -5,6 +5,24 @@
 
 # --- local-plugins: ~/.claude/local-plugins へのデプロイ ---
 echo ""
+echo "--- skills ---"
+
+# repo/skills/ → ~/.claude/skills/ にコピー（Skill ツールの参照先）
+_skills_src="$(dirname "$SETUP_DIR")/skills"
+if [[ -d "$_skills_src" ]]; then
+  for _skill_dir in "$_skills_src"/*/; do
+    [[ -d "$_skill_dir" ]] || continue
+    _skill_name="$(basename "$_skill_dir")"
+    mkdir -p "$HOME/.claude/skills/$_skill_name"
+    cp -r "$_skill_dir/." "$HOME/.claude/skills/$_skill_name/"
+  done
+  ok "skills $(ls "$_skills_src" | wc -l | tr -d ' ') 件を ~/.claude/skills/ にコピー"
+else
+  echo "  ℹ  skills/ ディレクトリが見つかりません。スキルのコピーをスキップ。"
+fi
+unset _skills_src _skill_dir _skill_name
+
+echo ""
 echo "--- local-plugins ---"
 
 if ! command -v jq &>/dev/null; then

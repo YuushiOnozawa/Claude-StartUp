@@ -1,5 +1,0 @@
-{
-  "name": "commit-skill",
-  "description": "Conventional Commits 準拠の git commit ワークフロー skill",
-  "version": "1.0.0"
-}
