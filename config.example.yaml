@@ -188,6 +188,8 @@ category_mappings:
   "sessions": "sessions"
   # knowledge/ フォルダ: 類似検出で自動昇格された知識（高品質・低頻度）
   "knowledge": "knowledge"
+  # lessons-learned/ フォルダ: ミス検知で自動登録されるノウハウ（フック・Claude 自身が登録）
+  "lessons-learned": "lessons-learned"
 
 
 # ============================================================================
