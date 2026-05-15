@@ -14,7 +14,8 @@ _CMLC_TMP="${_CMLC_SETTINGS}.claude-md-lifecycle.tmp"
 mkdir -p "$_CMLC_HOOK_DST_DIR"
 
 # フックファイルをコピー
-for _hook in claude-md-stop.sh claude-md-check.sh; do
+for _hook in claude-md-stop.sh claude-md-check.sh \
+             lessons-learned-stop.sh lessons-learned-check.sh; do
   _src="${_CMLC_HOOK_SRC_DIR}/${_hook}"
   _dst="${_CMLC_HOOK_DST_DIR}/${_hook}"
   if cp "$_src" "$_dst" && chmod +x "$_dst"; then
@@ -57,5 +58,33 @@ else
   rm -f "$_CMLC_TMP"
 fi
 
+# Stop hook 登録（lessons-learned-stop.sh / 冪等）
+_LL_STOP_CMD="bash ${HOME}/.claude/hooks/lessons-learned-stop.sh"
+if jq --arg cmd "$_LL_STOP_CMD" '
+  .hooks.Stop //= [] |
+  if (.hooks.Stop | map(.hooks[]?.command // "") | any(contains("lessons-learned-stop.sh"))) then .
+  else .hooks.Stop += [{"hooks": [{"type": "command", "command": $cmd}]}]
+  end
+' "$_CMLC_SETTINGS" > "$_CMLC_TMP" && mv "$_CMLC_TMP" "$_CMLC_SETTINGS"; then
+  ok "Stop hook 登録 (lessons-learned)"
+else
+  fail "Stop hook 登録 (lessons-learned)"
+  rm -f "$_CMLC_TMP"
+fi
+
+# UserPromptSubmit hook 登録（lessons-learned-check.sh / 冪等）
+_LL_CHECK_CMD="bash ${HOME}/.claude/hooks/lessons-learned-check.sh"
+if jq --arg cmd "$_LL_CHECK_CMD" '
+  .hooks.UserPromptSubmit //= [] |
+  if (.hooks.UserPromptSubmit | map(.hooks[]?.command // "") | any(contains("lessons-learned-check.sh"))) then .
+  else .hooks.UserPromptSubmit += [{"hooks": [{"type": "command", "command": $cmd}]}]
+  end
+' "$_CMLC_SETTINGS" > "$_CMLC_TMP" && mv "$_CMLC_TMP" "$_CMLC_SETTINGS"; then
+  ok "UserPromptSubmit hook 登録 (lessons-learned)"
+else
+  fail "UserPromptSubmit hook 登録 (lessons-learned)"
+  rm -f "$_CMLC_TMP"
+fi
+
 unset _CMLC_HOOK_SRC_DIR _CMLC_HOOK_DST_DIR _CMLC_SETTINGS _CMLC_TMP
-unset _CMLC_STOP_CMD _CMLC_CHECK_CMD _hook _src _dst
+unset _CMLC_STOP_CMD _CMLC_CHECK_CMD _LL_STOP_CMD _LL_CHECK_CMD _hook _src _dst

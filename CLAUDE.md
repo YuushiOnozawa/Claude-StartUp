@@ -28,3 +28,8 @@
 - 技術的な調査・実装作業の開始前に `search_knowledge` で既存知識を確認すること
 - ユーザーの最初のプロンプトが技術的な内容であれば、回答前に `search_knowledge` を呼ぶこと
 - 「以前調べた」「既知のはず」と感じたら必ず `search_knowledge` で確認してから回答すること
+
+## lessons-learned の記録
+- 作業中に自分のミスに気づいたら `mcp__knowledge-rag__add_document` を直接呼び出して登録すること
+- filepath: `lessons-learned/YYYY-MM-DD-HHMMSS-<要約>.md`、category: `lessons-learned`
+- フォーマット: 状況 / ミス / 原因 / 解決 / 防止策
