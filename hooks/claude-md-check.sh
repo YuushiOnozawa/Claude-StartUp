@@ -15,6 +15,7 @@ source "${HOOK_DIR}/lib/queue.sh" 2>/dev/null || exit 0
 HOOK_NAME="claude-md-lifecycle"
 LINE_LIMIT=200
 HAIKU_MODEL="claude-haiku-4-5-20251001"
+QUEUE_DIR="${QUEUE_BASE_DIR}/${HOOK_NAME}"
 
 # stdin を消費（UserPromptSubmit は JSON を渡してくる）
 INPUT=$(cat)
@@ -45,16 +46,21 @@ if [[ "$QUEUE_COUNT" -eq 0 ]]; then
   exit 0
 fi
 
-# CLAUDE.md が見つからなければキューだけ消してスキップ
+# CLAUDE.md が見つからなければキューを消してスキップ
 if [[ ! -f "$CLAUDE_MD" ]]; then
   log_warn "queue has ${QUEUE_COUNT} items but no project CLAUDE.md found in ${PROJECT_CWD}"
+  for f in "${QUEUE_DIR}"/*.json; do
+    [[ -f "$f" ]] || continue
+    item_cwd=$(jq -r '.cwd // ""' "$f" 2>/dev/null)
+    [[ "$item_cwd" == "$PROJECT_CWD" ]] || continue
+    rm -f "$f" "${f%.json}.notified" 2>/dev/null || true
+  done
   exit 0
 fi
 
 ORIG_LINE_COUNT=$(wc -l < "$CLAUDE_MD")
 
 # このプロジェクト向けのキューアイテムがあるか確認
-QUEUE_DIR="${QUEUE_BASE_DIR}/${HOOK_NAME}"
 HAS_ITEM=0
 for f in "${QUEUE_DIR}"/*.json; do
   [[ -f "$f" ]] || continue
@@ -96,7 +102,7 @@ _HAIKU_TMP=$(mktemp)
 trap 'rm -f "$_HAIKU_TMP"' EXIT
 
 _CURL_EXIT=0
-curl -s --max-time 60 \
+curl -s --max-time 30 \
   -H "x-api-key: ${ANTHROPIC_API_KEY}" \
   -H "anthropic-version: 2023-06-01" \
   -H "content-type: application/json" \
