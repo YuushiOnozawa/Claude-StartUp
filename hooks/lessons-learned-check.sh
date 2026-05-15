@@ -20,8 +20,8 @@ _KRAG_MODEL_FILE="${_KRAG_DIR}/model"
 _DISTILL_MODEL="${KRAG_DISTILL_MODEL:-$(grep . "$_KRAG_MODEL_FILE" 2>/dev/null || echo "qwen2.5:3b")}"
 _LL_LOG="${HOME}/.claude/hooks/logs/lessons-learned.log"
 
-# stdin 消費
-INPUT=$(cat)
+# stdin 消費（UserPromptSubmit は JSON を渡してくるが本スクリプトでは不使用）
+cat > /dev/null
 
 # キュー件数チェック（高速パス）
 QUEUE_COUNT=$(queue_count "$HOOK_NAME" 2>/dev/null) || QUEUE_COUNT=0
