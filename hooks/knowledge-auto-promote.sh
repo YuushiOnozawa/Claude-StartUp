@@ -16,7 +16,7 @@ KNOWLEDGE_DIR="$HOME/pcloud/obsidian/knowledge"
 LLM="$HOME/.local/share/knowledge-rag/venv/bin/llm"
 NOTIFY_FILE="$HOME/.claude/hooks/promote-notifications.jsonl"
 _MODEL_FILE="$HOME/.local/share/knowledge-rag/model"
-_MODEL="$(cat "$_MODEL_FILE" 2>/dev/null || echo "qwen2.5:3b")"
+_MODEL="$(grep . "$_MODEL_FILE" 2>/dev/null || echo "qwen2.5:3b")"
 
 # pCloud マウント確認
 if ! mountpoint -q "$HOME/pcloud" 2>/dev/null; then
@@ -53,7 +53,7 @@ if ! echo "$SEARCH_RAW" | grep -q 'sessions/'; then
   exit 0
 fi
 
-SIMILAR_PATH="$(echo "$SEARCH_RAW" | grep -o 'sessions/[^ ]*\.md' | head -1)"
+SIMILAR_PATH="$(echo "$SEARCH_RAW" | grep -o 'sessions/.*\.md' | head -1)"
 log_info "類似セッション発見: $SIMILAR_PATH"
 
 # 昇格先パス確認
@@ -65,7 +65,7 @@ fi
 
 # knowledge/ にコピー
 mkdir -p "$KNOWLEDGE_DIR"
-cp "$SESSION_FILE" "$DEST"
+cp "$SESSION_FILE" "$DEST" || { log_error "cp 失敗: $SESSION_FILE → $DEST"; exit 1; }
 log_info "knowledge/ にコピー: $DEST"
 
 # knowledge-rag への登録（category: knowledge）
@@ -81,9 +81,11 @@ KRAG_REL="knowledge/$SESSION_BASENAME"
   || log_warn "knowledge-rag 登録失敗（ファイルコピーは完了）"
 
 # 通知の原子書き込み（tmp + mv で競合を防ぐ）
+mkdir -p "$(dirname "$NOTIFY_FILE")"
 _TMP="$(mktemp "${NOTIFY_FILE}.XXXXXX")"
-echo "{\"ts\":\"$(date +%Y%m%d-%H%M%S)\",\"file\":\"${SESSION_BASENAME}\",\"similar\":\"${SIMILAR_PATH}\"}" \
-  > "$_TMP"
+trap 'rm -f "$_TMP"' EXIT
+jq -n --arg ts "$(date +%Y%m%d-%H%M%S)" --arg file "${SESSION_BASENAME}" --arg sim "${SIMILAR_PATH}" \
+  '{"ts":$ts,"file":$file,"similar":$sim}' > "$_TMP"
 cat "$NOTIFY_FILE" >> "$_TMP" 2>/dev/null || true
 mv "$_TMP" "$NOTIFY_FILE"
 
