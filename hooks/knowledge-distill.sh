@@ -249,3 +249,6 @@ if [[ -x "$LLM" ]]; then
     >>"$KRAG_LOG" 2>&1 \
     || [[ "$KRAG_STRICT" != "1" ]]
 fi
+
+# 類似セッション検出 → 自動昇格（knowledge-auto-promote.sh が存在する場合のみ）
+[[ -x "${HOOK_DIR}/knowledge-auto-promote.sh" ]] && "${HOOK_DIR}/knowledge-auto-promote.sh" "$OUTPUT_FILE" >>"$_HOOK_LOG" 2>&1 || true

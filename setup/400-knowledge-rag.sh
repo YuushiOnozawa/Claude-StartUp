@@ -246,3 +246,28 @@ else
   fail "config.yaml  →  config.example.yaml が見つかりません"
   MISSING_CMDS+=("knowledge-rag-config")
 fi
+
+# 既存 config.yaml の category_mappings が空なら sessions/knowledge を追記（冪等）
+if [[ -f "$KRAG_CONFIG" ]] && grep -q 'category_mappings: {}' "$KRAG_CONFIG"; then
+  echo "  → config.yaml に category_mappings を追記"
+  _KRAG_TMP="${KRAG_CONFIG}.tmp"
+  if sed \
+    's|category_mappings: {}|category_mappings:\n  "sessions": "sessions"\n  "knowledge": "knowledge"|' \
+    "$KRAG_CONFIG" > "$_KRAG_TMP" && mv "$_KRAG_TMP" "$KRAG_CONFIG"; then
+    ok "config.yaml (category_mappings 追加)"
+  else
+    rm -f "$_KRAG_TMP"
+    fail "config.yaml category_mappings 更新失敗（手動で追加してください）"
+  fi
+fi
+
+# knowledge-auto-promote.sh の配置（hooks/ → ~/.claude/hooks/）
+_KRAG_PROMOTE_SRC="${KRAG_REPO_DIR}/hooks/knowledge-auto-promote.sh"
+_KRAG_PROMOTE_DST="$HOME/.claude/hooks/knowledge-auto-promote.sh"
+if [[ -f "$_KRAG_PROMOTE_SRC" ]]; then
+  if cp "$_KRAG_PROMOTE_SRC" "$_KRAG_PROMOTE_DST" && chmod +x "$_KRAG_PROMOTE_DST"; then
+    ok "knowledge-auto-promote.sh"
+  else
+    fail "knowledge-auto-promote.sh  →  手動: cp $_KRAG_PROMOTE_SRC $_KRAG_PROMOTE_DST"
+  fi
+fi
