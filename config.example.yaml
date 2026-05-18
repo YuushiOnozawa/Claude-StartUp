@@ -190,6 +190,8 @@ category_mappings:
   "knowledge": "knowledge"
   # lessons-learned/ フォルダ: ミス検知で自動登録されるノウハウ（フック・Claude 自身が登録）
   "lessons-learned": "lessons-learned"
+  # investigations/ フォルダ: 調査・比較検討のメモ
+  "investigations": "investigations"
 
 
 # ============================================================================
@@ -222,6 +224,38 @@ keyword_routes: {}
 # Set to empty {} for no expansion (search terms used as-is).
 
 query_expansions: {}
+
+
+# ============================================================================
+# DECAY / PRUNING
+# ============================================================================
+# Automatically archive documents that have exceeded their TTL (time-to-live).
+# Expired documents are moved to archive_dir and removed from the index.
+# A pruning log is appended to pruning_log for audit/review.
+#
+# Triggered by: SessionEnd hook (knowledge-prune.sh)
+#
+# ttl_days: -1 means never expire (permanent retention)
+
+decay:
+  enabled: true
+  # Archive destination for expired documents (excluded from indexing)
+  archive_dir: "~/pcloud/obsidian/archive"
+  # Append-only log of pruned documents
+  pruning_log: "~/pcloud/obsidian/knowledge-rag-pruning-log.md"
+  # Fallback TTL when no category-specific policy is defined
+  default_ttl_days: 90
+  policies:
+    sessions:
+      ttl_days: 30          # セッション蒸留ログ（短命）
+    knowledge:
+      ttl_days: 365         # 昇格済み知識（長期保持）
+    investigations:
+      ttl_days: 180         # 調査メモ（中期）
+    lessons-learned:
+      ttl_days: -1          # 永続保持
+    general:
+      ttl_days: 90          # 未分類ドキュメント
 
 
 # ============================================================================
