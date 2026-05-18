@@ -29,7 +29,7 @@ Markdown 整形と RAG 登録はローカル LLM（`llm` CLI）に委ねる。
 ```bash
 LLM="$HOME/.local/share/knowledge-rag/venv/bin/llm"
 MODEL="$(grep . "$HOME/.local/share/knowledge-rag/model" 2>/dev/null || echo "qwen2.5:3b")"
-OUTPUT="$HOME/pcloud/obsidian/knowledge/{filename}"
+OUTPUT="$HOME/pcloud/obsidian/knowledge/{filename}.md"
 
 mkdir -p "$(dirname "$OUTPUT")"
 
@@ -50,21 +50,21 @@ echo "保存完了: $OUTPUT"
 ```bash
 LLM="$HOME/.local/share/knowledge-rag/venv/bin/llm"
 MODEL="$(grep . "$HOME/.local/share/knowledge-rag/model" 2>/dev/null || echo "qwen2.5:3b")"
-OUTPUT="$HOME/pcloud/obsidian/knowledge/{filename}"
+OUTPUT="$HOME/pcloud/obsidian/knowledge/{filename}.md"
 
 {
   echo "add_documentツールを使って次のMarkdownをknowledge-ragに登録してください。"
-  echo "filepath: knowledge/{filename}"
+  echo "filepath: knowledge/{filename}.md"
   echo "category: knowledge"
   echo "content:"
   cat "$OUTPUT"
 } | KNOWLEDGE_RAG_DIR="$HOME/.local/share/knowledge-rag" \
   "$LLM" prompt -m "$MODEL" -T MCP --no-stream \
-  || echo "knowledge-rag 登録失敗（ファイル保存は完了）"
+  || { echo "knowledge-rag 登録失敗（ファイル保存は完了）" >&2; false; }
 ```
 
 ## ステップ 5: 完了報告（Claude）
 
 保存先パスを1行でユーザーに報告する。
 
-例: `~/pcloud/obsidian/knowledge/{filename} に保存・登録しました。`
+例: `~/pcloud/obsidian/knowledge/{filename}.md に保存・登録しました。`
