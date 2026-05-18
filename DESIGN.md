@@ -10,7 +10,7 @@
  ├─ kizami（SessionEnd） → 会話履歴を長期記憶として保存
  └─ knowledge-rag（MCP） → 過去の知識・lessons-learned を検索
         ↑
-        PostToolUse フック（lessons-learned 自動記録）
+        UserPromptSubmit フック（lessons-learned 自動記録）
         SessionEnd フック（sessions → knowledge 昇格）
 ```
 

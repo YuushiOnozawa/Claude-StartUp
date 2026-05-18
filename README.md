@@ -25,10 +25,10 @@ bash setup.sh <repo-url>
 
 | ツール | 用途 |
 |--------|------|
-| [RTK](TOOLS.md#rtk（rust-token-killer）) | Bash 出力圧縮によるトークン削減 |
-| [kizami](TOOLS.md#kizami（長期記憶）) | 会話ベースの長期記憶 |
-| [knowledge-rag](TOOLS.md#knowledge-rag（知識検索）) | RAG ベースのドキュメント検索 |
-| [pCloud (rclone)](TOOLS.md#pcloud（obsidian-vault-アクセス）) | Obsidian Vault への FUSE マウント（WSL2） |
+| [RTK](TOOLS.md#rtkrust-token-killer) | Bash 出力圧縮によるトークン削減 |
+| [kizami](TOOLS.md#kizami長期記憶) | 会話ベースの長期記憶 |
+| [knowledge-rag](TOOLS.md#knowledge-rag知識検索) | RAG ベースのドキュメント検索 |
+| [pCloud (rclone)](TOOLS.md#pcloudobsidian-vault-アクセス) | Obsidian Vault への FUSE マウント（WSL2） |
 
 ## ファイル構成
 
