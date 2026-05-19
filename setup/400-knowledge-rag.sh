@@ -276,7 +276,7 @@ fi
 _KRAG_PRUNE_SRC="${KRAG_REPO_DIR}/hooks/knowledge-prune.sh"
 _KRAG_PRUNE_DST="$HOME/.claude/hooks/knowledge-prune.sh"
 if [[ -f "$_KRAG_PRUNE_SRC" ]]; then
-  if cp "$_KRAG_PRUNE_SRC" "$_KRAG_PRUNE_DST" && chmod +x "$_KRAG_PRUNE_DST"; then
+  if sed "s|PROJECT_DIR=.*|PROJECT_DIR=\"${KRAG_REPO_DIR}\"|" "$_KRAG_PRUNE_SRC" > "$_KRAG_PRUNE_DST" && chmod +x "$_KRAG_PRUNE_DST"; then
     ok "knowledge-prune.sh (配置)"
   else
     fail "knowledge-prune.sh  →  手動: cp $_KRAG_PRUNE_SRC $_KRAG_PRUNE_DST"

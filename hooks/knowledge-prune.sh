@@ -20,7 +20,7 @@ KRAG_DIR="$HOME/.local/share/knowledge-rag"
 PROJECT_DIR="$HOME/srcs/Claude-StartUp"
 
 # キュードレイン（リトライ実行時はスキップして無限ループを防ぐ）
-if [[ "${KRAG_PRUNE_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
+if [[ "${KRAG_PRUNE_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud" 2>/dev/null; then
   _prune_retry_callback() {
     # item_file は使わない（pruning は状態に依存しないため）
     log_info "retrying queued prune"
@@ -31,7 +31,7 @@ if [[ "${KRAG_PRUNE_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
 fi
 
 # pCloud マウント確認 → 未マウントならキューに積んで終了
-if ! mountpoint -q "$HOME/pcloud"; then
+if ! mountpoint -q "$HOME/pcloud" 2>/dev/null; then
   log_info "pCloud not mounted, queuing"
   queue_push "$HOOK_NAME" "pcloud" "" ""
   exit 0
@@ -39,10 +39,11 @@ fi
 
 # MCP サーバーの設定ファイルを使用（git 追跡の config.example.yaml から生成される）
 KRAG_CONFIG="${KRAG_DIR}/config.yaml"
+VENV_PYTHON="${KRAG_DIR}/venv/bin/python3"
 
-# decay.enabled 確認
+# decay.enabled 確認（venv の python を使用して PyYAML を確実にロードする）
 ENABLED=$(
-  python3 -c \
+  "${VENV_PYTHON}" -c \
     "import yaml; c=yaml.safe_load(open('${KRAG_CONFIG}')); print(c.get('decay',{}).get('enabled','false'))" \
     2>/dev/null || echo "false"
 )
@@ -52,8 +53,7 @@ if [[ "$ENABLED" != "True" && "$ENABLED" != "true" ]]; then
 fi
 
 log_info "starting knowledge pruning"
-VENV_PYTHON="${KRAG_DIR}/venv/bin/python3"
 "${VENV_PYTHON}" "${PROJECT_DIR}/scripts/knowledge-prune.py" \
   --config "${KRAG_CONFIG}" \
-  --data-dir "${PROJECT_DIR}/data"
+  --data-dir "${KRAG_DIR}/data"
 log_info "pruning complete"

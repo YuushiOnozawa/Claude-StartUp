@@ -55,7 +55,7 @@ def append_pruning_log(log_path: Path, pruned: list[dict], dry_run: bool) -> Non
         return
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now_str = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     mode = " (dry-run)" if dry_run else ""
 
     lines = [f"\n## {now_str}{mode}\n"]
@@ -166,7 +166,7 @@ def main() -> int:
         category = c["category"]
 
         # archive 先: archive/{category}/{YYYYMMDD}-{filename}
-        date_prefix = datetime.now().strftime("%Y%m%d")
+        date_prefix = datetime.now(tz=timezone.utc).strftime("%Y%m%d")
         dst_name = f"{date_prefix}-{src_path.name}"
         dst_path = archive_dir / category / dst_name
         dst_path.parent.mkdir(parents=True, exist_ok=True)
@@ -175,7 +175,7 @@ def main() -> int:
         try:
             # 順序: ChromaDB 先 → metadata 削除 → ファイル移動（最後）
             # ファイル移動後に DB 削除失敗 → アーカイブ済みなのに検索に残る状態を防ぐ
-            col.delete(where={"doc_id": doc_id})
+            col.delete(ids=[doc_id])
             del updated_metadata[doc_id]
             if src_path.exists():
                 shutil.move(str(src_path), str(dst_path))
