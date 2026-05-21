@@ -26,6 +26,27 @@ fi
 unset _skills_src _skill_dir _skill_name _skill_count
 
 echo ""
+echo "--- agents ---"
+
+# repo/agents/ → ~/.claude/agents/ にコピー（MAGIペルソナ等のエージェント定義）
+# ※ skills（汎用ツール）とは責務が異なる: agents はレビュー人格・手順を定義するアーキテクチャ資産
+_agents_src="$(dirname "$SETUP_DIR")/agents"
+if [[ -d "$_agents_src" ]]; then
+  rm -rf "$HOME/.claude/agents"
+  mkdir -p "$HOME/.claude/agents"
+  _agent_count=0
+  for _agent_file in "$_agents_src"/*.md; do
+    [[ -f "$_agent_file" ]] || continue
+    cp "$_agent_file" "$HOME/.claude/agents/"
+    _agent_count=$((_agent_count + 1))
+  done
+  ok "agents $_agent_count 件を ~/.claude/agents/ にコピー"
+else
+  echo "  ℹ  agents/ ディレクトリが見つかりません。エージェントのコピーをスキップ。"
+fi
+unset _agents_src _agent_file _agent_count
+
+echo ""
 echo "--- local-plugins ---"
 
 if ! command -v jq &>/dev/null; then
