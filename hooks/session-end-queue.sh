@@ -18,7 +18,8 @@ if [[ -z "$TRANSCRIPT_PATH" ]]; then
   exit 0
 fi
 
-queue_push "knowledge-distill" "pending" "$TRANSCRIPT_PATH" "$CWD" \
-  || log_warn "queue_push failed for $(basename "$TRANSCRIPT_PATH")"
-
-log_info "queued: $(basename "$TRANSCRIPT_PATH")"
+if queue_push "knowledge-distill" "pending" "$TRANSCRIPT_PATH" "$CWD"; then
+  log_info "queued: $(basename "$TRANSCRIPT_PATH")"
+else
+  log_warn "queue_push failed for $(basename "$TRANSCRIPT_PATH")"
+fi
