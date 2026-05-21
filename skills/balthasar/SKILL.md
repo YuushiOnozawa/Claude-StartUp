@@ -26,6 +26,7 @@ MAGI BALTHASAR（設計哲学者）の観点でコードをレビューする。
 2. `~/.claude/agents/balthasar.md`（setup.sh でデプロイ済みのもの）
 
 取得したコード・差分とペルソナ定義を合わせて `Agent(subagent_type="general-purpose", model="haiku")` に渡す。
+（`model="haiku"` は `agents/balthasar.md` の `model: haiku` 設定に準拠）
 
 プロンプトには以下を含める：
 - `agents/balthasar.md` の全内容（ペルソナ・レビュー手順・出力形式）
