@@ -2,7 +2,7 @@
 name: melchior
 description: >
   コード品質・バグの観点でレビューを行うエージェント（MAGI MELCHIOR）。
-  Trigger: "コード品質レビュー", "バグチェック", "melchior", "MELCHIOR"
+  Trigger: "コード品質レビュー", "バグチェック", "melchior", "MELCHIOR", "Melchior"
 tools: Read, Glob, Grep, Bash
 model: haiku
 maxTurns: 10
