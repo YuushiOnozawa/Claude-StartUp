@@ -19,12 +19,19 @@ MAGI BALTHASAR（設計哲学者）の観点でコードをレビューする。
 
 ### ステップ 2: BALTHASAR エージェントの起動
 
-取得したコード・差分を `Agent(subagent_type="balthasar")` に渡す。
+**前提条件**: `setup.sh` で `agents/` が `~/.claude/agents/` にコピー済みであること。
+
+ペルソナ定義を以下の優先順位で読み込む：
+1. `agents/balthasar.md`（repo 内、作業ディレクトリが Claude-StartUp の場合）
+2. `~/.claude/agents/balthasar.md`（setup.sh でデプロイ済みのもの）
+
+取得したコード・差分とペルソナ定義を合わせて `Agent(subagent_type="general-purpose", model="haiku")` に渡す。
 
 プロンプトには以下を含める：
+- `agents/balthasar.md` の全内容（ペルソナ・レビュー手順・出力形式）
 - レビュー対象のコード全文または差分
 - ファイルパスとプロジェクトの概要（CLAUDE.md があれば読み込む）
-- 「設計・アーキテクチャ・外部ライブラリ公開API準拠の観点でレビューしてください」という指示
+- 「上記のBALTHASARペルソナに従い、設計・アーキテクチャ・外部ライブラリ公開API準拠の観点でレビューしてください」という指示
 
 ### ステップ 3: 結果の表示
 
