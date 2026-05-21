@@ -30,6 +30,7 @@ if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
   }
   _DISTILL_HOOK_DIR="$HOOK_DIR"
 
+  queue_drain "$HOOK_NAME" "pending" "_distill_retry_callback"
   queue_drain "$HOOK_NAME" "pcloud" "_distill_retry_callback"
 
   if curl -sf --max-time 3 http://localhost:11434/api/tags >/dev/null 2>&1; then
