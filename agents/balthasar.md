@@ -2,7 +2,7 @@
 name: balthasar
 description: >
   設計・アーキテクチャ・外部ライブラリ公開API準拠の観点でレビューを行うエージェント（MAGI BALTHASAR）。
-  Trigger: "設計レビュー", "アーキテクチャレビュー", "balthasar", "BALTHASAR"
+  Trigger: "設計レビュー", "アーキテクチャレビュー", "balthasar", "BALTHASAR", "Balthasar"
 tools: Read, Glob, Grep, Bash
 model: haiku
 maxTurns: 10

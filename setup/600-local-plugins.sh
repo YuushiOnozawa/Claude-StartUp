@@ -32,6 +32,7 @@ echo "--- agents ---"
 # ※ skills（汎用ツール）とは責務が異なる: agents はレビュー人格・手順を定義するアーキテクチャ資産
 _agents_src="$(dirname "$SETUP_DIR")/agents"
 if [[ -d "$_agents_src" ]]; then
+  rm -rf "$HOME/.claude/agents"
   mkdir -p "$HOME/.claude/agents"
   _agent_count=0
   for _agent_file in "$_agents_src"/*.md; do

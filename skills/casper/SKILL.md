@@ -14,8 +14,8 @@ Gemini（`gemini -p`）を使ってレビューを実行する。
 
 以下を並列で取得する：
 
-- **差分**: ユーザー指定のファイルがあればその内容、なければ `git diff --staged`（空なら `git diff HEAD`）
-- **ルール**: `cat CLAUDE.md 2>/dev/null || cat ~/.claude/CLAUDE.md 2>/dev/null`
+- **差分 (`DIFF`)**: ユーザー指定のファイルがあればその内容、なければ `git diff --staged`（空なら `git diff HEAD`）
+- **ルール (`CLAUDE_RULES`)**: `cat ~/.claude/CLAUDE.md 2>/dev/null; cat "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/CLAUDE.md" 2>/dev/null`
 
 ### ステップ 2: Gemini（CASPER）の呼び出し
 
