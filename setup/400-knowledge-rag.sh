@@ -284,3 +284,32 @@ if [[ -f "$_KRAG_PROMOTE_SRC" ]]; then
     fail "knowledge-auto-promote.sh  →  手動: cp $_KRAG_PROMOTE_SRC $_KRAG_PROMOTE_DST"
   fi
 fi
+
+# knowledge-prune.sh の配置と SessionEnd 登録（bash-only decay/pruning, Issue #92/#103）
+_KRAG_PRUNE_SRC="${KRAG_REPO_DIR}/hooks/knowledge-prune.sh"
+_KRAG_PRUNE_DST="$HOME/.claude/hooks/knowledge-prune.sh"
+if [[ -f "$_KRAG_PRUNE_SRC" ]]; then
+  if cp "$_KRAG_PRUNE_SRC" "$_KRAG_PRUNE_DST" && chmod +x "$_KRAG_PRUNE_DST"; then
+    ok "knowledge-prune.sh (配置)"
+  else
+    fail "knowledge-prune.sh  →  手動: cp $_KRAG_PRUNE_SRC $_KRAG_PRUNE_DST"
+  fi
+
+  KRAG_SETTINGS="$HOME/.claude/settings.json"
+  if [[ -f "$KRAG_SETTINGS" ]] && command -v jq &>/dev/null; then
+    _KRAG_PRUNE_CMD="bash -c 'trap \"\" INT TERM; bash ${HOME}/.claude/hooks/knowledge-prune.sh 2>> ${HOME}/.claude/hooks/logs/knowledge-prune.log'"
+    _krag_tmp="${KRAG_SETTINGS}.tmp"
+    if jq --arg cmd "$_KRAG_PRUNE_CMD" '
+      .hooks.SessionEnd //= [] |
+      if (.hooks.SessionEnd | map(.hooks[]?.command // "") | any(contains("knowledge-prune.sh"))) then .
+      else .hooks.SessionEnd += [{"hooks": [{"type": "command", "command": $cmd}]}]
+      end
+    ' "$KRAG_SETTINGS" > "$_krag_tmp" && mv "$_krag_tmp" "$KRAG_SETTINGS"; then
+      ok "settings.json (SessionEnd: knowledge-prune)"
+    else
+      rm -f "$_krag_tmp"
+      fail "settings.json の SessionEnd 更新に失敗"
+      MISSING_CMDS+=("knowledge-prune-hook-settings")
+    fi
+  fi
+fi
