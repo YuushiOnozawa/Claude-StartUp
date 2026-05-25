@@ -258,6 +258,19 @@ if [[ -f "$KRAG_CONFIG" ]] && grep -q 'category_mappings: {}' "$KRAG_CONFIG"; th
   else
     rm -f "$_KRAG_TMP"
     fail "config.yaml category_mappings 更新失敗（手動で追加してください）"
+    MISSING_CMDS+=("knowledge-rag-category-mappings")
+  fi
+fi
+
+# config.yaml の ~/pcloud を $HOME/pcloud に展開（upstream _resolve_path が expanduser() 未実装のため）
+if [[ -f "$KRAG_CONFIG" ]] && grep -q '~/pcloud' "$KRAG_CONFIG"; then
+  _KRAG_TMP="${KRAG_CONFIG}.tmp"
+  if sed "s|~/pcloud|$HOME/pcloud|g" "$KRAG_CONFIG" > "$_KRAG_TMP" && mv "$_KRAG_TMP" "$KRAG_CONFIG"; then
+    ok "config.yaml (~/pcloud → \$HOME/pcloud 展開)"
+  else
+    rm -f "$_KRAG_TMP"
+    fail "config.yaml  →  ~/pcloud の展開失敗"
+    MISSING_CMDS+=("knowledge-rag-config-expand")
   fi
 fi
 
