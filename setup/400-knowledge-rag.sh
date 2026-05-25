@@ -261,6 +261,15 @@ if [[ -f "$KRAG_CONFIG" ]] && grep -q 'category_mappings: {}' "$KRAG_CONFIG"; th
   fi
 fi
 
+# config.yaml の ~/pcloud を $HOME/pcloud に展開（upstream _resolve_path が expanduser() 未実装のため）
+if [[ -f "$KRAG_CONFIG" ]] && grep -q '~/pcloud' "$KRAG_CONFIG"; then
+  if sed -i "s|~/pcloud|$HOME/pcloud|g" "$KRAG_CONFIG"; then
+    ok "config.yaml (~/pcloud → \$HOME/pcloud 展開)"
+  else
+    fail "config.yaml  →  ~/pcloud の展開失敗"
+  fi
+fi
+
 # knowledge-auto-promote.sh の配置（hooks/ → ~/.claude/hooks/）
 _KRAG_PROMOTE_SRC="${KRAG_REPO_DIR}/hooks/knowledge-auto-promote.sh"
 _KRAG_PROMOTE_DST="$HOME/.claude/hooks/knowledge-auto-promote.sh"
