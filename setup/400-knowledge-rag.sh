@@ -297,7 +297,7 @@ if [[ -f "$_KRAG_PRUNE_SRC" ]]; then
 
   KRAG_SETTINGS="$HOME/.claude/settings.json"
   if [[ -f "$KRAG_SETTINGS" ]] && command -v jq &>/dev/null; then
-    _KRAG_PRUNE_CMD="bash -c 'trap \"\" INT TERM; bash ${HOME}/.claude/hooks/knowledge-prune.sh 2>> ${HOME}/.claude/hooks/logs/knowledge-prune.log'"
+    _KRAG_PRUNE_CMD="bash -c 'trap \"\" INT TERM; bash \"${HOME}/.claude/hooks/knowledge-prune.sh\" 2>> \"${HOME}/.claude/hooks/logs/knowledge-prune.log\"'"
     _krag_tmp="${KRAG_SETTINGS}.tmp"
     if jq --arg cmd "$_KRAG_PRUNE_CMD" '
       .hooks.SessionEnd //= [] |

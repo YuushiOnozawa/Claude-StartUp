@@ -34,7 +34,7 @@ if [[ "${KRAG_PRUNE_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
     log_info "retrying queued prune"
     KRAG_PRUNE_RETRY=1 bash "${_PRUNE_HOOK_DIR}/knowledge-prune.sh"
   }
-  _PRUNE_HOOK_DIR="$HOOK_DIR"
+  _PRUNE_HOOK_DIR="$(cd "$HOOK_DIR" && pwd)"
   queue_drain "$HOOK_NAME" "pcloud" "_prune_retry_callback"
 fi
 
