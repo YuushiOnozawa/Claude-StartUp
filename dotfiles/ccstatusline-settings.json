@@ -1,0 +1,123 @@
+{
+  "version": 3,
+  "lines": [
+    [
+      {
+        "id": "l1-model",
+        "type": "model",
+        "color": "cyan"
+      },
+      {
+        "id": "l1-session-name",
+        "type": "session-name"
+      },
+      {
+        "id": "l1-ctx-bar",
+        "type": "context-bar",
+        "merge": true,
+        "metadata": {
+          "display": "slider"
+        }
+      },
+      {
+        "id": "l1-ctx-pct",
+        "type": "context-percentage",
+        "color": "yellow"
+      }
+    ],
+    [
+      {
+        "id": "l2-branch",
+        "type": "git-branch",
+        "color": "green"
+      },
+      {
+        "id": "4d5fcfd1-ce84-4efc-8ce0-abde8ea83459",
+        "type": "current-working-dir",
+        "metadata": {
+          "abbreviateHome": "true",
+          "segments": "2"
+        }
+      },
+      {
+        "id": "l2-ahead-behind",
+        "type": "git-ahead-behind",
+        "color": "blue"
+      }
+    ],
+    [
+      {
+        "id": "l3-session-usage",
+        "type": "session-usage",
+        "color": "magenta",
+        "rawValue": true,
+        "metadata": {
+          "display": "slider",
+          "cursor": "true"
+        }
+      },
+      {
+        "id": "l3-reset-timer",
+        "type": "reset-timer",
+        "metadata": {
+          "display": "time",
+          "locale": "ja-JP",
+          "timezone": "local",
+          "compact": "true",
+          "absolute": "true"
+        }
+      },
+      {
+        "id": "l3-weekly-usage",
+        "type": "weekly-usage",
+        "color": "yellow",
+        "rawValue": true,
+        "metadata": {
+          "display": "slider",
+          "cursor": "true",
+          "invert": "false"
+        }
+      },
+      {
+        "id": "l3-weekly-reset",
+        "type": "weekly-reset-timer",
+        "metadata": {
+          "display": "time",
+          "compact": "true",
+          "absolute": "true",
+          "timezone": "local",
+          "locale": "ja-JP"
+        }
+      }
+    ]
+  ],
+  "flexMode": "full",
+  "compactThreshold": 60,
+  "colorLevel": 2,
+  "defaultPadding": " ",
+  "inheritSeparatorColors": false,
+  "globalBold": false,
+  "minimalistMode": false,
+  "powerline": {
+    "enabled": true,
+    "separators": [
+      ""
+    ],
+    "separatorInvertBackground": [
+      false
+    ],
+    "startCaps": [
+      ""
+    ],
+    "endCaps": [
+      ""
+    ],
+    "theme": "solarized",
+    "autoAlign": false,
+    "continueThemeAcrossLines": false
+  },
+  "installation": {
+    "method": "pinned",
+    "installedVersion": "2.2.17"
+  }
+}
