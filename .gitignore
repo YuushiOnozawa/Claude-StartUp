@@ -28,3 +28,7 @@ plans/
 
 # RTK 生成物（rtk init -g が各マシンで再生成）
 RTK.md
+
+# Python キャッシュ
+__pycache__/
+*.pyc
