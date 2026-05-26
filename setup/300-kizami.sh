@@ -19,20 +19,8 @@ if command -v node &>/dev/null; then
   if [[ "$_node_major" =~ ^[0-9]+$ ]] && (( _node_major >= 22 )); then
     _kizami_node_ok=true
   else
-    echo "  → Node.js v${_node_major} は kizami に必要な v22 未満です。自動アップグレードを試みます..."
-    if command -v apt-get &>/dev/null; then
-      if curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >/dev/null 2>&1 && \
-         apt-get install -y nodejs >/dev/null 2>&1; then
-        ok "Node.js v22 (自動インストール完了)"
-        _kizami_node_ok=true
-      else
-        fail "Node.js v22+  →  手動: https://nodejs.org/"
-        MISSING_CMDS+=("nodejs-v22")
-      fi
-    else
-      fail "Node.js v22+  →  手動: https://nodejs.org/"
-      MISSING_CMDS+=("nodejs-v22")
-    fi
+    fail "Node.js v22+  →  mise 未設定か失敗。050-mise.sh の出力を確認してください"
+    MISSING_CMDS+=("nodejs-v22")
   fi
 fi
 if [[ "$_kizami_node_ok" != "true" ]]; then
