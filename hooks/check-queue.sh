@@ -19,6 +19,7 @@ HOOK_NAME="knowledge-distill"
 # ─── 1. バックグラウンド drain（pCloud マウント済みかつキューあり） ────────────
 # knowledge-distill.sh に空の stdin を渡すとキュードレインのみ実行して exit 0 する
 if [[ $(queue_count "$HOOK_NAME") -gt 0 ]] && mountpoint -q "$HOME/pcloud" 2>/dev/null; then
+  mkdir -p "${HOOK_DIR}/logs"
   (trap "" INT TERM; bash "${HOOK_DIR}/knowledge-distill.sh" < /dev/null \
     >> "${HOOK_DIR}/logs/knowledge-distill.log" 2>&1) &
 fi
