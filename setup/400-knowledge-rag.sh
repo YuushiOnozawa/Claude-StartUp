@@ -22,9 +22,10 @@ if [[ -n "$KRAG_PYTHON_CMD" ]]; then
   ok "Python 3.11+ ($KRAG_PYTHON_CMD)"
 elif command -v apt-get &>/dev/null; then
   echo "  → Python 3.11+ が未導入。deadsnakes PPA からインストールを試みます..."
-  if (add-apt-repository -y ppa:deadsnakes/ppa >/dev/null 2>&1 && \
-      apt-get update -qq 2>/dev/null && \
-      apt-get install -y python3.11 python3.11-venv >/dev/null 2>&1); then
+  if [[ -f /etc/os-release ]] && grep -qEi 'ubuntu' /etc/os-release && \
+     add-apt-repository -y ppa:deadsnakes/ppa >/dev/null 2>&1 && \
+     apt-get update -qq 2>/dev/null && \
+     apt-get install -y python3.11 python3.11-venv >/dev/null 2>&1; then
     KRAG_PYTHON_CMD="python3.11"
     ok "Python 3.11 (自動インストール完了)"
   else

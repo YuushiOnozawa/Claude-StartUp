@@ -141,7 +141,7 @@ echo "=== Step 2: 依存ツールの確認 ==="
 if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
   SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/setup"
 else
-  # curl | bash でパイプ実行時は BASH_SOURCE[0] が未設定になるため clone 先を使う
+  # curl | bash でパイプ実行時は BASH_SOURCE[0] が未設定または空文字列になるため clone 先を使う
   SETUP_DIR="$CLAUDE_DIR/setup"
 fi
 [[ -d "$SETUP_DIR" ]] || { echo "ERROR: $SETUP_DIR が見つかりません" >&2; exit 1; }

@@ -13,8 +13,10 @@ fi
 # Node.js v22+ 確認（pnpm v11 が要求するため）
 _kizami_node_ok=false
 if command -v node &>/dev/null; then
-  _node_major="$(node --version | sed 's/v\([0-9]*\).*/\1/')"
-  if (( _node_major >= 22 )); then
+  _node_version="$(node --version 2>/dev/null || echo "")"
+  _node_major="${_node_version%%.*}"
+  _node_major="${_node_major#v}"
+  if [[ "$_node_major" =~ ^[0-9]+$ ]] && (( _node_major >= 22 )); then
     _kizami_node_ok=true
   else
     echo "  → Node.js v${_node_major} は kizami に必要な v22 未満です。自動アップグレードを試みます..."
@@ -33,7 +35,7 @@ if command -v node &>/dev/null; then
     fi
   fi
 fi
-if ! $_kizami_node_ok; then
+if [[ "$_kizami_node_ok" != "true" ]]; then
   MISSING_CMDS+=("kizami")
   return 0
 fi
