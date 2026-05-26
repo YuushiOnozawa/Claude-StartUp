@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # check-queue: UserPromptSubmit hook（通知ディスパッチャー）
-# 1. knowledge-distill retry キューの未通知アイテムを通知する
-# 2. 自動昇格通知（promote-notifications.jsonl）を表示する
+# 1. knowledge-distill キューの drain をバックグラウンドで試みる
+# 2. knowledge-distill retry キューの未通知アイテムを通知する
+# 3. 自動昇格通知（promote-notifications.jsonl）を表示する
 # 終了コード方針（カテゴリ A）: 常に exit 0 — UserPromptSubmit フックはユーザー入力をブロックしない
 
 # stdin を消費（UserPromptSubmit は JSON を渡してくるが今回は不使用）
@@ -15,7 +16,15 @@ source "${HOOK_DIR}/lib/queue.sh" 2>/dev/null || exit 0
 
 HOOK_NAME="knowledge-distill"
 
-# ─── 1. knowledge-distill retry キュー通知 ───────────────────────────────────
+# ─── 1. バックグラウンド drain（pCloud マウント済みかつキューあり） ────────────
+# knowledge-distill.sh に空の stdin を渡すとキュードレインのみ実行して exit 0 する
+if [[ $(queue_count "$HOOK_NAME") -gt 0 ]] && mountpoint -q "$HOME/pcloud" 2>/dev/null; then
+  mkdir -p "${HOOK_DIR}/logs"
+  (trap "" INT TERM; bash "${HOOK_DIR}/knowledge-distill.sh" < /dev/null \
+    >> "${HOOK_DIR}/logs/knowledge-distill.log" 2>&1) &
+fi
+
+# ─── 2. knowledge-distill retry キュー通知 ───────────────────────────────────
 if queue_notify_needed "$HOOK_NAME"; then
   items_output=""
   count=0
@@ -33,9 +42,10 @@ if queue_notify_needed "$HOOK_NAME"; then
     retry=$(jq -r '.retry_count // 0' "$f" 2>/dev/null)
 
     case "$reason" in
-      pcloud) reason_ja="pCloud 未マウント" ;;
-      ollama) reason_ja="Ollama 未起動" ;;
-      *)      reason_ja="$reason" ;;
+      pcloud)  reason_ja="pCloud 未マウント" ;;
+      ollama)  reason_ja="Ollama 未起動" ;;
+      pending) reason_ja="処理待ち（次回セッション開始時に自動処理）" ;;
+      *)       reason_ja="$reason" ;;
     esac
 
     items_output="${items_output}  - [${ts}] project: ${project}, 原因: ${reason_ja}, retry: ${retry}/3\n"
@@ -48,8 +58,7 @@ if queue_notify_needed "$HOOK_NAME"; then
 
     # stdout に出力 → Claude の会話コンテキストに注入される
     printf '[HOOK] knowledge-distill キューに %d 件の保留があります:\n%b\n' "$count" "$items_output"
-    printf '原因が解消されたら次のセッション終了時（/clear）に自動リトライされます。\n'
-    printf '今すぐ原因を調べるか、対応が必要か確認してください。\n'
+    printf '次回セッション開始時に自動リトライされます。\n'
   fi
 fi
 
