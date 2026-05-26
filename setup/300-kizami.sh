@@ -10,6 +10,36 @@ if ! command -v npm &>/dev/null; then
   return 0
 fi
 
+# Node.js v22+ 確認（pnpm v11 が要求するため）
+_kizami_node_ok=false
+if command -v node &>/dev/null; then
+  _node_version="$(node --version 2>/dev/null || echo "")"
+  _node_major="${_node_version%%.*}"
+  _node_major="${_node_major#v}"
+  if [[ "$_node_major" =~ ^[0-9]+$ ]] && (( _node_major >= 22 )); then
+    _kizami_node_ok=true
+  else
+    echo "  → Node.js v${_node_major} は kizami に必要な v22 未満です。自動アップグレードを試みます..."
+    if command -v apt-get &>/dev/null; then
+      if curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >/dev/null 2>&1 && \
+         apt-get install -y nodejs >/dev/null 2>&1; then
+        ok "Node.js v22 (自動インストール完了)"
+        _kizami_node_ok=true
+      else
+        fail "Node.js v22+  →  手動: https://nodejs.org/"
+        MISSING_CMDS+=("nodejs-v22")
+      fi
+    else
+      fail "Node.js v22+  →  手動: https://nodejs.org/"
+      MISSING_CMDS+=("nodejs-v22")
+    fi
+  fi
+fi
+if [[ "$_kizami_node_ok" != "true" ]]; then
+  MISSING_CMDS+=("kizami")
+  return 0
+fi
+
 # --- kizami (長期記憶): 会話履歴の自動保存・recall ---
 if ! command -v pnpm &>/dev/null; then
   echo "  → pnpm が未導入。自動インストール: npm install -g pnpm"
