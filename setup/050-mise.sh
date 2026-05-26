@@ -6,11 +6,13 @@
 echo ""
 echo "--- mise ---"
 
+# ~/.local/bin を先に PATH へ追加（mise インストール済み環境での検出漏れ防止）
+export PATH="$HOME/.local/bin:$PATH"
+
 # --- mise インストール ---
 if ! command -v mise &>/dev/null; then
   echo "  → mise が未導入。公式インストーラを実行..."
   if curl -fsSL https://mise.run | sh; then
-    export PATH="$HOME/.local/bin:$PATH"
     ok "mise (自動インストール完了)"
   else
     fail "mise  →  手動: curl https://mise.run | sh"
@@ -52,8 +54,9 @@ fi
 
 # --- ~/.bashrc / ~/.zshrc に mise activate を追記（マーカー方式で冪等）---
 _MISE_MARKER="# Claude-StartUp: mise activate"
-_MISE_LINE='eval "$(~/.local/bin/mise activate bash)"'
-_MISE_ZLINE='eval "$(~/.local/bin/mise activate zsh)"'
+_MISE_BIN="$(command -v mise 2>/dev/null || echo "$HOME/.local/bin/mise")"
+_MISE_LINE="eval \"\$($_MISE_BIN activate bash)\""
+_MISE_ZLINE="eval \"\$($_MISE_BIN activate zsh)\""
 
 for _rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
   [[ -f "$_rc" ]] || continue
