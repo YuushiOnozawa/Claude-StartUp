@@ -198,6 +198,31 @@ if [[ -f "$KRAG_HOOK" ]]; then
   fi
 fi
 
+# session-end-queue hook スクリプトの実行権限を保証し SessionEnd に登録
+KRAG_SEQ_HOOK="$HOME/.claude/hooks/session-end-queue.sh"
+if [[ -f "$KRAG_SEQ_HOOK" ]]; then
+  chmod +x "$KRAG_SEQ_HOOK"
+  ok "session-end-queue hook (chmod)"
+
+  KRAG_SETTINGS="$HOME/.claude/settings.json"
+  if [[ -f "$KRAG_SETTINGS" ]] && command -v jq &>/dev/null; then
+    KRAG_SEQ_CMD="bash -c 'trap \"\" INT TERM; bash ${HOME}/.claude/hooks/session-end-queue.sh 2>> ${HOME}/.claude/hooks/logs/session-end-queue.log'"
+    _krag_tmp="${KRAG_SETTINGS}.tmp"
+    if jq --arg cmd "$KRAG_SEQ_CMD" '
+      .hooks.SessionEnd //= [] |
+      if (.hooks.SessionEnd | map(.hooks[]?.command // "") | any(contains("session-end-queue.sh"))) then .
+      else .hooks.SessionEnd += [{"hooks": [{"type": "command", "command": $cmd}]}]
+      end
+    ' "$KRAG_SETTINGS" > "$_krag_tmp" && mv "$_krag_tmp" "$KRAG_SETTINGS"; then
+      ok "settings.json (SessionEnd: session-end-queue)"
+    else
+      rm -f "$_krag_tmp"
+      fail "settings.json の SessionEnd 更新に失敗"
+      MISSING_CMDS+=("session-end-queue-hook-settings")
+    fi
+  fi
+fi
+
 # check-queue hook スクリプトの実行権限を保証し UserPromptSubmit に登録
 KRAG_CQ_HOOK="$HOME/.claude/hooks/check-queue.sh"
 if [[ -f "$KRAG_CQ_HOOK" ]]; then
