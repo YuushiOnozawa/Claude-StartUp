@@ -54,7 +54,13 @@
       "Read(~/**/rclone.conf)",
       "Edit(~/**/rclone.conf)",
       "Write(~/**/rclone.conf)",
-      "Bash(*rclone.conf*)"
+      "Bash(*rclone.conf*)",
+      "Bash(rclone sync *)",
+      "Bash(rclone delete *)",
+      "Bash(rclone purge *)",
+      "Bash(rclone move *)",
+      "Bash(rclone bisync *)",
+      "Bash(rclone cleanup *)"
     ]
   },
   "effortLevel": "medium",
