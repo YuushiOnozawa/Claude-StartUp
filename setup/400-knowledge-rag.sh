@@ -198,15 +198,20 @@ if [[ -f "$KRAG_HOOK" ]]; then
   fi
 fi
 
-# session-end-queue hook スクリプトの実行権限を保証し SessionEnd に登録
-KRAG_SEQ_HOOK="$HOME/.claude/hooks/session-end-queue.sh"
-if [[ -f "$KRAG_SEQ_HOOK" ]]; then
-  chmod +x "$KRAG_SEQ_HOOK"
-  ok "session-end-queue hook (chmod)"
+# session-end-queue hook スクリプトの配置と SessionEnd への登録
+_KRAG_SEQ_SRC="${KRAG_REPO_DIR}/hooks/session-end-queue.sh"
+_KRAG_SEQ_DST="$HOME/.claude/hooks/session-end-queue.sh"
+if [[ -f "$_KRAG_SEQ_SRC" ]]; then
+  if cp "$_KRAG_SEQ_SRC" "$_KRAG_SEQ_DST" && chmod +x "$_KRAG_SEQ_DST"; then
+    mkdir -p "$HOME/.claude/hooks/logs"
+    ok "session-end-queue hook (配置)"
+  else
+    fail "session-end-queue.sh  →  手動: cp $_KRAG_SEQ_SRC $_KRAG_SEQ_DST"
+  fi
 
   KRAG_SETTINGS="$HOME/.claude/settings.json"
   if [[ -f "$KRAG_SETTINGS" ]] && command -v jq &>/dev/null; then
-    KRAG_SEQ_CMD="bash -c 'trap \"\" INT TERM; bash ${HOME}/.claude/hooks/session-end-queue.sh 2>> ${HOME}/.claude/hooks/logs/session-end-queue.log'"
+    KRAG_SEQ_CMD="bash -c 'trap \"\" INT TERM; bash \"${HOME}/.claude/hooks/session-end-queue.sh\" 2>> \"${HOME}/.claude/hooks/logs/session-end-queue.log\"'"
     _krag_tmp="${KRAG_SETTINGS}.tmp"
     if jq --arg cmd "$KRAG_SEQ_CMD" '
       .hooks.SessionEnd //= [] |
