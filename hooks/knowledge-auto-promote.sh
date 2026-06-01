@@ -7,6 +7,8 @@ set -euo pipefail
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/logging.sh
 source "${HOOK_DIR}/lib/logging.sh"
+# shellcheck source=lib/ollama.sh
+source "${HOOK_DIR}/lib/ollama.sh"
 
 SESSION_FILE="${1:-}"
 [[ -z "$SESSION_FILE" ]] && { log_info "引数なし、スキップ"; exit 0; }
@@ -16,7 +18,7 @@ KNOWLEDGE_DIR="$HOME/pcloud/obsidian/knowledge"
 LLM="$HOME/.local/share/knowledge-rag/venv/bin/llm"
 NOTIFY_FILE="$HOME/.claude/hooks/promote-notifications.jsonl"
 _MODEL_FILE="$HOME/.local/share/knowledge-rag/model"
-_MODEL="$(grep . "$_MODEL_FILE" 2>/dev/null || echo "qwen2.5:3b")"
+_MODEL="$(ollama_best_model "$_MODEL_FILE")"
 
 # pCloud マウント確認
 if ! mountpoint -q "$HOME/pcloud" 2>/dev/null; then
