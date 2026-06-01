@@ -18,6 +18,10 @@ source "${HOOK_DIR}/lib/ollama.sh"
 
 HOOK_NAME="knowledge-distill"
 
+# Ollama 起動確認（スクリプト全体で共有、複数回 curl 実行を防ぐ）
+_OLLAMA_UP=0
+curl -sf --max-time 3 http://localhost:11434/api/tags >/dev/null 2>&1 && _OLLAMA_UP=1
+
 # キューdrain（リトライ実行時はスキップして無限ループを防ぐ）
 if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
   _distill_retry_callback() {
@@ -34,7 +38,7 @@ if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
 
   _drain_count=$(queue_count "$HOOK_NAME" "pending" 2>/dev/null || echo 0)
   _drain_count=$(( _drain_count + $(queue_count "$HOOK_NAME" "pcloud" 2>/dev/null || echo 0) ))
-  if curl -sf --max-time 3 http://localhost:11434/api/tags >/dev/null 2>&1; then
+  if [[ $_OLLAMA_UP -eq 1 ]]; then
     _drain_count=$(( _drain_count + $(queue_count "$HOOK_NAME" "ollama" 2>/dev/null || echo 0) ))
   fi
   if [[ $_drain_count -gt 0 ]]; then
@@ -44,7 +48,7 @@ if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
   queue_drain "$HOOK_NAME" "pending" "_distill_retry_callback"
   queue_drain "$HOOK_NAME" "pcloud" "_distill_retry_callback"
 
-  if curl -sf --max-time 3 http://localhost:11434/api/tags >/dev/null 2>&1; then
+  if [[ $_OLLAMA_UP -eq 1 ]]; then
     queue_drain "$HOOK_NAME" "ollama" "_distill_retry_callback"
   fi
 fi
@@ -155,7 +159,7 @@ mkdir -p "$RAW_DIR"
   || { log_warn "raw log generation failed (non-fatal)"; rm -f "$RAW_FILE"; }
 
 # Check Ollama is running
-if ! curl -sf --max-time 3 http://localhost:11434/api/tags >/dev/null 2>&1; then
+if [[ $_OLLAMA_UP -eq 0 ]]; then
   log_warn "Ollama not running, queuing for retry"
   echo "  ⏳ knowledge-distill: Ollama 未起動 → 保留 ($PROJECT)" >&2
   if queue_push "$HOOK_NAME" "ollama" "$TRANSCRIPT_PATH" "$PROJECT_CWD"; then
