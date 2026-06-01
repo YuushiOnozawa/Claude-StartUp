@@ -11,13 +11,15 @@ QUEUE_BASE_DIR="${HOME}/.claude/hooks/queue"
 source "${HOOK_DIR}/lib/logging.sh" 2>/dev/null || exit 0
 # shellcheck source=lib/queue.sh
 source "${HOOK_DIR}/lib/queue.sh" 2>/dev/null || exit 0
+# shellcheck source=lib/ollama.sh
+source "${HOOK_DIR}/lib/ollama.sh" 2>/dev/null || exit 0
 
 HOOK_NAME="lessons-learned"
 HAIKU_MODEL="claude-haiku-4-5-20251001"
 _KRAG_DIR="${HOME}/.local/share/knowledge-rag"
 _LLM="${_KRAG_DIR}/venv/bin/llm"
 _KRAG_MODEL_FILE="${_KRAG_DIR}/model"
-_DISTILL_MODEL="${KRAG_DISTILL_MODEL:-$(grep . "$_KRAG_MODEL_FILE" 2>/dev/null || echo "qwen2.5:3b")}"
+_DISTILL_MODEL="$(ollama_best_model "$_KRAG_MODEL_FILE")"
 _LL_LOG="${HOME}/.claude/hooks/logs/lessons-learned.log"
 
 # stdin 消費（UserPromptSubmit は JSON を渡してくるが本スクリプトでは不使用）

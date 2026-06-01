@@ -13,6 +13,8 @@ HOOK_DIR="$(dirname "$0")"
 source "${HOOK_DIR}/lib/logging.sh"
 # shellcheck source=lib/queue.sh
 source "${HOOK_DIR}/lib/queue.sh"
+# shellcheck source=lib/ollama.sh
+source "${HOOK_DIR}/lib/ollama.sh"
 
 HOOK_NAME="knowledge-distill"
 
@@ -172,9 +174,9 @@ PROMPT="次の会話から重要な知識を日本語で抽出してください
 会話：
 ${CONVERSATION}"
 
-# 使用モデルを解決（優先順: env var > model ファイル > fallback）
+# 使用モデルを解決（優先順: env var > model ファイル > ollama list 最大モデル > qwen2.5:7b）
 _KRAG_MODEL_FILE="$HOME/.local/share/knowledge-rag/model"
-_DISTILL_MODEL="${KRAG_DISTILL_MODEL:-$(grep . "$_KRAG_MODEL_FILE" 2>/dev/null || echo "qwen2.5:3b")}"
+_DISTILL_MODEL="$(ollama_best_model "$_KRAG_MODEL_FILE")"
 
 _OLLAMA_TMP=$(mktemp)
 trap 'rm -f "$_OLLAMA_TMP"' EXIT
@@ -230,7 +232,7 @@ EOF
 log_info "saved: $OUTPUT_FILE"
 
 # knowledge-rag への自動登録（llm + MCP ツール経由）
-# KRAG_DISTILL_MODEL: 使用モデル（env var > ~/.local/share/knowledge-rag/model > qwen2.5:3b）
+# KRAG_DISTILL_MODEL: 使用モデル（env var > ~/.local/share/knowledge-rag/model > ollama 最大モデル > qwen2.5:7b）
 # KRAG_DISTILL_STRICT: 1 のとき失敗でexit 1（Issue #30 ハイスペックモード連動用）
 LLM="$HOME/.local/share/knowledge-rag/venv/bin/llm"
 if [[ -x "$LLM" ]]; then
