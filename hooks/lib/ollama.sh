@@ -17,22 +17,28 @@ ollama_best_model() {
   fi
 
   # 2. model file
-  if grep -q . "$model_file" 2>/dev/null; then
-    grep . "$model_file"
-    return 0
+  if [[ -f "$model_file" ]]; then
+    local model_name
+    model_name=$(head -n 1 "$model_file" | xargs 2>/dev/null)
+    if [[ -n "$model_name" ]]; then
+      echo "$model_name"
+      return 0
+    fi
   fi
 
   # 3. dynamic: pick the model with the largest size from `ollama list`
   # Output format: NAME  ID  SIZE  UNIT  ...
-  local best
-  best=$(ollama list 2>/dev/null \
-    | tail -n +2 \
-    | awk 'NF>=4 {
-        val = $3 + 0
-        if ($4 == "GB") val *= 1024
-        if (val > max) { max = val; model = $1 }
-      }
-      END { if (model) print model }')
+  local best=""
+  if command -v ollama >/dev/null 2>&1; then
+    best=$(ollama list 2>/dev/null \
+      | tail -n +2 \
+      | awk 'NF>=4 {
+          val = $3 + 0
+          if ($4 == "GB") val *= 1024
+          if (val > max) { max = val; model = $1 }
+        }
+        END { if (model) print model }')
+  fi
 
   if [[ -n "$best" ]]; then
     echo "$best"

@@ -12,7 +12,7 @@ source "${HOOK_DIR}/lib/logging.sh" 2>/dev/null || exit 0
 # shellcheck source=lib/queue.sh
 source "${HOOK_DIR}/lib/queue.sh" 2>/dev/null || exit 0
 # shellcheck source=lib/ollama.sh
-source "${HOOK_DIR}/lib/ollama.sh" 2>/dev/null || true
+source "${HOOK_DIR}/lib/ollama.sh" 2>/dev/null || exit 0
 
 HOOK_NAME="lessons-learned"
 HAIKU_MODEL="claude-haiku-4-5-20251001"
