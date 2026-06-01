@@ -137,7 +137,7 @@ fi
 # settings.json に extraKnownMarketplaces と enabledPlugins を追加する関数
 _lp_update_settings() {
   local f="$1" tmp="${1}.tmp"
-  local _pd _pj _key
+  local _pd _pj _key _pname
 
   # ファイルが存在しない・空の場合は空オブジェクトから生成
   [[ -s "$f" ]] || echo '{}' > "$f"
@@ -153,7 +153,9 @@ _lp_update_settings() {
     [[ -d "$_pd" ]] || continue
     _pj="$_pd/.claude-plugin/plugin.json"
     [[ -f "$_pj" ]] || continue
-    _valid_keys="$(jq --arg k "$(jq -r '.name' "$_pj")@local-skills" '. += [$k]' <<< "$_valid_keys")"
+    _pname="$(jq -r '.name' "$_pj")"
+    [[ -z "$_pname" || "$_pname" == "null" ]] && continue
+    _valid_keys="$(jq --arg k "${_pname}@local-skills" '. += [$k]' <<< "$_valid_keys")"
   done
 
   # @local-skills エントリのうち存在しないものを削除（廃止プラグインの残留防止）
@@ -168,7 +170,9 @@ _lp_update_settings() {
     [[ -d "$_pd" ]] || continue
     _pj="$_pd/.claude-plugin/plugin.json"
     [[ -f "$_pj" ]] || continue
-    _key="$(jq -r '.name' "$_pj")@local-skills"
+    _pname="$(jq -r '.name' "$_pj")"
+    [[ -z "$_pname" || "$_pname" == "null" ]] && continue
+    _key="${_pname}@local-skills"
     jq --arg key "$_key" '.enabledPlugins[$key] //= true' "$f" > "$tmp" && mv "$tmp" "$f" || { rm -f "$tmp"; return 1; }
   done
 }
