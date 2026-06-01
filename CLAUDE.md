@@ -33,3 +33,7 @@
 - 作業中に自分のミスに気づいたら `mcp__knowledge-rag__add_document` を直接呼び出して登録すること
 - filepath: `lessons-learned/YYYY-MM-DD-HHMMSS-<要約>.md`、category: `lessons-learned`
 - フォーマット: 状況 / ミス / 原因 / 解決 / 防止策
+
+## CLAUDE.md の管理方針
+- プロジェクト固有のルール・コンテキストは、そのプロジェクトの `./CLAUDE.md` に追記する（`~/.claude/CLAUDE.md` は変更しない）
+- 個人・マシン固有の設定（ローカルパス等）は `./CLAUDE.local.md`（`.gitignore` 対象）に書く
