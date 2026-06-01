@@ -101,36 +101,44 @@ OLLAMA_MODELS_HIGH=(
 if command -v ollama &>/dev/null; then
   if [[ "${SKIP_OLLAMA_MODEL:-}" == "1" ]]; then
     echo "  ℹ  SKIP_OLLAMA_MODEL=1 のためモデル取得をスキップ"
-  elif ! ollama list &>/dev/null; then
-    fail "ollama model  →  ollama serve を起動してから再実行してください"
-    MISSING_CMDS+=("ollama-model")
   else
-    if [[ "${OLLAMA_TIER:-low}" == "high" ]]; then
-      _OLLAMA_MODELS=("${OLLAMA_MODELS_HIGH[@]}")
-    else
-      _OLLAMA_MODELS=("${OLLAMA_MODELS_LOW[@]}")
+    if ! ollama list &>/dev/null; then
+      echo "  → ollama が応答しないため、バックグラウンドで起動を試みます..."
+      ollama serve &>/dev/null &
+      sleep 3
     fi
 
-    for _model in "${_OLLAMA_MODELS[@]}"; do
-      if ollama list 2>/dev/null | grep -qE "^${_model//./\\.}([[:space:]]|$)"; then
-        ok "ollama model ${_model}"
+    if ! ollama list &>/dev/null; then
+      fail "ollama model  →  ollama serve を起動してから再実行してください"
+      MISSING_CMDS+=("ollama-model")
+    else
+      if [[ "${OLLAMA_TIER:-low}" == "high" ]]; then
+        _OLLAMA_MODELS=("${OLLAMA_MODELS_HIGH[@]}")
       else
-        echo "  → ${_model} をダウンロードします..."
-        echo "    ⚠  大容量ダウンロードです。ネットワーク環境を確認してください。"
-        if ollama pull "${_model}"; then
-          ok "ollama model ${_model} (ダウンロード完了)"
-        else
-          fail "ollama model  →  手動: ollama pull ${_model}"
-          MISSING_CMDS+=("ollama-model")
-        fi
+        _OLLAMA_MODELS=("${OLLAMA_MODELS_LOW[@]}")
       fi
-    done
 
-    # primary model（リスト末尾）を knowledge-distill 用に保存
-    _PRIMARY_MODEL="${_OLLAMA_MODELS[-1]}"
-    mkdir -p "$HOME/.local/share/knowledge-rag"
-    echo "${_PRIMARY_MODEL}" > "$HOME/.local/share/knowledge-rag/model"
-    ok "primary model → ${_PRIMARY_MODEL}"
+      for _model in "${_OLLAMA_MODELS[@]}"; do
+        if ollama list 2>/dev/null | grep -qE "^${_model//./\\.}([[:space:]]|$)"; then
+          ok "ollama model ${_model}"
+        else
+          echo "  → ${_model} をダウンロードします..."
+          echo "    ⚠  大容量ダウンロードです。ネットワーク環境を確認してください。"
+          if ollama pull "${_model}"; then
+            ok "ollama model ${_model} (ダウンロード完了)"
+          else
+            fail "ollama model  →  手動: ollama pull ${_model}"
+            MISSING_CMDS+=("ollama-model")
+          fi
+        fi
+      done
+
+      # primary model（リスト末尾）を knowledge-distill 用に保存
+      _PRIMARY_MODEL="${_OLLAMA_MODELS[-1]}"
+      mkdir -p "$HOME/.local/share/knowledge-rag"
+      echo "${_PRIMARY_MODEL}" > "$HOME/.local/share/knowledge-rag/model"
+      ok "primary model → ${_PRIMARY_MODEL}"
+    fi
   fi
 fi
 
@@ -199,6 +207,7 @@ if [[ -f "$KRAG_HOOK" ]]; then
 fi
 
 # session-end-queue hook スクリプトの配置と SessionEnd への登録
+KRAG_REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 _KRAG_SEQ_SRC="${KRAG_REPO_DIR}/hooks/session-end-queue.sh"
 _KRAG_SEQ_DST="$HOME/.claude/hooks/session-end-queue.sh"
 if [[ -f "$_KRAG_SEQ_SRC" ]]; then

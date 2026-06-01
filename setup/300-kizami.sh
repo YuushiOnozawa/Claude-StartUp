@@ -10,17 +10,17 @@ if ! command -v npm &>/dev/null; then
   return 0
 fi
 
-# Node.js v22+ 確認（pnpm v11 が要求するため）
+# Node.js v24+ 確認（kizami の engines.node 要件）
 _kizami_node_ok=false
 if command -v node &>/dev/null; then
   _node_version="$(node --version 2>/dev/null || echo "")"
   _node_major="${_node_version%%.*}"
   _node_major="${_node_major#v}"
-  if [[ "$_node_major" =~ ^[0-9]+$ ]] && (( _node_major >= 22 )); then
+  if [[ "$_node_major" =~ ^[0-9]+$ ]] && (( _node_major >= 24 )); then
     _kizami_node_ok=true
   else
-    fail "Node.js v22+  →  mise 未設定か失敗。050-mise.sh の出力を確認してください"
-    MISSING_CMDS+=("nodejs-v22")
+    fail "Node.js v24+  →  mise 未設定か失敗。050-mise.sh の出力を確認してください"
+    MISSING_CMDS+=("nodejs-v24")
   fi
 fi
 if [[ "$_kizami_node_ok" != "true" ]]; then
@@ -29,7 +29,7 @@ if [[ "$_kizami_node_ok" != "true" ]]; then
 fi
 
 # --- kizami (長期記憶): 会話履歴の自動保存・recall ---
-if ! command -v pnpm &>/dev/null; then
+if ! pnpm --version &>/dev/null; then
   echo "  → pnpm が未導入。自動インストール: npm install -g pnpm"
   if npm install -g pnpm >/dev/null; then
     ok "pnpm (自動インストール完了)"
@@ -40,7 +40,7 @@ if ! command -v pnpm &>/dev/null; then
 fi
 
 if ! command -v kizami &>/dev/null; then
-  if ! command -v pnpm &>/dev/null; then
+  if ! pnpm --version &>/dev/null; then
     fail "kizami  →  pnpm が必要です。先に pnpm をインストールしてください"
     MISSING_CMDS+=("kizami")
   else
@@ -53,6 +53,7 @@ if ! command -v kizami &>/dev/null; then
       trap 'rm -rf "$KIZAMI_TMP"' EXIT
       git clone https://github.com/okamyuji/kizami.git "$KIZAMI_TMP" &&
       cd "$KIZAMI_TMP" &&
+      node -e "const fs=require('fs'),p=JSON.parse(fs.readFileSync('package.json'));if(p.engines)p.engines.node='>=24';fs.writeFileSync('package.json',JSON.stringify(p,null,2))" &&
       pnpm install &&
       pnpm add sqlite-vec @huggingface/transformers &&
       pnpm build &&
