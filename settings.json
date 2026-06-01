@@ -22,7 +22,8 @@
       "WebFetch(domain:pypi.org)",
       "WebFetch(domain:docs.python.org)",
       "WebFetch(domain:developer.mozilla.org)",
-      "WebFetch(domain:docs.anthropic.com)"
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:x.com)"
     ],
     "deny": [
       "Bash(git push --force*)",
