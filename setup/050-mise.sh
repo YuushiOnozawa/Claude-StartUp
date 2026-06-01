@@ -26,17 +26,17 @@ fi
 # シムディレクトリを現セッション PATH に追加（source 経由なので後続モジュールにも継承）
 export PATH="$HOME/.local/share/mise/shims:$PATH"
 
-# --- node@22 グローバルインストール ---
-if ! mise ls --global 2>/dev/null | grep -q "^node.*22"; then
-  echo "  → mise install node@22..."
-  if mise use -g node@22; then
-    ok "node@22 (mise)"
+# --- node@24 グローバルインストール ---
+if ! mise ls --global 2>/dev/null | grep -q "^node.*24"; then
+  echo "  → mise install node@24..."
+  if mise use -g node@24; then
+    ok "node@24 (mise)"
   else
-    fail "node@22  →  手動: mise use -g node@22"
-    MISSING_CMDS+=("nodejs-v22")
+    fail "node@24  →  手動: mise use -g node@24"
+    MISSING_CMDS+=("nodejs-v24")
   fi
 else
-  ok "node@22 (mise 既存)"
+  ok "node@24 (mise 既存)"
 fi
 
 # --- python@3.11 グローバルインストール ---
