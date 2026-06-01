@@ -29,7 +29,7 @@ if [[ "$_kizami_node_ok" != "true" ]]; then
 fi
 
 # --- kizami (長期記憶): 会話履歴の自動保存・recall ---
-if ! pnpm --version &>/dev/null; then
+if ! command -v pnpm &>/dev/null; then
   echo "  → pnpm が未導入。自動インストール: npm install -g pnpm"
   if npm install -g pnpm >/dev/null; then
     ok "pnpm (自動インストール完了)"
@@ -40,7 +40,7 @@ if ! pnpm --version &>/dev/null; then
 fi
 
 if ! command -v kizami &>/dev/null; then
-  if ! pnpm --version &>/dev/null; then
+  if ! command -v pnpm &>/dev/null; then
     fail "kizami  →  pnpm が必要です。先に pnpm をインストールしてください"
     MISSING_CMDS+=("kizami")
   else

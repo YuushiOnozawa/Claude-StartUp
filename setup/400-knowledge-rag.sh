@@ -105,7 +105,12 @@ if command -v ollama &>/dev/null; then
     if ! ollama list &>/dev/null; then
       echo "  → ollama が応答しないため、バックグラウンドで起動を試みます..."
       ollama serve &>/dev/null &
-      sleep 3
+      for i in {1..15}; do
+        if ollama list &>/dev/null; then
+          break
+        fi
+        sleep 1
+      done
     fi
 
     if ! ollama list &>/dev/null; then
@@ -264,7 +269,6 @@ fi
 
 # config.yaml の自動生成（初回のみ、既存は上書きしない）
 # 生成先は venv 親ディレクトリ (~/.local/share/knowledge-rag/) — KnowledgeOrchestrator が自動発見できる場所
-KRAG_REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 KRAG_CONFIG="$HOME/.local/share/knowledge-rag/config.yaml"
 KRAG_CONFIG_EXAMPLE="$KRAG_REPO_DIR/config.example.yaml"
 
