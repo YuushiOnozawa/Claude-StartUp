@@ -18,6 +18,10 @@ source "${HOOK_DIR}/lib/ollama.sh"
 
 HOOK_NAME="knowledge-distill"
 
+# Ollama 起動確認（スクリプト全体で共有、複数回 curl 実行を防ぐ）
+_OLLAMA_UP=0
+curl -sf --max-time 3 http://localhost:11434/api/tags >/dev/null 2>&1 && _OLLAMA_UP=1
+
 # キューdrain（リトライ実行時はスキップして無限ループを防ぐ）
 if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
   _distill_retry_callback() {
@@ -32,10 +36,21 @@ if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
   }
   _DISTILL_HOOK_DIR="$HOOK_DIR"
 
+  _cnt_pending=$(queue_count "$HOOK_NAME" "pending" 2>/dev/null)
+  _cnt_pcloud=$(queue_count "$HOOK_NAME" "pcloud" 2>/dev/null)
+  _drain_count=$(( ${_cnt_pending:-0} + ${_cnt_pcloud:-0} ))
+  if [[ $_OLLAMA_UP -eq 1 ]]; then
+    _cnt_ollama=$(queue_count "$HOOK_NAME" "ollama" 2>/dev/null)
+    _drain_count=$(( _drain_count + ${_cnt_ollama:-0} ))
+  fi
+  if [[ $_drain_count -gt 0 ]]; then
+    echo "⏳ knowledge-distill: 保留キュー ${_drain_count} 件をリトライ中..." >&2
+  fi
+
   queue_drain "$HOOK_NAME" "pending" "_distill_retry_callback"
   queue_drain "$HOOK_NAME" "pcloud" "_distill_retry_callback"
 
-  if curl -sf --max-time 3 http://localhost:11434/api/tags >/dev/null 2>&1; then
+  if [[ $_OLLAMA_UP -eq 1 ]]; then
     queue_drain "$HOOK_NAME" "ollama" "_distill_retry_callback"
   fi
 fi
@@ -46,6 +61,7 @@ TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
 
 if [[ -z "$TRANSCRIPT_PATH" ]] || [[ ! -f "$TRANSCRIPT_PATH" ]]; then
   log_info "no transcript, skipping"
+  echo "  ℹ knowledge-distill: transcript なし、スキップ" >&2
   exit 0
 fi
 
@@ -73,6 +89,7 @@ CONVERSATION=$(jq -rn '
 
 if [[ -z "$CONVERSATION" ]]; then
   log_info "empty conversation, skipping"
+  echo "  ℹ knowledge-distill: 会話内容なし、スキップ" >&2
   exit 0
 fi
 
@@ -87,6 +104,7 @@ OUTPUT_FILE="${OUTPUT_DIR}/${DATE}-${TIME}-${PROJECT}.md"
 # pCloud マウント確認（マウント管理は systemd サービスの責務）
 if ! mountpoint -q "$HOME/pcloud"; then
   log_error "pCloud not mounted at $HOME/pcloud"
+  echo "  ⏳ knowledge-distill: pCloud 未マウント → 保留 ($PROJECT)" >&2
   if queue_push "$HOOK_NAME" "pcloud" "$TRANSCRIPT_PATH" "$PROJECT_CWD"; then
     log_info "queued for retry: $TRANSCRIPT_PATH"
     queue_notify_send "knowledge-distill" "pCloud 未マウントのため保留中 ($PROJECT)"
@@ -143,8 +161,9 @@ mkdir -p "$RAW_DIR"
   || { log_warn "raw log generation failed (non-fatal)"; rm -f "$RAW_FILE"; }
 
 # Check Ollama is running
-if ! curl -sf --max-time 3 http://localhost:11434/api/tags >/dev/null 2>&1; then
+if [[ $_OLLAMA_UP -eq 0 ]]; then
   log_warn "Ollama not running, queuing for retry"
+  echo "  ⏳ knowledge-distill: Ollama 未起動 → 保留 ($PROJECT)" >&2
   if queue_push "$HOOK_NAME" "ollama" "$TRANSCRIPT_PATH" "$PROJECT_CWD"; then
     log_info "queued for retry (ollama): $TRANSCRIPT_PATH"
     queue_notify_send "knowledge-distill" "Ollama 未起動のため distill を保留中 ($PROJECT)"
@@ -178,6 +197,7 @@ ${CONVERSATION}"
 _KRAG_MODEL_FILE="$HOME/.local/share/knowledge-rag/model"
 _DISTILL_MODEL="$(ollama_best_model "$_KRAG_MODEL_FILE")"
 
+echo "⏳ knowledge-distill: Ollama 推論中 ($_DISTILL_MODEL, 最大 120s)..." >&2
 _OLLAMA_TMP=$(mktemp)
 trap 'rm -f "$_OLLAMA_TMP"' EXIT
 _CURL_EXIT=0
@@ -212,8 +232,10 @@ if [[ $_JQ_EXIT -ne 0 ]]; then
   exit 0
 fi
 
+echo "  → 推論完了" >&2
 if [[ -z "$RESULT" ]] || [[ "$RESULT" == "記録なし" ]]; then
   log_info "no knowledge extracted, skipping"
+  echo "  ℹ knowledge-distill: 知識なし、スキップ ($PROJECT)" >&2
   exit 0
 fi
 
@@ -230,12 +252,14 @@ ${RESULT}
 EOF
 
 log_info "saved: $OUTPUT_FILE"
+echo "✓ knowledge-distill: セッション保存完了 → $(basename "$OUTPUT_FILE")" >&2
 
 # knowledge-rag への自動登録（llm + MCP ツール経由）
 # KRAG_DISTILL_MODEL: 使用モデル（env var > ~/.local/share/knowledge-rag/model > ollama 最大モデル > qwen2.5:7b）
 # KRAG_DISTILL_STRICT: 1 のとき失敗でexit 1（Issue #30 ハイスペックモード連動用）
 LLM="$HOME/.local/share/knowledge-rag/venv/bin/llm"
 if [[ -x "$LLM" ]]; then
+  echo "  → knowledge-rag 登録中..." >&2
   KRAG_MODEL="$_DISTILL_MODEL"
   KRAG_STRICT="${KRAG_DISTILL_STRICT:-0}"
   KRAG_REL="sessions/${DATE}-${TIME}-${PROJECT}.md"
@@ -254,4 +278,8 @@ if [[ -x "$LLM" ]]; then
 fi
 
 # 類似セッション検出 → 自動昇格（knowledge-auto-promote.sh が存在する場合のみ）
-[[ -x "${HOOK_DIR}/knowledge-auto-promote.sh" ]] && "${HOOK_DIR}/knowledge-auto-promote.sh" "$OUTPUT_FILE" >>"$_HOOK_LOG" 2>&1 || true
+if [[ -x "${HOOK_DIR}/knowledge-auto-promote.sh" ]]; then
+  echo "  → セッション昇格チェック中..." >&2
+  "${HOOK_DIR}/knowledge-auto-promote.sh" "$OUTPUT_FILE" >>"$_HOOK_LOG" 2>&1 || true
+fi
+wait  # tee プロセス（2> >(tee -a ...) による非同期バックグラウンド）の完了を待つ
