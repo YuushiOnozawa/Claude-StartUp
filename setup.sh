@@ -62,6 +62,23 @@ ensure_local_bin_in_path() {
   esac
 }
 
+ensure_autocompact_in_rc() {
+  local rc
+  case "$(basename "${SHELL:-/bin/bash}")" in
+    zsh)  rc="$HOME/.zshrc" ;;
+    bash) rc="$HOME/.bashrc" ;;
+    *)    rc="$HOME/.profile" ;;
+  esac
+  if ! { [[ -f "$rc" ]] && grep -q 'Claude-StartUp: autocompact' "$rc"; }; then
+    {
+      echo ''
+      echo '# Claude-StartUp: autocompact'
+      echo 'export CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=75'
+    } >> "$rc"
+    echo "  ℹ  $rc に CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=75 を書き込みました"
+  fi
+}
+
 check_package() {
   local label="$1" pm="$2"
   shift 2
