@@ -18,6 +18,9 @@ else
   ensure_local_bin_in_path
 fi
 
+# CLAUDE_AUTOCOMPACT_PCT_OVERRIDE をシェル設定に追加 (冪等)
+ensure_autocompact_in_rc
+
 # RTK hook と RTK.md の初期化 (冪等)
 if command -v rtk &>/dev/null; then
   echo "  → rtk init -g --auto-patch で hook と RTK.md を初期化..."

@@ -45,7 +45,7 @@ if [[ -n "$KRAG_PYTHON_CMD" ]]; then
       "$KRAG_VENV/bin/pip" install --quiet --upgrade pip 2>/dev/null || true
       ok "venv 作成完了"
     else
-      fail "venv 作成失敗  →  apt install python3-venv が必要かもしれません"
+      fail "venv 作成失敗  →  050-mise.sh で Python が正しく導入されているか確認してください"
       MISSING_CMDS+=("knowledge-rag-venv")
     fi
   fi
@@ -216,7 +216,10 @@ KRAG_REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 _KRAG_SEQ_SRC="${KRAG_REPO_DIR}/hooks/session-end-queue.sh"
 _KRAG_SEQ_DST="$HOME/.claude/hooks/session-end-queue.sh"
 if [[ -f "$_KRAG_SEQ_SRC" ]]; then
-  if cp "$_KRAG_SEQ_SRC" "$_KRAG_SEQ_DST" && chmod +x "$_KRAG_SEQ_DST"; then
+  if [[ "$_KRAG_SEQ_SRC" -ef "$_KRAG_SEQ_DST" ]]; then
+    mkdir -p "$HOME/.claude/hooks/logs"
+    ok "session-end-queue hook (配置済み)"
+  elif cp "$_KRAG_SEQ_SRC" "$_KRAG_SEQ_DST" && chmod +x "$_KRAG_SEQ_DST"; then
     mkdir -p "$HOME/.claude/hooks/logs"
     ok "session-end-queue hook (配置)"
   else
@@ -322,7 +325,9 @@ fi
 _KRAG_PROMOTE_SRC="${KRAG_REPO_DIR}/hooks/knowledge-auto-promote.sh"
 _KRAG_PROMOTE_DST="$HOME/.claude/hooks/knowledge-auto-promote.sh"
 if [[ -f "$_KRAG_PROMOTE_SRC" ]]; then
-  if cp "$_KRAG_PROMOTE_SRC" "$_KRAG_PROMOTE_DST" && chmod +x "$_KRAG_PROMOTE_DST"; then
+  if [[ "$_KRAG_PROMOTE_SRC" -ef "$_KRAG_PROMOTE_DST" ]]; then
+    ok "knowledge-auto-promote.sh (配置済み)"
+  elif cp "$_KRAG_PROMOTE_SRC" "$_KRAG_PROMOTE_DST" && chmod +x "$_KRAG_PROMOTE_DST"; then
     ok "knowledge-auto-promote.sh"
   else
     fail "knowledge-auto-promote.sh  →  手動: cp $_KRAG_PROMOTE_SRC $_KRAG_PROMOTE_DST"
@@ -333,7 +338,9 @@ fi
 _KRAG_PRUNE_SRC="${KRAG_REPO_DIR}/hooks/knowledge-prune.sh"
 _KRAG_PRUNE_DST="$HOME/.claude/hooks/knowledge-prune.sh"
 if [[ -f "$_KRAG_PRUNE_SRC" ]]; then
-  if cp "$_KRAG_PRUNE_SRC" "$_KRAG_PRUNE_DST" && chmod +x "$_KRAG_PRUNE_DST"; then
+  if [[ "$_KRAG_PRUNE_SRC" -ef "$_KRAG_PRUNE_DST" ]]; then
+    ok "knowledge-prune.sh (配置済み)"
+  elif cp "$_KRAG_PRUNE_SRC" "$_KRAG_PRUNE_DST" && chmod +x "$_KRAG_PRUNE_DST"; then
     ok "knowledge-prune.sh (配置)"
   else
     fail "knowledge-prune.sh  →  手動: cp $_KRAG_PRUNE_SRC $_KRAG_PRUNE_DST"
