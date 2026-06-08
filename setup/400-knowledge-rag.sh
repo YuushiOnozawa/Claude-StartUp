@@ -40,23 +40,12 @@ if [[ -n "$KRAG_PYTHON_CMD" ]]; then
 
   if [[ ! -d "$KRAG_VENV" ]]; then
     echo "  → venv 作成: $KRAG_VENV"
-    # python3-venv モジュール確認 (未インストールなら apt で自動インストール)
-    if ! "$KRAG_PYTHON_CMD" -c "import venv" 2>/dev/null; then
-      _KRAG_PY_VER="$("$KRAG_PYTHON_CMD" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
-      echo "  → python${_KRAG_PY_VER}-venv が未インストール。apt でインストールを試みます..."
-      if sudo apt-get install -y -qq "python${_KRAG_PY_VER}-venv" 2>/dev/null; then
-        ok "python${_KRAG_PY_VER}-venv (apt install)"
-      else
-        fail "python3-venv  →  sudo apt install python${_KRAG_PY_VER}-venv が必要です"
-        MISSING_CMDS+=("python3-venv")
-      fi
-    fi
     mkdir -p "$(dirname "$KRAG_VENV")"
     if "$KRAG_PYTHON_CMD" -m venv "$KRAG_VENV"; then
       "$KRAG_VENV/bin/pip" install --quiet --upgrade pip 2>/dev/null || true
       ok "venv 作成完了"
     else
-      fail "venv 作成失敗  →  apt install python3-venv が必要かもしれません"
+      fail "venv 作成失敗  →  050-mise.sh で Python が正しく導入されているか確認してください"
       MISSING_CMDS+=("knowledge-rag-venv")
     fi
   fi
