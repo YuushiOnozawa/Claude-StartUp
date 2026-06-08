@@ -194,7 +194,7 @@ if [[ -f "$KRAG_HOOK" ]]; then
   # settings.json の SessionEnd に未登録なら追加
   KRAG_SETTINGS="$HOME/.claude/settings.json"
   if [[ -f "$KRAG_SETTINGS" ]] && command -v jq &>/dev/null; then
-    KRAG_HOOK_CMD="bash -c 'trap \"\" INT TERM; bash ${HOME}/.claude/hooks/knowledge-distill.sh 2>> ${HOME}/.claude/hooks/knowledge-distill.log'"
+    KRAG_HOOK_CMD="bash -c 'trap \"\" INT TERM; bash ${HOME}/.claude/hooks/knowledge-distill.sh 2> >(tee -a ${HOME}/.claude/hooks/knowledge-distill.log >&2)'"
     _krag_tmp="${KRAG_SETTINGS}.tmp"
     if jq --arg cmd "$KRAG_HOOK_CMD" '
       .hooks.SessionEnd //= [] |
