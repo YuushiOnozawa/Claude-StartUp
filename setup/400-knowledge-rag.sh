@@ -40,6 +40,17 @@ if [[ -n "$KRAG_PYTHON_CMD" ]]; then
 
   if [[ ! -d "$KRAG_VENV" ]]; then
     echo "  → venv 作成: $KRAG_VENV"
+    # python3-venv モジュール確認 (未インストールなら apt で自動インストール)
+    if ! "$KRAG_PYTHON_CMD" -c "import venv" 2>/dev/null; then
+      _KRAG_PY_VER="$("$KRAG_PYTHON_CMD" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+      echo "  → python${_KRAG_PY_VER}-venv が未インストール。apt でインストールを試みます..."
+      if sudo apt-get install -y -qq "python${_KRAG_PY_VER}-venv" 2>/dev/null; then
+        ok "python${_KRAG_PY_VER}-venv (apt install)"
+      else
+        fail "python3-venv  →  sudo apt install python${_KRAG_PY_VER}-venv が必要です"
+        MISSING_CMDS+=("python3-venv")
+      fi
+    fi
     mkdir -p "$(dirname "$KRAG_VENV")"
     if "$KRAG_PYTHON_CMD" -m venv "$KRAG_VENV"; then
       "$KRAG_VENV/bin/pip" install --quiet --upgrade pip 2>/dev/null || true
@@ -216,7 +227,10 @@ KRAG_REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 _KRAG_SEQ_SRC="${KRAG_REPO_DIR}/hooks/session-end-queue.sh"
 _KRAG_SEQ_DST="$HOME/.claude/hooks/session-end-queue.sh"
 if [[ -f "$_KRAG_SEQ_SRC" ]]; then
-  if cp "$_KRAG_SEQ_SRC" "$_KRAG_SEQ_DST" && chmod +x "$_KRAG_SEQ_DST"; then
+  if [[ "$_KRAG_SEQ_SRC" -ef "$_KRAG_SEQ_DST" ]]; then
+    mkdir -p "$HOME/.claude/hooks/logs"
+    ok "session-end-queue hook (配置済み)"
+  elif cp "$_KRAG_SEQ_SRC" "$_KRAG_SEQ_DST" && chmod +x "$_KRAG_SEQ_DST"; then
     mkdir -p "$HOME/.claude/hooks/logs"
     ok "session-end-queue hook (配置)"
   else
@@ -322,7 +336,9 @@ fi
 _KRAG_PROMOTE_SRC="${KRAG_REPO_DIR}/hooks/knowledge-auto-promote.sh"
 _KRAG_PROMOTE_DST="$HOME/.claude/hooks/knowledge-auto-promote.sh"
 if [[ -f "$_KRAG_PROMOTE_SRC" ]]; then
-  if cp "$_KRAG_PROMOTE_SRC" "$_KRAG_PROMOTE_DST" && chmod +x "$_KRAG_PROMOTE_DST"; then
+  if [[ "$_KRAG_PROMOTE_SRC" -ef "$_KRAG_PROMOTE_DST" ]]; then
+    ok "knowledge-auto-promote.sh (配置済み)"
+  elif cp "$_KRAG_PROMOTE_SRC" "$_KRAG_PROMOTE_DST" && chmod +x "$_KRAG_PROMOTE_DST"; then
     ok "knowledge-auto-promote.sh"
   else
     fail "knowledge-auto-promote.sh  →  手動: cp $_KRAG_PROMOTE_SRC $_KRAG_PROMOTE_DST"
@@ -333,7 +349,9 @@ fi
 _KRAG_PRUNE_SRC="${KRAG_REPO_DIR}/hooks/knowledge-prune.sh"
 _KRAG_PRUNE_DST="$HOME/.claude/hooks/knowledge-prune.sh"
 if [[ -f "$_KRAG_PRUNE_SRC" ]]; then
-  if cp "$_KRAG_PRUNE_SRC" "$_KRAG_PRUNE_DST" && chmod +x "$_KRAG_PRUNE_DST"; then
+  if [[ "$_KRAG_PRUNE_SRC" -ef "$_KRAG_PRUNE_DST" ]]; then
+    ok "knowledge-prune.sh (配置済み)"
+  elif cp "$_KRAG_PRUNE_SRC" "$_KRAG_PRUNE_DST" && chmod +x "$_KRAG_PRUNE_DST"; then
     ok "knowledge-prune.sh (配置)"
   else
     fail "knowledge-prune.sh  →  手動: cp $_KRAG_PRUNE_SRC $_KRAG_PRUNE_DST"
