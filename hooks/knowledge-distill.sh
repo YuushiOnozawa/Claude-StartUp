@@ -36,10 +36,12 @@ if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
   }
   _DISTILL_HOOK_DIR="$HOOK_DIR"
 
-  _drain_count=$(queue_count "$HOOK_NAME" "pending" 2>/dev/null || echo 0)
-  _drain_count=$(( _drain_count + $(queue_count "$HOOK_NAME" "pcloud" 2>/dev/null || echo 0) ))
+  _cnt_pending=$(queue_count "$HOOK_NAME" "pending" 2>/dev/null)
+  _cnt_pcloud=$(queue_count "$HOOK_NAME" "pcloud" 2>/dev/null)
+  _drain_count=$(( ${_cnt_pending:-0} + ${_cnt_pcloud:-0} ))
   if [[ $_OLLAMA_UP -eq 1 ]]; then
-    _drain_count=$(( _drain_count + $(queue_count "$HOOK_NAME" "ollama" 2>/dev/null || echo 0) ))
+    _cnt_ollama=$(queue_count "$HOOK_NAME" "ollama" 2>/dev/null)
+    _drain_count=$(( _drain_count + ${_cnt_ollama:-0} ))
   fi
   if [[ $_drain_count -gt 0 ]]; then
     echo "⏳ knowledge-distill: 保留キュー ${_drain_count} 件をリトライ中..." >&2
@@ -280,3 +282,4 @@ if [[ -x "${HOOK_DIR}/knowledge-auto-promote.sh" ]]; then
   echo "  → セッション昇格チェック中..." >&2
   "${HOOK_DIR}/knowledge-auto-promote.sh" "$OUTPUT_FILE" >>"$_HOOK_LOG" 2>&1 || true
 fi
+wait  # tee プロセス（2> >(tee -a ...) による非同期バックグラウンド）の完了を待つ
