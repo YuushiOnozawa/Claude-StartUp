@@ -61,9 +61,9 @@ On approval: call `ExitPlanMode`. Proceed to Phase 3.
 Create a GitHub Issue for each Feature:
 
 ```bash
-ISSUE_URL=$(gh issue create \
+ISSUE_URL=$(cat <<'EOF' | gh issue create \
   --title "feat(<name>): <日本語タイトル>" \
-  --body "$(cat <<'EOF'
+  --body-file -
 ## 概要
 [Feature の説明]
 
@@ -73,7 +73,7 @@ ISSUE_URL=$(gh issue create \
 ## 受け入れ条件
 - [ ] ...
 EOF
-)")
+)
 ISSUE_NUM=$(echo "$ISSUE_URL" | grep -oE '[0-9]+$')
 ```
 

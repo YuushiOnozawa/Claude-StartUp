@@ -77,8 +77,8 @@ If available, ask the user:
 
 ```
 worktree を作成しますか（並列開発用の独立した作業ディレクトリ）？
-- **worktree / w** → new-worktree feat/<機能名> で作成
-- **branch / b** → 通常のブランチ切り替え（git checkout -b feat/<機能名>）
+- **worktree / w** → new-worktree feat/<feature-name> で作成
+- **branch / b** → 通常のブランチ切り替え（git checkout -b feat/<feature-name>）
 ```
 
 ### If `new-worktree` is not available
@@ -127,7 +127,7 @@ git push -u origin <branch>
 2. Create PR (generate title and body from changes):
 
 ```bash
-PR_URL=$(gh pr create --title "<type>(<scope>): <日本語タイトル>" --body "$(cat <<'EOF'
+PR_URL=$(cat <<'EOF' | gh pr create --title "<type>(<scope>): <日本語タイトル>" --body-file -
 ## 概要
 [変更内容の 1〜3 行サマリー]
 
@@ -139,7 +139,7 @@ PR_URL=$(gh pr create --title "<type>(<scope>): <日本語タイトル>" --body 
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
-)")
+)
 ```
 
 3. Present `$PR_URL` to the user.
