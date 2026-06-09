@@ -40,8 +40,12 @@ pull_model() {
     return
   fi
   echo "[PULL] $model ..."
-  ollama pull "$model"
-  echo "[DONE] $model"
+  if ollama pull "$model"; then
+    echo "[DONE] $model"
+  else
+    echo "[ERROR] $model のダウンロードに失敗しました"
+    return 1
+  fi
 }
 
 echo "=== Magi Fast/Hard 共用モデル ==="

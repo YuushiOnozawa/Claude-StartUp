@@ -1,7 +1,7 @@
 ---
 name: casper
 description: >
-  設計・アーキテクチャ・外部ライブラリ公開API準拠の観点でレビューを行うエージェント（MAGI CASPER）。
+  ルール遵守・CLAUDE.md準拠の観点でレビューを行うエージェント（MAGI CASPER）。
   Trigger: "ルール遵守チェック", "CLAUDE.md準拠チェック", "casper", "CASPER", "Casper"
 tools: Read, Glob, Grep, Bash
 model: haiku
