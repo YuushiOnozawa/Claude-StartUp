@@ -7,7 +7,7 @@ set -uo pipefail
 # Fast/Hard 共用（7B、コード特化）
 MODELS_SHARED=(
   "qwen2.5-coder:7b"
-  "granite4:7b-a1b-h"
+  "llama3.1:8b"
 )
 
 # Hard 専用（高品質・重め）
@@ -18,6 +18,7 @@ MODELS_HARD=(
 )
 
 # 導入済み（スキップ）: qwen2.5:7b, qwen2.5:3b
+# CASPER用: granite4:7b-a1b-h → llama3.1:8b に変更（Issue #137: granite4が指示追従不可）
 
 # --- オプション ---
 SKIP_HARD=0
