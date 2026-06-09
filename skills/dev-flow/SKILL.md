@@ -90,7 +90,7 @@ git branch --show-current
 ### `new-worktree` が利用可能な場合（Issue #53）
 
 ```bash
-which new-worktree 2>/dev/null
+command -v new-worktree > /dev/null 2>&1
 ```
 
 利用可能であれば、ユーザーに確認する：
@@ -148,7 +148,7 @@ git push -u origin <branch>
 2. PR を作成（タイトル・本文は変更内容から生成）：
 
 ```bash
-gh pr create --title "<type>(<scope>): <日本語タイトル>" --body "$(cat <<'EOF'
+PR_URL=$(gh pr create --title "<type>(<scope>): <日本語タイトル>" --body "$(cat <<'EOF'
 ## 概要
 [変更内容の 1〜3 行サマリー]
 
@@ -160,10 +160,10 @@ gh pr create --title "<type>(<scope>): <日本語タイトル>" --body "$(cat <<
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
-)"
+)")
 ```
 
-3. PR URL をユーザーに提示する。
+3. `$PR_URL` をユーザーに提示する。
 
 ---
 
