@@ -6,7 +6,7 @@ description: MAGI MELCHIOR（コード品質・バグ観点）でコードをレ
 # MELCHIOR スキル
 
 MAGI MELCHIOR（科学者）の観点でコードをレビューする。
-Ollama `qwen2.5:7b` が利用可能な場合はそちらを使い、なければ Haiku にフォールバックする。
+Ollama `qwen2.5-coder:7b` が利用可能な場合はそちらを使い、なければ Haiku にフォールバックする。
 
 ## 実行手順
 
@@ -23,16 +23,16 @@ Ollama `qwen2.5:7b` が利用可能な場合はそちらを使い、なければ
 Bash で以下を確認する：
 
 ```bash
-ollama list 2>/dev/null | grep -q "qwen2.5:7b"
+ollama list 2>/dev/null | grep -q "qwen2.5-coder:7b"
 ```
 
 #### Ollama が使える場合（High スペック）
 
-取得した差分を以下のシステムプロンプトと合わせて `ollama run qwen2.5:7b` に渡す：
+取得した差分を以下のシステムプロンプトと合わせて `ollama run qwen2.5-coder:7b` に渡す：
 
 ```bash
 printf "あなたは MAGI MELCHIOR です。バグを見逃さない実直な審査官として、コード品質・バグの観点のみでコードをレビューします。\n\nレビュー観点: バグ・ロジックエラー / エッジケース・境界値 / 副作用・競合 / リソースリーク / コード重複・複雑さ\n\n出力形式:\n## MELCHIOR レビュー（コード品質・バグ）\n### [HIGH/MEDIUM/LOW] ファイルパス:行番号 — 見出し\n説明と改善提案\n## 品質評価\n全体評価（指摘がなければ「指摘事項なし」と明記）\n\n設計・アーキテクチャ・セキュリティは守備範囲外。\n\n---レビュー対象---\n%s" "$DIFF" \
-  | ollama run qwen2.5:7b
+  | ollama run qwen2.5-coder:7b
 ```
 
 #### Ollama が使えない場合（Haiku fallback）
@@ -48,7 +48,7 @@ printf "あなたは MAGI MELCHIOR です。バグを見逃さない実直な審
 プロンプトには以下を含める：
 - `agents/melchior.md` の全内容（ペルソナ・レビュー手順・出力形式）
 - レビュー対象のコード全文または差分
-- ファイルパスとプロジェクトの概要（CLAUDE.md があれば読み込む）
+- ファイルパスとプロジェクトの概要（`CLAUDE.md`・`CLAUDE.local.md` があれば読み込む）
 - 「上記の MELCHIOR ペルソナに従い、コード品質・バグの観点でレビューしてください」という指示
 
 ### ステップ 3: 結果の表示
