@@ -5,7 +5,7 @@ description: PR review feedback response cycle skill. Use this skill EVERY TIME 
 
 # Review-Respond Skill
 
-PR に新しく付いたレビューコメント (Gemini / 人間) を取り込み、code-reviewer に第 2 意見を求め、ユーザー承認の上で実装・コミット・push・返信までを 1 サイクルで完結させる。
+PR に新しく付いたレビューコメント（人間レビュアー）を取り込み、Haiku に第 2 意見を求め、ユーザー承認の上で実装・コミット・push・返信までを 1 サイクルで完結させる。
 
 ## 事前条件
 
@@ -29,16 +29,22 @@ gh pr view --json number,headRefName,baseRefName,url
 
 ## ステップ 2: 新規レビューコメント取得
 
-### PR レビューサマリ（全体コメント）の取得
+自分のログインを先に取得する：
+
+```bash
+MY_LOGIN=$(gh api user --jq .login)
+```
+
+### (A) 人間レビュアーのコメント取得
+
+PR レビューサマリ（全体コメント）:
 
 ```bash
 gh api repos/$OWNER/$REPO/pulls/$PR_NUM/reviews \
   --jq '.[] | select(.user.login != "YuushiOnozawa") | {id, user: .user.login, state, submitted_at, body}'
 ```
 
-### 行別コメント (inline review) の取得
-
-自分の最新返信以降のコメントを対象に絞る:
+行別コメント（自分の最終返信以降のもの）:
 
 ```bash
 gh api repos/$OWNER/$REPO/pulls/$PR_NUM/comments \
@@ -46,17 +52,40 @@ gh api repos/$OWNER/$REPO/pulls/$PR_NUM/comments \
 ```
 
 抽出ルール:
-- 自分 (`gh api user --jq .login` で取得) の最終返信コメントの `created_at` より後のコメント
-- かつ bot (`gemini-code-assist[bot]` 等) または他の reviewer のもの
+- 自分 (`$MY_LOGIN`) の最終返信コメントの `created_at` より後のコメント
+- かつ人間レビュアーのコメント（自分以外、かつ MAGI コメントでない）
 - `in_reply_to_id` が既に返信済みのものは除外してよい
 
-取得結果を Claude のコンテキストに保存し、ユーザーにも要約を提示する (指摘ラベル: 前回採番の続き / 例: 指摘 H, I, J...)。
+### (B) MAGI インラインコメントの取得
 
-未対応の指摘が 0 件なら「新規指摘なし」と報告して終了。
+magi-hard が投稿したインラインコメント（未対応のもの）を取得する：
+
+```bash
+gh api repos/$OWNER/$REPO/pulls/$PR_NUM/comments \
+  --jq '[.[] | select(.body | startswith("[MAGI-HARD]")) | select(.in_reply_to_id == null)] | .[] | {id, path, line, created_at, body}'
+```
+
+さらに、それぞれのコメントに「自分の返信が既にあるか」を確認し、返信済みのものは除外する：
+
+```bash
+# 返信済みコメント ID の一覧（in_reply_to_id が MAGI コメント ID と一致するもの）
+gh api repos/$OWNER/$REPO/pulls/$PR_NUM/comments \
+  --jq '[.[] | select(.user.login == "'$MY_LOGIN'") | .in_reply_to_id] | map(tostring)'
+```
+
+未返信の MAGI 指摘を `$MAGI_FINDINGS` として保持する。
+
+### 取得結果の整理
+
+両方のコメントを統合し、ユーザーに要約を提示する：
+- 人間レビュアー指摘: アルファベットラベル（前回採番の続き、例: 指摘 H, I, J...）
+- MAGI 指摘: M-1, M-2... のラベルで区別する
+
+未対応の指摘が合計 0 件なら「新規指摘なし」と報告して終了。
 
 ## ステップ 3: code-reviewer への委譲
 
-取得した指摘全件を **code-reviewer サブエージェント** (`Agent(subagent_type=code-reviewer)`) に渡す。プロンプトには必ず以下を含める:
+取得した指摘全件を **Haiku サブエージェント** (`Agent(subagent_type="general-purpose", model="haiku")`) に渡す。プロンプトには必ず以下を含める:
 
 1. PR 番号と URL
 2. 前回までの対応経緯 (直近 2〜3 コミット分のメッセージ) ← `git log --oneline -5` から抽出
@@ -111,21 +140,43 @@ force push は禁止。失敗する場合は `git pull --rebase` を検討する
 
 ## ステップ 9: 返信 POST
 
-**採否に関わらず全指摘に返信する**。GitHub の review スレッドに対する返信は以下:
+**採否に関わらず全指摘に返信する**（人間レビュアー・MAGI 両方）。
+
+### 返信コマンド（共通）
 
 ```bash
 gh api -X POST repos/$OWNER/$REPO/pulls/$PR_NUM/comments/$COMMENT_ID/replies \
-  -f body="@$REVIEWER_HANDLE
-
-<日本語の返信本文>" \
+  -f body="<返信本文>" \
   --jq '.html_url'
 ```
 
-返信本文の原則:
+### 人間レビュアーへの返信
+
+```
+@$REVIEWER_HANDLE
+
+<日本語の返信本文>
+```
+
+### MAGI インラインコメントへの返信
+
+MAGI 指摘（M-1, M-2...）は対応完了・却下を問わず返信する（スレッドの Resolve はユーザーが手動で行う）：
+
+```
+✅ 対応済み（$COMMIT_HASH）: <何をどう修正したか>
+```
+
+または却下の場合：
+
+```
+⏭️ 見送り: <理由を明記>
+```
+
+### 返信本文の原則（共通）
+
 - 採用の場合: 何をどう対応したか + コミットハッシュ
 - 却下の場合: 理由を明記 (技術的根拠 / 過去指摘への言及 / ユーザー意向)
 - 代替案採用の場合: 元提案との違いと理由
-- ボット宛は `@gemini-code-assist` など正しいハンドルを使う
 - 日本語 (人間 reviewer が英語ネイティブなら英語可)
 
 同一コメントに複数指摘が含まれる場合は 1 返信にまとめる。
