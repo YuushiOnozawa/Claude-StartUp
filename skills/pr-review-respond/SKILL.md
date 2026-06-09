@@ -160,7 +160,7 @@ gh api -X POST repos/$OWNER/$REPO/pulls/$PR_NUM/comments/$COMMENT_ID/replies \
 
 ### MAGI インラインコメントへの返信
 
-MAGI 指摘（M-1, M-2...）は対応完了・却下を問わず返信してスレッドを閉じる：
+MAGI 指摘（M-1, M-2...）は対応完了・却下を問わず返信する（スレッドの Resolve はユーザーが手動で行う）：
 
 ```
 ✅ 対応済み（$COMMIT_HASH）: <何をどう修正したか>
