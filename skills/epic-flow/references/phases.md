@@ -24,15 +24,15 @@ Analyze the user's request for design readiness.
 0. このまま設計に進む
 ```
 
-| 観点 | 確認内容の例 |
-|------|------------|
-| 目的・ユーザー | 誰が使う？どんな問題を解決する？ |
-| スコープ | 何を含み、何を含まない？ |
-| 統合 | 既存の何と連携する？ |
-| 制約 | 技術スタック・壊せないもの・締め切り |
-| 受け入れ条件 | どうなれば「完成」か？ ✓/✗ の形で（テスト観点） |
+| Area | Examples |
+|------|----------|
+| Goal / Users | Who uses it? What problem does it solve? |
+| Scope | What is in and out of scope? |
+| Integration | What existing systems does it connect to? |
+| Constraints | Tech stack, things that must not break, deadlines |
+| Acceptance criteria | What does "done" look like? (✓/✗ format, test perspective) |
 
-After answers: output a 1–2 line summary confirming understanding. Hold as `$CLARIFY_NOTES`.
+After answers (or if skipped / user chose 0): output a 1–2 line summary confirming understanding (or summarize the initial request). Hold as `$CLARIFY_NOTES`.
 
 ---
 
@@ -40,7 +40,7 @@ After answers: output a 1–2 line summary confirming understanding. Hold as `$C
 
 Call `EnterPlanMode`. Create an Epic design containing:
 
-1. **Requirements** — what, why, for whom（`$CLARIFY_NOTES` を反映）
+1. **Requirements** — what, why, for whom (incorporate `$CLARIFY_NOTES`)
 2. **Feature decomposition** — split into independently releasable Feature units (numbered list)
    - Attach a `feat/<name>` branch name proposal to each Feature
    - State dependencies and recommended implementation order

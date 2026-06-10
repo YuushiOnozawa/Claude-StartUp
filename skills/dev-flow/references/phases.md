@@ -22,15 +22,15 @@ Analyze the user's request for design readiness.
 0. このまま設計に進む
 ```
 
-| 観点 | 確認内容の例 |
-|------|------------|
-| 目的・ユーザー | 誰が使う？どんな問題を解決する？ |
-| スコープ | 何を含み、何を含まない？ |
-| 統合 | 既存の何と連携する？ |
-| 制約 | 技術スタック・壊せないもの・締め切り |
-| 受け入れ条件 | どうなれば「完成」か？ ✓/✗ の形で（テスト観点） |
+| Area | Examples |
+|------|----------|
+| Goal / Users | Who uses it? What problem does it solve? |
+| Scope | What is in and out of scope? |
+| Integration | What existing systems does it connect to? |
+| Constraints | Tech stack, things that must not break, deadlines |
+| Acceptance criteria | What does "done" look like? (✓/✗ format, test perspective) |
 
-After answers: output a 1–2 line summary confirming understanding. Hold as `$CLARIFY_NOTES`.
+After answers (or if skipped / user chose 0): output a 1–2 line summary confirming understanding (or summarize the initial request). Hold as `$CLARIFY_NOTES`.
 
 ---
 
@@ -38,9 +38,9 @@ After answers: output a 1–2 line summary confirming understanding. Hold as `$C
 
 Call `EnterPlanMode`. Create a design plan containing:
 
-1. **Requirements** — what, why, for whom（`$CLARIFY_NOTES` を反映）
-2. **Spec summary** — 各機能・振る舞いの仕様（箇条書き）
-3. **Test scenarios** — 受け入れテストシナリオ（自然言語で ✓/✗ 形式）
+1. **Requirements** — what, why, for whom (incorporate `$CLARIFY_NOTES`)
+2. **Spec summary** — bullet-point list of each feature and behavior
+3. **Test scenarios** — acceptance test scenarios in natural language (✓/✗ format)
 4. **Implementation approach** — architecture, technology choices, key design decisions
 5. **Affected files** — files to create, modify, or delete
 6. **Implementation steps** — numbered concrete steps
@@ -130,18 +130,18 @@ Auto-generate the branch name from requirements (English, kebab-case).
 
 ## Phase 4: IMPL
 
-### Step 0: テストを先に書く（TDD）
+### Step 0: Write tests first (TDD)
 
-`$PLAN` の **Test scenarios** をもとに、実装前にテストファイルを作成する。
+Based on `$PLAN` **Test scenarios**, create test files before implementation.
 
-- テストが失敗することを確認（Red）してから実装に入る
-- テストが存在しない / 書けないケースは理由を記録してスキップ可
+- Confirm tests fail (Red) before starting implementation
+- If tests cannot be written, record the reason in a code comment or commit message and skip
 
-### Step 1: 実装
+### Step 1: Implement
 
-テストが通るよう、承認されたプランのステップを順番に実行する（Green）。
+Execute the approved plan steps in order until all tests pass (Green).
 
-### Step 2: 確認
+### Step 2: Verify
 
 - Run `git status` to verify changed files
 - Display a diff summary with `git diff`
