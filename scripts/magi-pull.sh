@@ -12,7 +12,7 @@ MODELS_SHARED=(
 
 # Hard 専用（高品質・重め）
 MODELS_HARD=(
-  "phi4"
+  "phi4:latest"
   "deepseek-r1:8b"
   "qwen3:8b"
 )

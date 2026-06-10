@@ -7,7 +7,7 @@ argument-hint: "<ファイルパス または差分>"
 # BALTHASAR スキル
 
 MAGI BALTHASAR（設計哲学者）の観点でコードをレビューする。
-Ollama `phi4` が利用可能な場合はそちらを使い、なければ Haiku にフォールバックする。
+Ollama `phi4:latest` が利用可能な場合はそちらを使い、なければ Haiku にフォールバックする。
 
 詳細仕様は以下を参照：
 - `references/review-criteria.md` — レビュー観点・重大度基準・守備範囲外
@@ -26,7 +26,7 @@ Ollama `phi4` が利用可能な場合はそちらを使い、なければ Haiku
 ### ステップ 2: Ollama 可否チェックと BALTHASAR の起動
 
 ```bash
-ollama list 2>/dev/null | grep -q "phi4"
+ollama list 2>/dev/null | grep -q "phi4:latest"
 ```
 
 #### Ollama が使える場合
@@ -46,9 +46,9 @@ ollama list 2>/dev/null | grep -q "phi4"
    ---レビュー対象---
    [差分]
    ```
-3. 一時ファイルを `ollama run phi4` に渡し、実行後に削除する：
+3. 一時ファイルを `ollama run phi4:latest` に渡し、実行後に削除する：
    ```bash
-   ollama run phi4 < prompt.txt
+   ollama run phi4:latest < prompt.txt
    rm prompt.txt
    ```
 
