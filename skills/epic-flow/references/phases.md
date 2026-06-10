@@ -53,8 +53,8 @@ $BALTHASAR_EPIC_REVIEW
 3. 中断
 ```
 
-On **修正**: return to Phase 1, revise, and re-run BALTHASAR.
-On approval: call `ExitPlanMode`. Proceed to Phase 3.
+On **2** (修正): return to Phase 1, revise, and re-run BALTHASAR.
+On **1** (承認): call `ExitPlanMode`. Proceed to Phase 3.
 
 ## Phase 3: ISSUE Creation
 
