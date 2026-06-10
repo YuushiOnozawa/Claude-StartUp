@@ -12,7 +12,7 @@ MODELS_SHARED=(
 
 # Hard 専用（高品質・重め）
 MODELS_HARD=(
-  "gemma4:26b"
+  "phi4:latest"
   "deepseek-r1:8b"
   "qwen3:8b"
 )
@@ -60,9 +60,6 @@ if [[ "$SKIP_HARD" -eq 0 ]]; then
   for m in "${MODELS_HARD[@]}"; do
     pull_model "$m"
   done
-  echo ""
-  echo "NOTE: gemma4:26b が OOM する場合は gemma4:12b に差し替えてください"
-  echo "      ollama pull gemma4:12b"
 fi
 
 echo ""
