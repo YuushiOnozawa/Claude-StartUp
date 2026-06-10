@@ -47,13 +47,13 @@ $BALTHASAR_PLAN_REVIEW
 
 ---
 承認しますか？
-- **はい / y / OK** → ブランチ作成・実装開始
-- **修正: 〜** → プランを修正して再提示（BALTHASAR 再実行）
-- **いいえ / n** → 中断
+1. 承認 → ブランチ作成・実装開始
+2. 修正: 〜 → プランを修正して再提示（BALTHASAR 再実行）
+3. 中断
 ```
 
-On **修正**: return to Phase 1, revise the plan, and re-run BALTHASAR.
-On approval: call `ExitPlanMode`. Proceed to Phase 3.
+On **2** (修正): return to Phase 1, revise the plan, and re-run BALTHASAR.
+On **1** (承認): call `ExitPlanMode`. Proceed to Phase 3.
 
 ## Phase 3: BRANCH
 
@@ -77,8 +77,8 @@ If available, ask the user:
 
 ```
 worktree を作成しますか（並列開発用の独立した作業ディレクトリ）？
-- **worktree / w** → new-worktree feat/<feature-name> で作成
-- **branch / b** → 通常のブランチ切り替え（git checkout -b feat/<feature-name>）
+1. worktree → new-worktree feat/<feature-name> で作成
+2. branch → 通常のブランチ切り替え（git checkout -b feat/<feature-name>）
 ```
 
 ### If `new-worktree` is not available

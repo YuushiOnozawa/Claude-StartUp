@@ -48,13 +48,13 @@ $BALTHASAR_EPIC_REVIEW
 
 ---
 承認しますか？
-- **はい / y / OK** → GitHub Issue 作成・フィーチャーループ開始
-- **修正: 〜** → 分解案を修正して再提示（BALTHASAR 再実行）
-- **いいえ / n** → 中断
+1. 承認 → GitHub Issue 作成・フィーチャーループ開始
+2. 修正: 〜 → 分解案を修正して再提示（BALTHASAR 再実行）
+3. 中断
 ```
 
-On **修正**: return to Phase 1, revise, and re-run BALTHASAR.
-On approval: call `ExitPlanMode`. Proceed to Phase 3.
+On **2** (修正): return to Phase 1, revise, and re-run BALTHASAR.
+On **1** (承認): call `ExitPlanMode`. Proceed to Phase 3.
 
 ## Phase 3: ISSUE Creation
 
@@ -91,9 +91,9 @@ Process `$ISSUE_LIST` from the top, one at a time.
 Issue #N: feat/<name> — [タイトル]
 
 この Feature の実装に着手しますか？
-- **はい / y** → /dev-flow を開始
-- **スキップ** → 次の Issue へ
-- **終了** → ループを中断
+1. 着手 → /dev-flow を開始
+2. スキップ → 次の Issue へ
+3. 終了 → ループを中断
 ```
 
 ### Execute /dev-flow
@@ -110,8 +110,8 @@ After dev-flow Phase 7 (PR creation) completes, stop and present:
 ✓ Issue #N: PR 作成完了 → <PR URL>
 
 次の Feature に進みますか？
-- **はい / y** → Issue #M: feat/<next-name> を開始
-- **あとで** → ここで終了（再開は /epic-flow #M で指定可）
+1. 進む → Issue #M: feat/<next-name> を開始
+2. あとで → ここで終了（再開は /epic-flow #M で指定可）
 ```
 
 ### Loop completion
