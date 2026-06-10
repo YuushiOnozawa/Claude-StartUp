@@ -4,9 +4,43 @@
 
 ## Phase 1: EPIC PLAN
 
+### Step 0: CLARIFY（要件確認）
+
+Analyze the user's request for design readiness.
+
+**Skip if** the request already specifies target files, tech choices, or step-by-step requirements → proceed to plan creation below.
+
+**Otherwise**, identify gaps from these areas and ask up to 5 questions. **Stop and wait for user input:**
+
+```
+## 設計前の確認事項 ✋
+
+以下を教えてください（分かる範囲で構いません）：
+
+1. [質問]
+2. [質問]
+...
+
+0. このまま設計に進む
+```
+
+| 観点 | 確認内容の例 |
+|------|------------|
+| 目的・ユーザー | 誰が使う？どんな問題を解決する？ |
+| スコープ | 何を含み、何を含まない？ |
+| 統合 | 既存の何と連携する？ |
+| 制約 | 技術スタック・壊せないもの・締め切り |
+| 受け入れ条件 | どうなれば「完成」か？ ✓/✗ の形で（テスト観点） |
+
+After answers: output a 1–2 line summary confirming understanding. Hold as `$CLARIFY_NOTES`.
+
+---
+
+### Step 1: Plan Creation
+
 Call `EnterPlanMode`. Create an Epic design containing:
 
-1. **Requirements** — what, why, for whom
+1. **Requirements** — what, why, for whom（`$CLARIFY_NOTES` を反映）
 2. **Feature decomposition** — split into independently releasable Feature units (numbered list)
    - Attach a `feat/<name>` branch name proposal to each Feature
    - State dependencies and recommended implementation order
