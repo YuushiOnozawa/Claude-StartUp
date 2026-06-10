@@ -42,7 +42,7 @@ if [[ -z "$QUERY" ]]; then
 fi
 
 log_info "類似セッション検索: $SESSION_BASENAME"
-SEARCH_RAW="$(echo "search_knowledgeツールを使って category='sessions' で以下のテキストに類似するドキュメントを検索してください。ファイル名が '${SESSION_BASENAME}' のものは除いてください。score 0.7 以上のものがあればそのfilepathを1行で返してください。なければ 'NONE' と返してください。
+SEARCH_RAW="$(echo "search_knowledgeツールを使って category='sessions' で以下のテキストに類似するドキュメントを検索してください。ファイル名が '${SESSION_BASENAME}' のものは除いてください。score 0.85 以上のものがあればそのfilepathを1行で返してください。なければ 'NONE' と返してください。
 
 ${QUERY}" \
   | KNOWLEDGE_RAG_DIR="$HOME/.local/share/knowledge-rag" \
