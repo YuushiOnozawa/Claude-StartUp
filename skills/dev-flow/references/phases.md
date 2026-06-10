@@ -2,13 +2,49 @@
 
 ## Phase 1: PLAN
 
+### Step 0: CLARIFY（要件確認）
+
+Analyze the user's request for design readiness.
+
+**Skip if** the request already specifies target files, tech choices, or step-by-step requirements → proceed to plan creation below.
+
+**Otherwise**, identify gaps from these areas and ask up to 5 questions. **Stop and wait for user input:**
+
+```
+## 設計前の確認事項 ✋
+
+以下を教えてください（分かる範囲で構いません）：
+
+1. [質問]
+2. [質問]
+...
+
+0. このまま設計に進む
+```
+
+| Area | Examples |
+|------|----------|
+| Goal / Users | Who uses it? What problem does it solve? |
+| Scope | What is in and out of scope? |
+| Integration | What existing systems does it connect to? |
+| Constraints | Tech stack, things that must not break, deadlines |
+| Acceptance criteria | What does "done" look like? (✓/✗ format, test perspective) |
+
+After answers (or if skipped / user chose 0): output a 1–2 line summary confirming understanding (or summarize the initial request). Hold as `$CLARIFY_NOTES`.
+
+---
+
+### Step 1: Plan Creation
+
 Call `EnterPlanMode`. Create a design plan containing:
 
-1. **Requirements** — what, why, for whom
-2. **Implementation approach** — architecture, technology choices, key design decisions
-3. **Affected files** — files to create, modify, or delete
-4. **Implementation steps** — numbered concrete steps
-5. **Risks / constraints** — caveats, prerequisites
+1. **Requirements** — what, why, for whom (incorporate `$CLARIFY_NOTES`)
+2. **Spec summary** — bullet-point list of each feature and behavior
+3. **Test scenarios** — acceptance test scenarios in natural language (✓/✗ format)
+4. **Implementation approach** — architecture, technology choices, key design decisions
+5. **Affected files** — files to create, modify, or delete
+6. **Implementation steps** — numbered concrete steps
+7. **Risks / constraints** — caveats, prerequisites
 
 Hold the plan as `$PLAN`. Proceed to Phase 1.5.
 
@@ -94,9 +130,19 @@ Auto-generate the branch name from requirements (English, kebab-case).
 
 ## Phase 4: IMPL
 
-Execute the approved plan steps in order.
+### Step 0: Write tests first (TDD)
 
-After completion:
+Based on `$PLAN` **Test scenarios**, create test files before implementation.
+
+- Confirm tests fail (Red) before starting implementation
+- If tests cannot be written, record the reason in a code comment or commit message and skip
+
+### Step 1: Implement
+
+Execute the approved plan steps in order until all tests pass (Green).
+
+### Step 2: Verify
+
 - Run `git status` to verify changed files
 - Display a diff summary with `git diff`
 

@@ -11,7 +11,7 @@ Single-feature development workflow from plan to PR.
 
 | # | Phase | Content | Stop |
 |---|-------|---------|------|
-| 1 | PLAN | Design plan creation | |
+| 1 | PLAN | Design plan creation (+ requirement clarification) | |
 | 1.5 | BALTHASAR | Architectural review of plan | |
 | 2 | CHECK | User approval | ✋ |
 | 3 | BRANCH | Branch / worktree creation | |
