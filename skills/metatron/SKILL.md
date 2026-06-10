@@ -27,9 +27,9 @@ ollama list 2>/dev/null | grep -q "deepseek-r1:8b"
 
 #### Ollama が使える場合
 
-1. Read ツールで以下を読み込む（repo 内を優先、なければ `~/.claude/` を使用）：
-   - `skills/metatron/references/review-criteria.md` または `~/.claude/skills/metatron/references/review-criteria.md`
-   - `skills/metatron/references/output-format.md` または `~/.claude/skills/metatron/references/output-format.md`
+1. Read ツールで以下を読み込む（repo 内を優先、なければ絶対パスで `~/.claude/` を使用）：
+   - `skills/metatron/references/review-criteria.md`（repo 内）または `/home/<user>/.claude/skills/metatron/references/review-criteria.md`（`~` は展開不可のため絶対パスで指定）
+   - `skills/metatron/references/output-format.md`（repo 内）または `/home/<user>/.claude/skills/metatron/references/output-format.md`
 2. 以下の構成でプロンプトを組み立てる：
    ```
    あなたは MAGI METATRON です。セキュリティの番人として、
@@ -52,15 +52,15 @@ ollama list 2>/dev/null | grep -q "deepseek-r1:8b"
 1. `agents/metatron.md`（repo 内、作業ディレクトリが Claude-StartUp の場合）
 2. `~/.claude/agents/metatron.md`（setup.sh でデプロイ済みのもの）
 
-さらに以下も読み込む：
-- `skills/metatron/references/review-criteria.md` または `~/.claude/skills/metatron/references/review-criteria.md`
-- `skills/metatron/references/output-format.md` または `~/.claude/skills/metatron/references/output-format.md`
+さらに以下も読み込む（repo 内を優先、なければ絶対パスで `~/.claude/` を使用）：
+- `skills/metatron/references/review-criteria.md`（repo 内）または `/home/<user>/.claude/skills/metatron/references/review-criteria.md`
+- `skills/metatron/references/output-format.md`（repo 内）または `/home/<user>/.claude/skills/metatron/references/output-format.md`
 
 取得したコード・差分とペルソナ定義・references の内容を合わせて `Agent(subagent_type="general-purpose", model="haiku")` に渡す。
 
 プロンプトには以下を含める：
 - `agents/metatron.md` の全内容（ペルソナ・レビュー手順・出力形式）
-- `references/review-criteria.md` と `references/output-format.md` の内容
+- `skills/metatron/references/review-criteria.md` と `skills/metatron/references/output-format.md` の内容
 - レビュー対象のコード全文または差分
 - ファイルパスとプロジェクトの概要（`CLAUDE.md`・`CLAUDE.local.md` があれば読み込む）
 - 「上記の METATRON ペルソナに従い、セキュリティ・脆弱性の観点でレビューしてください」という指示

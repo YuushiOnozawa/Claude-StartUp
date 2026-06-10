@@ -27,9 +27,9 @@ ollama list 2>/dev/null | grep -q "qwen3:8b"
 
 #### Ollama が使える場合
 
-1. Read ツールで以下を読み込む（repo 内を優先、なければ `~/.claude/` を使用）：
-   - `skills/sandalphon/references/review-criteria.md` または `~/.claude/skills/sandalphon/references/review-criteria.md`
-   - `skills/sandalphon/references/output-format.md` または `~/.claude/skills/sandalphon/references/output-format.md`
+1. Read ツールで以下を読み込む（repo 内を優先、なければ絶対パスで `~/.claude/` を使用）：
+   - `skills/sandalphon/references/review-criteria.md`（repo 内）または `/home/<user>/.claude/skills/sandalphon/references/review-criteria.md`（`~` は展開不可のため絶対パスで指定）
+   - `skills/sandalphon/references/output-format.md`（repo 内）または `/home/<user>/.claude/skills/sandalphon/references/output-format.md`
 2. 以下の構成でプロンプトを組み立てる：
    ```
    あなたは MAGI SANDALPHON です。実行環境の番人として、
@@ -52,15 +52,15 @@ ollama list 2>/dev/null | grep -q "qwen3:8b"
 1. `agents/sandalphon.md`（repo 内、作業ディレクトリが Claude-StartUp の場合）
 2. `~/.claude/agents/sandalphon.md`（setup.sh でデプロイ済みのもの）
 
-さらに以下も読み込む：
-- `skills/sandalphon/references/review-criteria.md` または `~/.claude/skills/sandalphon/references/review-criteria.md`
-- `skills/sandalphon/references/output-format.md` または `~/.claude/skills/sandalphon/references/output-format.md`
+さらに以下も読み込む（repo 内を優先、なければ絶対パスで `~/.claude/` を使用）：
+- `skills/sandalphon/references/review-criteria.md`（repo 内）または `/home/<user>/.claude/skills/sandalphon/references/review-criteria.md`
+- `skills/sandalphon/references/output-format.md`（repo 内）または `/home/<user>/.claude/skills/sandalphon/references/output-format.md`
 
 取得したコード・差分とペルソナ定義・references の内容を合わせて `Agent(subagent_type="general-purpose", model="haiku")` に渡す。
 
 プロンプトには以下を含める：
 - `agents/sandalphon.md` の全内容（ペルソナ・レビュー手順・出力形式）
-- `references/review-criteria.md` と `references/output-format.md` の内容
+- `skills/sandalphon/references/review-criteria.md` と `skills/sandalphon/references/output-format.md` の内容
 - レビュー対象のコード全文または差分
 - ファイルパスとプロジェクトの概要（`CLAUDE.md`・`CLAUDE.local.md` があれば読み込む）
 - 「上記の SANDALPHON ペルソナに従い、実行環境・デプロイ整合性の観点でレビューしてください」という指示
