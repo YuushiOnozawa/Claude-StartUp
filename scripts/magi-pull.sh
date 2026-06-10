@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# MAGI システム用 Ollama モデル一括ダウンロード
-# 用途: ローカルLLMレビュー系スキル（Magi-fast / Magi-hard）で使用するモデルを一括取得する
+# MAGI / codegen スキル用 Ollama モデル一括ダウンロード
+# 用途: ローカルLLMレビュー系スキル（Magi-fast / Magi-hard）および codegen スキルで使用するモデルを一括取得する
 set -uo pipefail
 
 # --- モデルリスト ---
@@ -15,6 +15,11 @@ MODELS_HARD=(
   "phi4:latest"
   "deepseek-r1:8b"
   "qwen3:8b"
+)
+
+# codegen スキル専用（Claude が計画・gemma4:12b が実装）
+MODELS_CODEGEN=(
+  "gemma4:12b"
 )
 
 # 導入済み（スキップ）: qwen2.5:7b, qwen2.5:3b
@@ -58,6 +63,14 @@ if [[ "$SKIP_HARD" -eq 0 ]]; then
   echo ""
   echo "=== Magi Hard 専用モデル ==="
   for m in "${MODELS_HARD[@]}"; do
+    pull_model "$m"
+  done
+fi
+
+if [[ "$SKIP_HARD" -eq 0 ]]; then
+  echo ""
+  echo "=== codegen スキル用モデル ==="
+  for m in "${MODELS_CODEGEN[@]}"; do
     pull_model "$m"
   done
 fi

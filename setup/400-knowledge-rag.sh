@@ -185,6 +185,39 @@ elif ! command -v jq &>/dev/null; then
   fail "llm-tools-mcp config  →  jq が必要です"
 fi
 
+# Claude Code settings.local.json の mcpServers に knowledge-rag を登録
+_KRAG_CC_SETTINGS="$HOME/.claude/settings.local.json"
+if [[ -x "$KRAG_VENV/bin/python" ]] && command -v jq &>/dev/null; then
+  _krag_py_abs="$KRAG_VENV/bin/python"
+  _krag_already=false
+  if [[ -s "$_KRAG_CC_SETTINGS" ]] && \
+     jq -e '.mcpServers["knowledge-rag"]' "$_KRAG_CC_SETTINGS" >/dev/null 2>&1; then
+    _krag_already=true
+  fi
+  if [[ "$_krag_already" == true ]]; then
+    ok "settings.local.json (mcpServers: knowledge-rag)"
+  else
+    _krag_tmp="${_KRAG_CC_SETTINGS}.tmp"
+    if [[ -s "$_KRAG_CC_SETTINGS" ]]; then
+      jq --arg py "$_krag_py_abs" \
+        '.mcpServers["knowledge-rag"] = {"type":"stdio","command":$py,"args":["-m","mcp_server.server"]}' \
+        "$_KRAG_CC_SETTINGS" > "$_krag_tmp" && mv "$_krag_tmp" "$_KRAG_CC_SETTINGS"
+    else
+      mkdir -p "$(dirname "$_KRAG_CC_SETTINGS")"
+      jq -n --arg py "$_krag_py_abs" \
+        '{"mcpServers":{"knowledge-rag":{"type":"stdio","command":$py,"args":["-m","mcp_server.server"]}}}' \
+        > "$_KRAG_CC_SETTINGS"
+    fi
+    if [[ $? -eq 0 ]]; then
+      ok "settings.local.json (mcpServers: knowledge-rag 追加)"
+    else
+      rm -f "$_krag_tmp"
+      fail "settings.local.json の mcpServers 更新に失敗"
+      MISSING_CMDS+=("cc-mcp-settings")
+    fi
+  fi
+fi
+
 # knowledge-distill hook スクリプトの実行権限を保証し SessionEnd に登録
 KRAG_HOOK="$HOME/.claude/hooks/knowledge-distill.sh"
 if [[ -f "$KRAG_HOOK" ]]; then
