@@ -1,12 +1,17 @@
 ---
 name: melchior
 description: MAGI MELCHIOR（コード品質・バグ観点）でコードをレビューする。Trigger: "/melchior", "コード品質レビュー", "MELCHIORでレビュー", "バグチェックして", "Melchior"
+argument-hint: "<ファイルパス または差分>"
 ---
 
 # MELCHIOR スキル
 
 MAGI MELCHIOR（科学者）の観点でコードをレビューする。
 Ollama `qwen2.5-coder:7b` が利用可能な場合はそちらを使い、なければ Haiku にフォールバックする。
+
+詳細仕様は以下を参照：
+- `references/review-criteria.md` — レビュー観点・重大度基準・守備範囲外
+- `references/output-format.md` — 出力フォーマット
 
 ## 実行手順
 
@@ -28,12 +33,22 @@ ollama list 2>/dev/null | grep -q "qwen2.5-coder:7b"
 
 #### Ollama が使える場合（High スペック）
 
-取得した差分を以下のシステムプロンプトと合わせて `ollama run qwen2.5-coder:7b` に渡す：
+1. Read ツールで以下を読み込む（repo 内を優先、なければ絶対パスで `~/.claude/` を使用）：
+   - `skills/melchior/references/review-criteria.md`（repo 内）または `/home/<user>/.claude/skills/melchior/references/review-criteria.md`（`~` は展開不可のため絶対パスで指定）
+   - `skills/melchior/references/output-format.md`（repo 内）または `/home/<user>/.claude/skills/melchior/references/output-format.md`
+2. 以下の構成でシステムプロンプトを組み立てる：
+   ```
+   あなたは MAGI MELCHIOR です。バグを見逃さない実直な審査官として、
+   コード品質・バグの観点のみでコードをレビューします。
 
-```bash
-printf "あなたは MAGI MELCHIOR です。バグを見逃さない実直な審査官として、コード品質・バグの観点のみでコードをレビューします。\n\nレビュー観点: バグ・ロジックエラー / エッジケース・境界値 / 副作用・競合 / リソースリーク / コード重複・複雑さ\n\n出力形式:\n## MELCHIOR レビュー（コード品質・バグ）\n### [HIGH/MEDIUM/LOW] ファイルパス:行番号 — 見出し\n説明と改善提案\n## 品質評価\n全体評価（指摘がなければ「指摘事項なし」と明記）\n\n設計・アーキテクチャ・セキュリティは守備範囲外。\n\n---レビュー対象---\n%s" "$DIFF" \
-  | ollama run qwen2.5-coder:7b
-```
+   [review-criteria.md の内容をそのまま展開]
+
+   [output-format.md の内容をそのまま展開]
+
+   ---レビュー対象---
+   [差分]
+   ```
+3. 組み立てたプロンプトを `ollama run qwen2.5-coder:7b` に渡す
 
 #### Ollama が使えない場合（Haiku fallback）
 
@@ -43,12 +58,17 @@ printf "あなたは MAGI MELCHIOR です。バグを見逃さない実直な審
 1. `agents/melchior.md`（repo 内、作業ディレクトリが Claude-StartUp の場合）
 2. `~/.claude/agents/melchior.md`（setup.sh でデプロイ済みのもの）
 
-取得したコード・差分とペルソナ定義を合わせて `Agent(subagent_type="general-purpose", model="haiku")` に渡す。
+Read ツールで以下も読み込む（repo 内を優先、なければ絶対パスで `~/.claude/` を使用）：
+- `skills/melchior/references/review-criteria.md`（repo 内）または `/home/<user>/.claude/skills/melchior/references/review-criteria.md`
+- `skills/melchior/references/output-format.md`（repo 内）または `/home/<user>/.claude/skills/melchior/references/output-format.md`
+
+取得したコード・差分とペルソナ定義・references/ の内容を合わせて `Agent(subagent_type="general-purpose", model="haiku")` に渡す。
 
 プロンプトには以下を含める：
-- `agents/melchior.md` の全内容（ペルソナ・レビュー手順・出力形式）
+- `agents/melchior.md` の全内容（ペルソナ・人格）
+- `skills/melchior/references/review-criteria.md` の内容（レビュー観点・重大度基準）
+- `skills/melchior/references/output-format.md` の内容（出力形式）
 - レビュー対象のコード全文または差分
-- ファイルパスとプロジェクトの概要（`CLAUDE.md`・`CLAUDE.local.md` があれば読み込む）
 - 「上記の MELCHIOR ペルソナに従い、コード品質・バグの観点でレビューしてください」という指示
 
 ### ステップ 3: 結果の表示
