@@ -1,7 +1,7 @@
 ---
 name: melchior
 description: MAGI MELCHIOR（コード品質・バグ観点）でコードをレビューする。Trigger: "/melchior", "コード品質レビュー", "MELCHIORでレビュー", "バグチェックして", "Melchior"
-argument-hint: "<ファイルパス、PR URL、または差分>"
+argument-hint: "<ファイルパス または差分>"
 ---
 
 # MELCHIOR スキル
@@ -33,9 +33,9 @@ ollama list 2>/dev/null | grep -q "qwen2.5-coder:7b"
 
 #### Ollama が使える場合（High スペック）
 
-1. Read ツールで以下を読み込む：
-   - `~/.claude/skills/melchior/references/review-criteria.md`
-   - `~/.claude/skills/melchior/references/output-format.md`
+1. Read ツールで以下を読み込む（repo 内を優先、なければ絶対パスで `~/.claude/` を使用）：
+   - `skills/melchior/references/review-criteria.md`（repo 内）または `/home/<user>/.claude/skills/melchior/references/review-criteria.md`（`~` は展開不可のため絶対パスで指定）
+   - `skills/melchior/references/output-format.md`（repo 内）または `/home/<user>/.claude/skills/melchior/references/output-format.md`
 2. 以下の構成でシステムプロンプトを組み立てる：
    ```
    あなたは MAGI MELCHIOR です。バグを見逃さない実直な審査官として、
@@ -58,16 +58,16 @@ ollama list 2>/dev/null | grep -q "qwen2.5-coder:7b"
 1. `agents/melchior.md`（repo 内、作業ディレクトリが Claude-StartUp の場合）
 2. `~/.claude/agents/melchior.md`（setup.sh でデプロイ済みのもの）
 
-Read ツールで以下も読み込む：
-- `~/.claude/skills/melchior/references/review-criteria.md`
-- `~/.claude/skills/melchior/references/output-format.md`
+Read ツールで以下も読み込む（repo 内を優先、なければ絶対パスで `~/.claude/` を使用）：
+- `skills/melchior/references/review-criteria.md`（repo 内）または `/home/<user>/.claude/skills/melchior/references/review-criteria.md`
+- `skills/melchior/references/output-format.md`（repo 内）または `/home/<user>/.claude/skills/melchior/references/output-format.md`
 
 取得したコード・差分とペルソナ定義・references/ の内容を合わせて `Agent(subagent_type="general-purpose", model="haiku")` に渡す。
 
 プロンプトには以下を含める：
 - `agents/melchior.md` の全内容（ペルソナ・人格）
-- `references/review-criteria.md` の内容（レビュー観点・重大度基準）
-- `references/output-format.md` の内容（出力形式）
+- `skills/melchior/references/review-criteria.md` の内容（レビュー観点・重大度基準）
+- `skills/melchior/references/output-format.md` の内容（出力形式）
 - レビュー対象のコード全文または差分
 - 「上記の MELCHIOR ペルソナに従い、コード品質・バグの観点でレビューしてください」という指示
 
