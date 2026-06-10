@@ -70,11 +70,13 @@ if [[ "$SKIP_HARD" -eq 0 ]]; then
   echo "      ollama pull gemma4:12b"
 fi
 
-echo ""
-echo "=== codegen スキル用モデル ==="
-for m in "${MODELS_CODEGEN[@]}"; do
-  pull_model "$m"
-done
+if [[ "$SKIP_HARD" -eq 0 ]]; then
+  echo ""
+  echo "=== codegen スキル用モデル ==="
+  for m in "${MODELS_CODEGEN[@]}"; do
+    pull_model "$m"
+  done
+fi
 
 echo ""
 echo "=== インストール済みモデル一覧 ==="

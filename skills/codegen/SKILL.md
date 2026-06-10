@@ -51,11 +51,12 @@ ollama list 2>/dev/null | grep -q "gemma4:12b"
 
 #### Ollama が使える場合
 
-実装仕様を一時ファイル `prompt.txt` に書き出し、gemma4:12b に渡す：
+実装仕様をヒアドキュメントで直接 gemma4:12b に渡す（一時ファイル不使用）：
 
 ```bash
-ollama run gemma4:12b < prompt.txt
-rm prompt.txt
+cat << 'PROMPT_EOF' | ollama run gemma4:12b
+<ステップ2で策定した実装仕様をここに展開>
+PROMPT_EOF
 ```
 
 #### Ollama が使えない場合（Haiku fallback）
