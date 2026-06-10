@@ -1,7 +1,7 @@
 ---
 name: balthasar
 description: MAGI BALTHASAR（設計・アーキテクチャ観点）でコードをレビューする。Trigger: "/balthasar", "設計観点でレビュー", "BALTHASARでレビュー", "設計をBALTHASARに見てもらう"
-argument-hint: "<ファイルパス、PR URL、または差分>"
+argument-hint: "<ファイルパス または差分>"
 ---
 
 # BALTHASAR スキル
@@ -31,10 +31,10 @@ ollama list 2>/dev/null | grep -q "gemma4:26b"
 
 #### Ollama が使える場合
 
-1. Read ツールで以下を優先順位で読み込む（存在する方を使用）：
-   - `skills/balthasar/references/review-criteria.md`（repo 内）または `~/.claude/skills/balthasar/references/review-criteria.md`（デプロイ済み）
-   - `skills/balthasar/references/output-format.md`（repo 内）または `~/.claude/skills/balthasar/references/output-format.md`（デプロイ済み）
-2. 以下の構成でシステムプロンプトを組み立てる：
+1. Read ツールで以下を優先順位で読み込む（`~` は展開不可のため絶対パスで指定）：
+   - `skills/balthasar/references/review-criteria.md`（repo 内）または `/home/<user>/.claude/skills/balthasar/references/review-criteria.md`（デプロイ済み）
+   - `skills/balthasar/references/output-format.md`（repo 内）または `/home/<user>/.claude/skills/balthasar/references/output-format.md`（デプロイ済み）
+2. 以下の構成でシステムプロンプトを一時ファイル `prompt.txt` に書き出す（差分内の特殊文字によるシェル誤展開を防ぐため）：
    ```
    あなたは MAGI BALTHASAR です。設計哲学者として、
    設計・アーキテクチャ・外部ライブラリ公開API準拠の観点のみでコードをレビューします。
@@ -46,7 +46,11 @@ ollama list 2>/dev/null | grep -q "gemma4:26b"
    ---レビュー対象---
    [差分]
    ```
-3. 組み立てたプロンプトを `ollama run gemma4:26b` に渡す
+3. 一時ファイルを `ollama run gemma4:26b` に渡し、実行後に削除する：
+   ```bash
+   ollama run gemma4:26b < prompt.txt
+   rm prompt.txt
+   ```
 
 #### Ollama が使えない場合（Haiku fallback）
 
@@ -56,16 +60,16 @@ ollama list 2>/dev/null | grep -q "gemma4:26b"
 1. `agents/balthasar.md`（repo 内、作業ディレクトリが Claude-StartUp の場合）
 2. `~/.claude/agents/balthasar.md`（setup.sh でデプロイ済みのもの）
 
-Read ツールで以下も優先順位で読み込む：
-- `skills/balthasar/references/review-criteria.md`（repo 内）または `~/.claude/skills/balthasar/references/review-criteria.md`
-- `skills/balthasar/references/output-format.md`（repo 内）または `~/.claude/skills/balthasar/references/output-format.md`
+Read ツールで以下も優先順位で読み込む（`~` は展開不可のため絶対パスで指定）：
+- `skills/balthasar/references/review-criteria.md`（repo 内）または `/home/<user>/.claude/skills/balthasar/references/review-criteria.md`
+- `skills/balthasar/references/output-format.md`（repo 内）または `/home/<user>/.claude/skills/balthasar/references/output-format.md`
 
 取得したコード・差分とペルソナ定義・references/ の内容を合わせて `Agent(subagent_type="general-purpose", model="haiku")` に渡す。
 
 プロンプトには以下を含める：
 - `agents/balthasar.md` の全内容（ペルソナ・人格）
-- `references/review-criteria.md` の内容（レビュー観点・重大度基準）
-- `references/output-format.md` の内容（出力形式）
+- `skills/balthasar/references/review-criteria.md` の内容（レビュー観点・重大度基準）
+- `skills/balthasar/references/output-format.md` の内容（出力形式）
 - レビュー対象のコード全文または差分
 - 「上記の BALTHASAR ペルソナに従い、設計・アーキテクチャ・外部ライブラリ公開API準拠の観点でレビューしてください」という指示
 

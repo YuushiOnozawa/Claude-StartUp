@@ -1,7 +1,7 @@
 ---
 name: casper
 description: MAGI CASPER（CLAUDE.md準拠・ルール遵守観点）でコードをレビューする。Trigger: "/casper", "ルール遵守チェック", "CASPERでレビュー", "CLAUDE.md準拠チェック"
-argument-hint: "<ファイルパス、PR URL、または差分>"
+argument-hint: "<ファイルパス または差分>"
 ---
 
 # CASPER スキル
@@ -34,10 +34,10 @@ ollama list 2>/dev/null | grep -q "llama3.1:8b"
 
 #### Ollama が使える場合
 
-1. Read ツールで以下を優先順位で読み込む（存在する方を使用）：
-   - `skills/casper/references/review-criteria.md`（repo 内）または `~/.claude/skills/casper/references/review-criteria.md`（デプロイ済み）
-   - `skills/casper/references/output-format.md`（repo 内）または `~/.claude/skills/casper/references/output-format.md`（デプロイ済み）
-2. 以下の構成でシステムプロンプトを組み立てる：
+1. Read ツールで以下を優先順位で読み込む（`~` は展開不可のため絶対パスで指定）：
+   - `skills/casper/references/review-criteria.md`（repo 内）または `/home/<user>/.claude/skills/casper/references/review-criteria.md`（デプロイ済み）
+   - `skills/casper/references/output-format.md`（repo 内）または `/home/<user>/.claude/skills/casper/references/output-format.md`（デプロイ済み）
+2. 以下の構成でシステムプロンプトを一時ファイル `prompt.txt` に書き出す（差分・ルール内の特殊文字によるシェル誤展開を防ぐため）：
    ```
    あなたは MAGI CASPER です。ルールの番人として、
    コードが定められたルールと規約に準拠しているかを評価します。
@@ -52,7 +52,11 @@ ollama list 2>/dev/null | grep -q "llama3.1:8b"
    ---レビュー対象---
    [差分]
    ```
-3. 組み立てたプロンプトを `ollama run llama3.1:8b` に渡す
+3. 一時ファイルを `ollama run llama3.1:8b` に渡し、実行後に削除する：
+   ```bash
+   ollama run llama3.1:8b < prompt.txt
+   rm prompt.txt
+   ```
 
 #### Ollama が使えない場合（Haiku fallback）
 
@@ -62,16 +66,16 @@ ollama list 2>/dev/null | grep -q "llama3.1:8b"
 1. `agents/casper.md`（repo 内、作業ディレクトリが Claude-StartUp の場合）
 2. `~/.claude/agents/casper.md`（setup.sh でデプロイ済みのもの）
 
-Read ツールで以下も優先順位で読み込む：
-- `skills/casper/references/review-criteria.md`（repo 内）または `~/.claude/skills/casper/references/review-criteria.md`
-- `skills/casper/references/output-format.md`（repo 内）または `~/.claude/skills/casper/references/output-format.md`
+Read ツールで以下も優先順位で読み込む（`~` は展開不可のため絶対パスで指定）：
+- `skills/casper/references/review-criteria.md`（repo 内）または `/home/<user>/.claude/skills/casper/references/review-criteria.md`
+- `skills/casper/references/output-format.md`（repo 内）または `/home/<user>/.claude/skills/casper/references/output-format.md`
 
 取得したコード・差分とペルソナ定義・references/ の内容を合わせて `Agent(subagent_type="general-purpose", model="haiku")` に渡す。
 
 プロンプトには以下を含める：
 - `agents/casper.md` の全内容（ペルソナ・人格）
-- `references/review-criteria.md` の内容（レビュー観点・重大度基準）
-- `references/output-format.md` の内容（出力形式）
+- `skills/casper/references/review-criteria.md` の内容（レビュー観点・重大度基準）
+- `skills/casper/references/output-format.md` の内容（出力形式）
 - レビュー対象のコード全文または差分
 - 「上記の CASPER ペルソナに従い、CLAUDE.md 準拠・ルール遵守の観点でレビューしてください」という指示
 
