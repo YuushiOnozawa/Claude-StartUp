@@ -97,22 +97,16 @@ Check current branch:
 - If already on a non-`main`/`master` branch: skip (worktree already active, proceed to Phase 4).
 - If on `main`/`master`: Execute `/worktree new <branch-name>`.
   - Branch name auto-generated from plan (English, kebab-case, `feat/` or `fix/` prefix).
+  - Hold the returned path as `$WORKTREE_PATH`.
 
-After worktree creation, present the plan summary and instruct the user:
-
-```
-Worktree を作成しました: ./worktree/<branch>
-
-以下のコマンドで新しいセッションを起動してください：
-  cd ./worktree/<branch> && claude
-
-新しいセッションで Phase 4 (IMPL) から続けてください。
-このセッションは終了します。
-```
-
-**Stop here.** Implementation continues in the new session where CWD = worktree.
+Proceed to Phase 4 in the **same session**.
 
 ## Phase 4: IMPL
+
+> **Worktree context**: All git commands in Phase 4–7 use `git -C $WORKTREE_PATH`.
+> File read/write operations use `$WORKTREE_PATH/` as the base path.
+> Example: `git -C $WORKTREE_PATH status`, `git -C $WORKTREE_PATH diff`
+> When executing `/commit` or `/magi-fast`, apply this `-C $WORKTREE_PATH` override to all git commands within those skills.
 
 ### Step 0: Write tests first (TDD)
 
