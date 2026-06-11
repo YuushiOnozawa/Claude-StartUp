@@ -69,6 +69,8 @@ HIGH 指摘: N 件 / MEDIUM 指摘: M 件 / LOW 指摘: K 件
 ⚠ HIGH 指摘が N 件あります。修正後に /magi-fast を再実行してください。
 ```
 
+HIGH 指摘の修正は `/codegen` で実装すること。Ollama が使えない場合のみ直接修正する。
+
 ### HIGH が 0 件の場合
 
 ```

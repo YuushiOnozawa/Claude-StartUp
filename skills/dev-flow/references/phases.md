@@ -139,7 +139,8 @@ Based on `$PLAN` **Test scenarios**, create test files before implementation.
 
 ### Step 1: Implement
 
-Execute the approved plan steps in order until all tests pass (Green).
+Execute `/codegen` with the approved plan. Claude writes the spec; Gemma4 implements.
+Fall back to direct implementation only if Ollama is unavailable.
 
 ### Step 2: Verify
 
