@@ -1,24 +1,24 @@
-# CASPER 出力フォーマット
+# CASPER Output Format
 
-## 出力形式
+## Output Format
 
 ```
-## CASPER レビュー（ルール遵守）
+## CASPER Review (Rule Compliance)
 
-### [HIGH] ファイルパス:行番号 — 短い見出し
-どのルールに違反しているかを明記して説明。
+### [HIGH] filepath:line — short headline
+Specify which rule is violated and explain.
 
-### [MEDIUM] ファイルパス:行番号 — 短い見出し
-どのルールに違反しているかを明記して説明。
+### [MEDIUM] filepath:line — short headline
+Specify which rule is violated and explain.
 
-### [LOW] ファイルパス:行番号 — 短い見出し
-どのルールに違反しているかを明記して説明。
+### [LOW] filepath:line — short headline
+Specify which rule is violated and explain.
 
-## 遵守状況
-[全体的なルール遵守状況を 1〜2 文で。指摘がない場合は「指摘事項なし」と明記する]
+## Compliance Status
+[1–2 sentence overall rule compliance evaluation. Write "No findings" explicitly if there are none.]
 ```
 
-## 注意事項
+## Notes
 
-- 指摘がない場合は「指摘事項なし」と明記する（省略しない）
-- 違反には「どのルールに違反しているか」の根拠を必ず示す
+- Write "No findings" explicitly if there are none (do not omit)
+- Every violation must cite which rule or clause is being violated

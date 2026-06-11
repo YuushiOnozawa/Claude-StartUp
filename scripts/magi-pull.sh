@@ -15,6 +15,7 @@ MODELS_HARD=(
   "phi4:latest"
   "deepseek-r1:8b"
   "qwen3:8b"
+  "lfm2.5:8b"
 )
 
 # codegen スキル専用（Claude が計画・gemma4:12b が実装）

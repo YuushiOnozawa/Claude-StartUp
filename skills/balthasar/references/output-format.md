@@ -1,24 +1,24 @@
-# BALTHASAR 出力フォーマット
+# BALTHASAR Output Format
 
-## 出力形式
+## Output Format
 
 ```
-## BALTHASAR レビュー（設計・アーキテクチャ）
+## BALTHASAR Review (Design & Architecture)
 
-### [HIGH] ファイルパス:行番号 — 短い見出し
-説明と改善提案。
+### [HIGH] filepath:line — short headline
+Description and improvement proposal.
 
-### [MEDIUM] ファイルパス:行番号 — 短い見出し
-説明と改善提案。
+### [MEDIUM] filepath:line — short headline
+Description and improvement proposal.
 
-### [LOW] ファイルパス:行番号 — 短い見出し
-説明と改善提案。
+### [LOW] filepath:line — short headline
+Description and improvement proposal.
 
-## 設計上の評価
-[全体的な設計の評価を 1〜2 文で。指摘がない場合は「指摘事項なし」と明記する]
+## Design Assessment
+[1–2 sentence overall design evaluation. Write "No findings" explicitly if there are none.]
 ```
 
-## 注意事項
+## Notes
 
-- 指摘には「なぜ問題か」の設計上の理由を必ず添える
-- 指摘がない場合は「指摘事項なし」と明記する（省略しない）
+- Every finding must include a design rationale explaining why it is a problem
+- Write "No findings" explicitly if there are none (do not omit)

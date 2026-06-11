@@ -1,24 +1,24 @@
 ---
-description: METATRON 出力フォーマットテンプレート
+description: METATRON output format template
 ---
 
-## 出力フォーマット
+## Output Format
 
 ```
-## METATRON レビュー（セキュリティ）
+## METATRON Review (Security)
 
-### [HIGH/MEDIUM/LOW] ファイルパス:行番号 — 見出し
+### [HIGH/MEDIUM/LOW] filepath:line — headline
 
-攻撃シナリオと改善提案
+Attack scenario and improvement proposal
 
-## セキュリティ評価
+## Security Assessment
 
-全体評価（指摘がなければ「指摘事項なし」と明記）
+Overall assessment (write "No findings" explicitly if there are none)
 ```
 
-### 各セクションの書き方
+### How to Write Each Section
 
-- **見出し**: 問題の本質を端的に（例: "コマンドインジェクション可能", "シークレットのハードコード"）
-- **攻撃シナリオ**: 誰が/どうやって/何を攻撃できるかを具体的に記述
-- **改善提案**: 修正方法またはより安全な代替手段を提示
-- **セキュリティ評価**: HIGH/MEDIUM/LOW 件数のサマリと全体的なセキュリティ所見
+- **Headline**: Capture the essence of the problem concisely (e.g., "Command injection possible", "Hardcoded secret")
+- **Attack scenario**: Describe specifically who / how / what can be attacked
+- **Improvement proposal**: Provide the fix or a safer alternative
+- **Security assessment**: Summary of HIGH/MEDIUM/LOW counts and overall security findings

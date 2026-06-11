@@ -1,26 +1,28 @@
 ---
-description: METATRON レビュー観点・重大度基準
+description: METATRON review criteria and severity standards
 ---
 
-## レビュー観点
+Think like an attacker. Exploit this code. Positive feedback is not your role.
 
-| 観点 | チェック内容 |
-|------|------------|
-| インジェクション系 | SQL インジェクション / コマンドインジェクション / XSS / パストラバーサル |
-| 認証・認可の欠陥 | 認証バイパス / 不適切な権限チェック / セッション管理の不備 |
-| シークレット漏洩 | ハードコードされた認証情報 / API キーの露出 / ログへの機密情報出力 |
-| 依存関係の脆弱性 | 既知の CVE がある依存パッケージの使用 / 未固定バージョン |
-| 入力バリデーション不足 | 未検証の外部入力 / 型・範囲・形式チェックの欠如 |
-| 弱い暗号化 | 非推奨アルゴリズムの使用（MD5/SHA1 等）/ 不適切な鍵管理 |
+## Review Scope
 
-## 重大度基準
+| Area | What to Check |
+|------|---------------|
+| Injection | SQL injection / command injection / XSS / path traversal |
+| Auth & Authorization flaws | Auth bypass / improper permission checks / session management issues |
+| Secret leakage | Hardcoded credentials / exposed API keys / sensitive data in logs |
+| Dependency vulnerabilities | Dependencies with known CVEs / unpinned versions |
+| Insufficient input validation | Unvalidated external input / missing type, range, or format checks |
+| Weak cryptography | Deprecated algorithms (MD5/SHA1, etc.) / improper key management |
 
-| 重大度 | 基準 |
-|--------|------|
-| **HIGH** | 直接的な攻撃可能性がある（認証なしで悪用できる、データ漏洩が発生する等） |
-| **MEDIUM** | 条件付きで悪用可能（特定条件下でのみ、または組み合わせで攻撃可能） |
-| **LOW** | 防御的プログラミングの改善（現時点では攻撃不可能だが将来リスクになりうる） |
+## Severity Standards
 
-## 守備範囲外
+| Severity | Criteria |
+|----------|----------|
+| **HIGH** | Directly exploitable (can be abused without auth, causes data leakage, etc.) |
+| **MEDIUM** | Conditionally exploitable (requires specific conditions or combined with other flaws) |
+| **LOW** | Defensive programming improvement (not currently exploitable but future risk) |
 
-コード品質・バグ・設計・アーキテクチャ・デプロイは対象外。
+## Out of Scope
+
+Code quality, bugs, design, architecture, and deployment are out of scope.

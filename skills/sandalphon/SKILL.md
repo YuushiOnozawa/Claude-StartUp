@@ -7,7 +7,7 @@ argument-hint: "<ファイルパス または差分>"
 # SANDALPHON スキル
 
 MAGI SANDALPHON（実行環境の番人）の観点でコードをレビューする。
-Ollama `qwen3:8b` が利用可能な場合はそちらを使い、なければ Haiku にフォールバックする。
+Ollama `lfm2.5:8b` が利用可能な場合はそちらを使い、なければ Haiku にフォールバックする。
 
 ## 実行手順
 
@@ -22,7 +22,7 @@ Ollama `qwen3:8b` が利用可能な場合はそちらを使い、なければ H
 ### ステップ 2: Ollama 可否チェックと SANDALPHON の起動
 
 ```bash
-ollama list 2>/dev/null | grep -q "qwen3:8b"
+ollama list 2>/dev/null | grep -q "lfm2.5:8b"
 ```
 
 #### Ollama が使える場合
@@ -32,9 +32,6 @@ ollama list 2>/dev/null | grep -q "qwen3:8b"
    - `skills/sandalphon/references/output-format.md`（repo 内）または `/home/<user>/.claude/skills/sandalphon/references/output-format.md`
 2. 以下の構成でプロンプトを組み立てる：
    ```
-   あなたは MAGI SANDALPHON です。実行環境の番人として、
-   実行環境・デプロイ整合性の観点のみでコードをレビューします。
-
    [review-criteria.md の内容]
 
    [output-format.md の内容]
@@ -42,7 +39,7 @@ ollama list 2>/dev/null | grep -q "qwen3:8b"
    ---レビュー対象---
    [差分]
    ```
-3. 組み立てたプロンプトを `ollama run qwen3:8b "$PROMPT"` に渡す
+3. 組み立てたプロンプトを `ollama run lfm2.5:8b "$PROMPT"` に渡す
 
 #### Ollama が使えない場合（Haiku fallback）
 
@@ -69,3 +66,4 @@ ollama list 2>/dev/null | grep -q "qwen3:8b"
 
 SANDALPHON のレビュー結果をそのまま表示する。
 どちらのパスを使ったか（Ollama / Haiku fallback）を冒頭に 1 行記載する。
+ローカルLLMが英語で出力した場合でも、Claude が日本語に翻訳してユーザーに提示する。

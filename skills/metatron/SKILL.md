@@ -32,9 +32,6 @@ ollama list 2>/dev/null | grep -q "deepseek-r1:8b"
    - `skills/metatron/references/output-format.md`（repo 内）または `/home/<user>/.claude/skills/metatron/references/output-format.md`
 2. 以下の構成でプロンプトを組み立てる：
    ```
-   あなたは MAGI METATRON です。セキュリティの番人として、
-   セキュリティ・脆弱性の観点のみでコードをレビューします。
-
    [review-criteria.md の内容]
 
    [output-format.md の内容]
@@ -69,3 +66,4 @@ ollama list 2>/dev/null | grep -q "deepseek-r1:8b"
 
 METATRON のレビュー結果をそのまま表示する。
 どちらのパスを使ったか（Ollama / Haiku fallback）を冒頭に 1 行記載する。
+ローカルLLMが英語で出力した場合でも、Claude が日本語に翻訳してユーザーに提示する。
