@@ -99,7 +99,7 @@ PROJECT=$(basename "$PROJECT_CWD" 2>/dev/null || echo "unknown")
 DATE=$(date +%Y-%m-%d)
 # TRANSCRIPT_BASE: transcript ファイル名（拡張子除く）を基準にする
 # → 初回実行・リトライで同一のファイル名が保証され、raw と distilled が対応する
-TRANSCRIPT_BASE=$(basename "$TRANSCRIPT_PATH" | sed 's/\.[^.]*$//')
+TRANSCRIPT_BASE="${TRANSCRIPT_PATH##*/}"; TRANSCRIPT_BASE="${TRANSCRIPT_BASE%.*}"
 OUTPUT_DIR="$HOME/pcloud/obsidian/sessions"
 OUTPUT_FILE="${OUTPUT_DIR}/${DATE}-${TRANSCRIPT_BASE}-${PROJECT}.md"
 
@@ -263,7 +263,7 @@ project: ${PROJECT}
 tags: [session, auto-distilled]
 ---
 
-# セッション記録 ${DATE} ${TIME}
+# セッション記録 ${DATE} ${TRANSCRIPT_BASE}
 
 ${RESULT}
 EOF
