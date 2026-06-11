@@ -91,44 +91,22 @@ $BALTHASAR_PLAN_REVIEW
 On **2** (修正): return to Phase 1, revise the plan, and re-run BALTHASAR.
 On **1** (承認): call `ExitPlanMode`, then call `ctx_compress` to free context before implementation. Proceed to Phase 3.
 
-## Phase 3: BRANCH
+## Phase 3: WORKTREE
 
 Check current branch:
+- If already on a non-`main`/`master` branch: skip (worktree already active, proceed to Phase 4).
+- If on `main`/`master`: Execute `/worktree new <branch-name>`.
+  - Branch name auto-generated from plan (English, kebab-case, `feat/` or `fix/` prefix).
+  - Hold the returned path as `$WORKTREE_PATH`.
 
-```bash
-git branch --show-current
-```
-
-If already on a non-`main`/`master` branch: skip.
-
-If on `main`/`master`:
-
-### If `new-worktree` is available
-
-```bash
-command -v new-worktree > /dev/null 2>&1
-```
-
-If available, ask the user:
-
-```
-worktree を作成しますか（並列開発用の独立した作業ディレクトリ）？
-1. worktree → new-worktree feat/<feature-name> で作成
-2. branch → 通常のブランチ切り替え（git checkout -b feat/<feature-name>）
-```
-
-### If `new-worktree` is not available
-
-Create a branch:
-
-```bash
-git checkout -b feat/<feature-name>   # new feature
-git checkout -b fix/<bug-name>        # bug fix
-```
-
-Auto-generate the branch name from requirements (English, kebab-case).
+Proceed to Phase 4 in the **same session**.
 
 ## Phase 4: IMPL
+
+> **Worktree context**: All git commands in Phase 4–7 use `git -C $WORKTREE_PATH`.
+> File read/write operations use `$WORKTREE_PATH/` as the base path.
+> Example: `git -C $WORKTREE_PATH status`, `git -C $WORKTREE_PATH diff`
+> When executing `/commit` or `/magi-fast`, apply this `-C $WORKTREE_PATH` override to all git commands within those skills.
 
 ### Step 0: Write tests first (TDD)
 
@@ -190,3 +168,5 @@ EOF
 ```
 
 3. Present `$PR_URL` to the user.
+
+> Worktree の掃除は merge 完了後に `/worktree done <branch>` を実行してください。

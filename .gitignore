@@ -26,6 +26,9 @@ projects/
 # 作業中の計画（一時的）
 plans/
 
+# git worktree（並行作業用、追跡不要）
+/worktree/
+
 # RTK 生成物（rtk init -g が各マシンで再生成）
 RTK.md
 
