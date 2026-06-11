@@ -90,7 +90,28 @@ L<行番号>:<種別>
 `/sandalphon` スキルの手順に従い、同様に `$FLAGS` を付加して実行する。
 結果を `$SANDALPHON_RESULT` として保持する。
 
-## ステップ 8: GitHub インラインコメント投稿
+## ステップ 8: サマリコメント投稿
+
+5体のレビュー完了後、まず PR 全体に**サマリコメント**を1件投稿する。インライン指摘より先に投稿することで、レビュー全体像をレビュアーが把握しやすくなる。
+
+```bash
+gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
+  -f body="## MAGI-HARD レビュー完了
+
+| ペルソナ | HIGH | MEDIUM | LOW |
+|---------|------|--------|-----|
+| MELCHIOR（コード品質・バグ） | N | M | K |
+| BALTHASAR（設計・アーキテクチャ） | N | M | K |
+| CASPER（ルール遵守） | N | M | K |
+| METATRON（セキュリティ） | N | M | K |
+| SANDALPHON（実行環境・デプロイ） | N | M | K |
+
+**HIGH: N件 / MEDIUM: M件 / LOW: K件**（LOW はインラインコメント対象外）
+
+> 各行への指摘はインラインコメントとして続けて投稿します。対応完了後は各インラインコメントに返信してください（\`/pr-review-respond\` で自動化可能）"
+```
+
+## ステップ 9: GitHub インラインコメント投稿
 
 5体の結果から HIGH/MEDIUM 指摘を抽出し、**指摘ごとに個別の PR インラインコメント**として投稿する。
 
@@ -99,7 +120,7 @@ L<行番号>:<種別>
 各 HIGH/MEDIUM 指摘について、出力形式 `### [HIGH/MEDIUM] ファイルパス:行番号 — 見出し` から `path` と `line` を抽出し、以下のコマンドで投稿する：
 
 ```bash
-COMMENT_URL=$(gh api -X POST repos/$OWNER/$REPO/pulls/$PR_NUM/comments \
+gh api -X POST repos/$OWNER/$REPO/pulls/$PR_NUM/comments \
   -f body="[MAGI-HARD] **[HIGH] MELCHIOR（コード品質・バグ）**
 
 <指摘内容>" \
@@ -107,7 +128,7 @@ COMMENT_URL=$(gh api -X POST repos/$OWNER/$REPO/pulls/$PR_NUM/comments \
   -F line=17 \
   -f side="RIGHT" \
   -f commit_id="$HEAD_SHA" \
-  --jq '.html_url')
+  --jq '.html_url'
 ```
 
 コメント本文の形式：
@@ -126,34 +147,6 @@ gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
   -f body="[MAGI-HARD] **[HIGH/MEDIUM] <ペルソナ>** `ファイルパス:行番号`
 
 <指摘内容>"
-```
-
-### 投稿結果の保持
-
-投稿した全コメントの URL を `$INLINE_COMMENT_URLS` リストとして保持する（ステップ 9 のサマリで使用）。
-
-## ステップ 9: サマリコメント投稿
-
-全指摘のインラインコメント投稿後、PR 全体に**サマリコメント**を1件投稿する：
-
-```bash
-gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
-  -f body="## MAGI-HARD レビュー完了
-
-| ペルソナ | HIGH | MEDIUM | LOW |
-|---------|------|--------|-----|
-| MELCHIOR（コード品質・バグ） | N | M | K |
-| BALTHASAR（設計・アーキテクチャ） | N | M | K |
-| CASPER（ルール遵守） | N | M | K |
-| METATRON（セキュリティ） | N | M | K |
-| SANDALPHON（実行環境・デプロイ） | N | M | K |
-
-**HIGH: N件 / MEDIUM: M件 / LOW: K件**（LOW はインラインコメント対象外）
-
-### インラインコメント一覧
-<各指摘のURL を箇条書きで列挙>
-
-> 対応完了後は各インラインコメントに返信してください（\`/pr-review-respond\` で自動化可能）"
 ```
 
 ## ステップ 10: 結果のサマリ表示
