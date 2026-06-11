@@ -22,16 +22,16 @@ fi
 
 WORKTREE_PATH="./worktree/${BRANCH}"
 mkdir -p ./worktree
-git worktree add "$WORKTREE_PATH" -b "$BRANCH"
+if git show-ref --verify --quiet "refs/heads/${BRANCH}"; then
+  git worktree add "$WORKTREE_PATH" "$BRANCH"
+else
+  git worktree add "$WORKTREE_PATH" -b "$BRANCH"
+fi
 ```
 
-Present:
-```
-✓ Worktree 作成: $WORKTREE_PATH（ブランチ: $BRANCH）
+Present: `✓ Worktree 作成: $WORKTREE_PATH（ブランチ: $BRANCH）`
 
-実装を開始するには新しいターミナルで：
-  cd $WORKTREE_PATH && claude
-```
+Return `$WORKTREE_PATH` to the caller.
 
 ### done \<branch\>
 
