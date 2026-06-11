@@ -1,24 +1,24 @@
 ---
-description: SANDALPHON 出力フォーマットテンプレート
+description: SANDALPHON output format template
 ---
 
-## 出力フォーマット
+## Output Format
 
 ```
-## SANDALPHON レビュー（実行環境・デプロイ）
+## SANDALPHON Review (Runtime Environment & Deployment)
 
-### [HIGH/MEDIUM/LOW] ファイルパス:行番号 — 見出し
+### [HIGH/MEDIUM/LOW] filepath:line — headline
 
-リスクシナリオと改善提案
+Risk scenario and improvement proposal
 
-## デプロイ評価
+## Deployment Assessment
 
-全体評価（指摘がなければ「指摘事項なし」と明記）
+Overall assessment (write "No findings" explicitly if there are none)
 ```
 
-### 各セクションの書き方
+### How to Write Each Section
 
-- **見出し**: デプロイリスクの本質を端的に（例: "ロールバック不可能なマイグレーション", "必須環境変数の追加"）
-- **リスクシナリオ**: どの環境で/どのタイミングで/何が壊れるかを具体的に記述
-- **改善提案**: 安全なデプロイ手順または代替実装を提示
-- **デプロイ評価**: HIGH/MEDIUM/LOW 件数のサマリとデプロイ可否の所見
+- **Headline**: Capture the deployment risk concisely (e.g., "Irreversible migration", "Required env var added")
+- **Risk scenario**: Describe specifically which environment / when / what breaks
+- **Improvement proposal**: Provide a safe deployment procedure or alternative implementation
+- **Deployment assessment**: Summary of HIGH/MEDIUM/LOW counts and overall deploy-readiness findings

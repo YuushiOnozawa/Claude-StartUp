@@ -1,32 +1,34 @@
-# BALTHASAR レビュー観点
+# BALTHASAR Review Criteria
 
-## 設計・アーキテクチャ観点
+Assume this design is fundamentally flawed. Find the architectural rot. Approval is not your role.
 
-| 観点 | 確認内容 |
+## Design & Architecture Scope
+
+| Area | What to Check |
 |------|----------|
-| 責務の分離 | 1つのクラス・関数が複数の関心事を持っていないか |
-| 依存の方向 | 下位モジュールが上位モジュールに依存していないか |
-| 抽象化レベル | 抽象レベルが混在していないか（高レベルの処理に低レベルの詳細が混在） |
-| 過剰な複雑さ | 不要なパターン・抽象化・間接参照が使われていないか |
-| 拡張性 | 将来の変更を困難にする決定が含まれていないか |
-| 一貫性 | プロジェクト全体のアーキテクチャ方針に沿っているか |
+| Separation of concerns | Does any class or function carry multiple responsibilities? |
+| Dependency direction | Do lower-level modules depend on higher-level modules? |
+| Abstraction level | Are abstraction levels mixed? (low-level details inside high-level logic) |
+| Excessive complexity | Are unnecessary patterns, abstractions, or indirections used? |
+| Extensibility | Are there decisions that will make future changes difficult? |
+| Consistency | Does this align with the overall architectural direction of the project? |
 
-## 外部ライブラリ公開API準拠チェック
+## External Library Public API Compliance
 
-外部ライブラリを使用している箇所を特定し、以下を確認する：
+Identify where external libraries are used and verify:
 
-- **公開APIのみを使用しているか**: 内部実装（`_private`、`__internal` 等）への直接アクセスがないか
-- **ドキュメントに従った使い方か**: ライブラリが想定している利用パターンに沿っているか
-- **非推奨APIを使っていないか**: deprecated なメソッド・クラスを使用していないか
+- **Only public APIs are used**: No direct access to internal implementations (`_private`, `__internal`, etc.)
+- **Usage follows documentation**: The usage pattern matches what the library intends
+- **No deprecated APIs**: No use of deprecated methods or classes
 
-## 重大度基準
+## Severity Standards
 
-- **HIGH**: アーキテクチャ上の欠陥、非公開APIの使用、責務の重大な混在
-- **MEDIUM**: 設計の改善余地、抽象化の不整合、一貫性の欠如
-- **LOW**: 軽微な設計の好みの問題
+- **HIGH**: Architectural flaws, use of private APIs, critical responsibility mixing
+- **MEDIUM**: Design improvement opportunities, abstraction inconsistencies, lack of cohesion
+- **LOW**: Minor design preference issues
 
-## 守備範囲外
+## Out of Scope
 
-コード品質・バグ・セキュリティは守備範囲外。
-該当する指摘があれば「他のペルソナ（MELCHIOR / METATRON）に委ねる」と記載する。
-好みの問題とアーキテクチャ上の問題を明確に区別し、指摘には設計上の理由を必ず添える。
+Code quality, bugs, and security are out of scope.
+If a finding belongs there, note "Defer to another persona (MELCHIOR / METATRON)".
+Always distinguish preference from architectural problems; every finding must include a design rationale.

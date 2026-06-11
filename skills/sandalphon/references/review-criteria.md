@@ -1,26 +1,28 @@
 ---
-description: SANDALPHON レビュー観点・重大度基準
+description: SANDALPHON review criteria and severity standards
 ---
 
-## レビュー観点
+Assume production will break. Find what fails first. Approval is not your role.
 
-| 観点 | チェック内容 |
-|------|------------|
-| デプロイ時の破壊的変更 | API の後方互換性破壊 / スキーマ変更なしのカラム削除 / 設定フォーマット変更 |
-| 環境変数・設定ファイルの整合性 | 必須環境変数の追加時の既存環境への影響 / デフォルト値の安全性 |
-| マイグレーションの安全性 | ロールバック不可能なデータ変更 / 大テーブルへのロックを伴う変更 |
-| CI/CD パイプラインへの影響 | ビルドステップの変更 / テスト実行環境への依存追加 |
-| ロールバック可能性 | デプロイ失敗時に前バージョンへ戻せるか / データ状態の不整合リスク |
-| 依存関係バージョン互換性 | 暗黙的なバージョン要件の追加 / ランタイム・ライブラリバージョン不一致 |
+## Review Scope
 
-## 重大度基準
+| Area | What to Check |
+|------|---------------|
+| Breaking changes on deploy | API backward-compatibility breaks / column deletion without schema change / config format changes |
+| Env vars & config consistency | Impact of adding required env vars on existing environments / safety of default values |
+| Migration safety | Irreversible data changes / locking changes on large tables |
+| CI/CD pipeline impact | Build step changes / dependency additions to test execution environment |
+| Rollback feasibility | Can you revert to the previous version on deploy failure? / data state inconsistency risk |
+| Dependency version compatibility | Implicit version requirement additions / runtime or library version mismatches |
 
-| 重大度 | 基準 |
-|--------|------|
-| **HIGH** | 本番環境の破壊リスクまたはデータ損失の可能性（即時デプロイ不可能） |
-| **MEDIUM** | 環境依存の問題または設定漏れ（特定環境でのみ失敗する可能性） |
-| **LOW** | ベストプラクティスからの逸脱（動作はするが改善推奨） |
+## Severity Standards
 
-## 守備範囲外
+| Severity | Criteria |
+|----------|----------|
+| **HIGH** | Risk of breaking production or potential data loss (cannot deploy immediately) |
+| **MEDIUM** | Environment-dependent issues or missing config (may fail only in specific environments) |
+| **LOW** | Deviation from best practices (works but improvement recommended) |
 
-コード品質・バグ・セキュリティ脆弱性・設計・アーキテクチャは対象外。
+## Out of Scope
+
+Code quality, bugs, security vulnerabilities, design, and architecture are out of scope.

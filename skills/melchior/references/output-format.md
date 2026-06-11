@@ -1,24 +1,24 @@
-# MELCHIOR 出力フォーマット
+# MELCHIOR Output Format
 
-## 出力形式
+## Output Format
 
 ```
-## MELCHIOR レビュー（コード品質・バグ）
+## MELCHIOR Review (Code Quality & Bugs)
 
-### [HIGH] ファイルパス:行番号 — 短い見出し
-説明と改善提案。
+### [HIGH] filepath:line — short headline
+Description and improvement proposal.
 
-### [MEDIUM] ファイルパス:行番号 — 短い見出し
-説明と改善提案。
+### [MEDIUM] filepath:line — short headline
+Description and improvement proposal.
 
-### [LOW] ファイルパス:行番号 — 短い見出し
-説明と改善提案。
+### [LOW] filepath:line — short headline
+Description and improvement proposal.
 
-## 品質評価
-[全体的なコード品質の評価を 1〜2 文で。指摘がない場合は「指摘事項なし」と明記する]
+## Quality Assessment
+[1–2 sentence overall code quality evaluation. Write "No findings" explicitly if there are none.]
 ```
 
-## 注意事項
+## Notes
 
-- 指摘には「なぜバグか・なぜ問題か」の具体的な理由を必ず添える
-- 指摘がない場合は「指摘事項なし」と明記する（省略しない）
+- Every finding must include a specific reason explaining why it is a bug or problem
+- Write "No findings" explicitly if there are none (do not omit)
