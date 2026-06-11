@@ -95,7 +95,7 @@ L<行番号>:<種別>
 5体のレビュー完了後、まず PR 全体に**サマリコメント**を1件投稿する。インライン指摘より先に投稿することで、レビュー全体像をレビュアーが把握しやすくなる。
 
 ```bash
-gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
+SUMMARY_URL=$(gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
   -f body="## MAGI-HARD レビュー完了
 
 | ペルソナ | HIGH | MEDIUM | LOW |
@@ -108,7 +108,8 @@ gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
 
 **HIGH: N件 / MEDIUM: M件 / LOW: K件**（LOW はインラインコメント対象外）
 
-> 各行への指摘はインラインコメントとして続けて投稿します。対応完了後は各インラインコメントに返信してください（\`/pr-review-respond\` で自動化可能）"
+> 各行への指摘はインラインコメントとして続けて投稿します。対応完了後は各インラインコメントに返信してください（\`/pr-review-respond\` で自動化可能）" \
+  --jq '.html_url')
 ```
 
 ## ステップ 9: GitHub インラインコメント投稿
@@ -165,7 +166,7 @@ gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
 | SANDALPHON | N | M | K |
 
 インラインコメント: N件投稿
-サマリコメント: <URL>
+サマリコメント: $SUMMARY_URL
 
 次のアクション:
 - 指摘への対応・返信: `/pr-review-respond` を実行
