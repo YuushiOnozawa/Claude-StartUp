@@ -27,8 +27,8 @@ if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
   _distill_retry_callback() {
     local item_file="$1"
     local t c
-    t=$(jq -r '.transcript_path' "$item_file" 2>/dev/null)
-    c=$(jq -r '.cwd // ""' "$item_file" 2>/dev/null)
+    t=$(jq -r '.transcript_path' "$item_file" 2>/dev/null) || { log_error "failed to read transcript_path from $item_file"; return 1; }
+    c=$(jq -r '.cwd // ""' "$item_file" 2>/dev/null) || true  # cwd はオプション（// "" で空文字列フォールバック済み）
     log_info "retrying queued item: $(basename "$t")"
     jq -n --arg transcript_path "$t" --arg cwd "$c" \
       '{"transcript_path":$transcript_path,"cwd":$cwd}' \
@@ -116,53 +116,60 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
-# Raw session log（LLM不要・Ollama障害時もここまでは実行される）
-RAW_DIR="${OUTPUT_DIR}/raw"
-RAW_FILE="${RAW_DIR}/${DATE}-${TIME}-${PROJECT}.md"
-mkdir -p "$RAW_DIR"
+# Raw session log（初回のみ生成 — リトライ時はスキップ）
+# リトライは Ollama 推論のみ再実行すればよく、raw は初回 SessionEnd で既に生成済みのため
+if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]]; then
+  RAW_DIR="${OUTPUT_DIR}/raw"
+  RAW_FILE="${RAW_DIR}/${DATE}-${TIME}-${PROJECT}.md"
+  mkdir -p "$RAW_DIR"
 
-{
-  printf -- '---\ndate: %s\nproject: %s\ntags: [session, raw-log]\n---\n\n# セッション記録 %s %s\n\n' \
-    "$DATE" "$PROJECT" "$DATE" "$TIME"
-  jq -rn '
-    [inputs |
-      ((.role // .type // "") | ascii_downcase) as $r |
-      (
-        (.message.content // .content // "") |
-        if type == "array" then
-          map(
-            if .type == "text" then .text
-            elif .type == "tool_use" then
-              "**Tool**: " + .name + " \u2192 " +
-              (
-                (.input // {}) |
-                (.url // .query // .command // .file_path // .pattern //
-                 (to_entries[0].value // "")) |
-                if type == "string" then .[0:80] else tostring[0:80] end
-              )
-            else empty
-            end
-          ) | join("\n")
-        elif type == "string" then .
-        else ""
-        end
-      ) as $body |
-      if ($body | length) > 0 then
-        if ($r == "human" or $r == "user") then "## User\n\($body)"
-        elif $r == "assistant" then "## Claude\n\($body)"
+  {
+    printf -- '---\ndate: %s\nproject: %s\ntags: [session, raw-log]\n---\n\n# セッション記録 %s %s\n\n' \
+      "$DATE" "$PROJECT" "$DATE" "$TIME"
+    jq -rn '
+      [inputs |
+        ((.role // .type // "") | ascii_downcase) as $r |
+        (
+          (.message.content // .content // "") |
+          if type == "array" then
+            map(
+              if .type == "text" then .text
+              elif .type == "tool_use" then
+                "**Tool**: " + .name + " \u2192 " +
+                (
+                  (.input // {}) |
+                  (.url // .query // .command // .file_path // .pattern //
+                   (to_entries[0].value // "")) |
+                  if type == "string" then .[0:80] else tostring[0:80] end
+                )
+              else empty
+              end
+            ) | join("\n")
+          elif type == "string" then .
+          else ""
+          end
+        ) as $body |
+        if ($body | length) > 0 then
+          if ($r == "human" or $r == "user") then "## User\n\($body)"
+          elif $r == "assistant" then "## Claude\n\($body)"
+          else empty
+          end
         else empty
         end
-      else empty
-      end
-    ] | join("\n\n---\n\n")
-  ' "$TRANSCRIPT_PATH" 2>/dev/null
-} > "$RAW_FILE" \
-  && log_info "raw log saved: $RAW_FILE" \
-  || { log_warn "raw log generation failed (non-fatal)"; rm -f "$RAW_FILE"; }
+      ] | join("\n\n---\n\n")
+    ' "$TRANSCRIPT_PATH" 2>/dev/null
+  } > "$RAW_FILE" \
+    && log_info "raw log saved: $RAW_FILE" \
+    || { log_warn "raw log generation failed (non-fatal)"; rm -f "$RAW_FILE"; }
+fi
 
 # Check Ollama is running
 if [[ $_OLLAMA_UP -eq 0 ]]; then
   log_warn "Ollama not running, queuing for retry"
+  if [[ "${KRAG_DISTILL_RETRY:-0}" == "1" ]]; then
+    log_warn "retry: ollama not running, handing off to queue_drain dead-letter"
+    exit 1
+  fi
   echo "  ⏳ knowledge-distill: Ollama 未起動 → 保留 ($PROJECT)" >&2
   if queue_push "$HOOK_NAME" "ollama" "$TRANSCRIPT_PATH" "$PROJECT_CWD"; then
     log_info "queued for retry (ollama): $TRANSCRIPT_PATH"
@@ -209,6 +216,10 @@ curl -s --max-time 120 http://localhost:11434/api/generate \
 
 if [[ $_CURL_EXIT -ne 0 ]]; then
   log_warn "Ollama API failed (exit=$_CURL_EXIT), queuing for retry"
+  if [[ "${KRAG_DISTILL_RETRY:-0}" == "1" ]]; then
+    log_warn "retry: ollama API failed, handing off to queue_drain dead-letter"
+    exit 1
+  fi
   if queue_push "$HOOK_NAME" "ollama" "$TRANSCRIPT_PATH" "$PROJECT_CWD"; then
     log_info "queued for retry (ollama-timeout): $TRANSCRIPT_PATH"
     queue_notify_send "knowledge-distill" "Ollama タイムアウトのため distill を保留中 ($PROJECT)"
@@ -223,6 +234,10 @@ RESULT=$(jq -r '.response // ""' "$_OLLAMA_TMP" 2>/dev/null) || _JQ_EXIT=$?
 
 if [[ $_JQ_EXIT -ne 0 ]]; then
   log_warn "Ollama response parse failed (exit=$_JQ_EXIT), queuing for retry"
+  if [[ "${KRAG_DISTILL_RETRY:-0}" == "1" ]]; then
+    log_warn "retry: ollama response parse failed, handing off to queue_drain dead-letter"
+    exit 1
+  fi
   if queue_push "$HOOK_NAME" "ollama" "$TRANSCRIPT_PATH" "$PROJECT_CWD"; then
     log_info "queued for retry (ollama-json): $TRANSCRIPT_PATH"
     queue_notify_send "knowledge-distill" "Ollama JSON パースエラーのため distill を保留中 ($PROJECT)"
