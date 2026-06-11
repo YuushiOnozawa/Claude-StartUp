@@ -141,6 +141,8 @@ Based on `$PLAN` **Test scenarios**, create test files before implementation.
 
 Execute the approved plan steps in order until all tests pass (Green).
 
+> **Alternative**: Use `/codegen` to delegate implementation to a local LLM (Claude plans → Gemma4 implements). Suitable when the plan is well-defined and the changes are self-contained.
+
 ### Step 2: Verify
 
 - Run `git status` to verify changed files
