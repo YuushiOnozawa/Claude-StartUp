@@ -1,11 +1,12 @@
 ---
 name: pr-review
-description: PR レビュースキル。Gemini Code Assist（自動実行済み）のレビューコメントを取得・表示し、続けて /code-review プラグインを実行する。両方の結果を統合してサマリを提示する。Trigger: "PRレビュー", "pr-review", "レビューして", "コードレビュー", "Geminiのレビュー確認", "review PR"
+description: PR レビュースキル。magi-hard（MAGI 5体）でレビューを実行し GitHub にコメント投稿する。HIGH/MEDIUM 指摘があれば /pr-review-respond と交互に回して LGTM まで到達させる。Trigger: "PRレビュー", "pr-review", "レビューして", "コードレビュー", "review PR", "MAGIにレビューさせて", "PRをレビューして"
 ---
 
 # PR Review Skill
 
-PR に対して Gemini Code Assist のレビュー結果を取得し、/code-review プラグインを実行して、両方の指摘をまとめて提示する。
+PR に対して `/magi-hard` を実行し、MAGI 5体によるレビュー結果を GitHub に投稿する。
+HIGH/MEDIUM 指摘がある場合は `/pr-review-respond` で対応し、このスキルを再実行する——LGTM まで繰り返す。
 
 ## 事前条件
 
@@ -28,72 +29,37 @@ gh pr view --json number,headRefName,baseRefName,url,state
 
 以降、PR 番号を `$PR_NUM`、リポジトリを `$OWNER/$REPO` として扱う（`gh repo view --json nameWithOwner` で取得）。
 
-## ステップ 2: Gemini レビューコメントの取得
+## ステップ 2: magi-hard の実行
 
-Gemini Code Assist のレビューコメントを取得して表示する。
+`/magi-hard` スキルを実行する。
 
-### PR レビュー（ファイル全体レビュー）の取得
+magi-hard は以下を担う：
+- MELCHIOR→BALTHASAR→CASPER→METATRON→SANDALPHON の順次実行
+- 行番号＋種別フラグの共有による重複排除
+- PR にサマリコメント投稿（先行）→ HIGH/MEDIUM 指摘をインラインコメントとして投稿
 
-```bash
-gh api repos/$OWNER/$REPO/pulls/$PR_NUM/reviews \
-  --jq '[.[] | select(.user.login | test("gemini"; "i"))] | {count: length, reviews: map({id, state, submitted_at, body})}'
-```
+## ステップ 3: 次のアクション判定
 
-### インラインコメントの取得
-
-```bash
-gh api repos/$OWNER/$REPO/pulls/$PR_NUM/comments \
-  --jq '[.[] | select(.user.login | test("gemini"; "i"))] | {count: length, comments: map({id, path, line, body})}'
-```
-
-結果を以下の形式でユーザーに提示する：
-
-```
-## Gemini Code Assist レビュー結果
-
-レビューコメント: N 件
-インラインコメント: M 件
-
-### レビュー本文
-<本文があれば表示>
-
-### インライン指摘一覧
-| # | ファイル | 行 | 内容 |
-|---|----------|-----|------|
-| 1 | path/to/file.ts | 42 | <指摘内容の要約> |
-...
-```
-
-Gemini のコメントが 0 件の場合は「Gemini のレビューコメントはまだありません」と表示して続行する。
-
-## ステップ 3: /code-review プラグインの実行
-
-/code-review コマンドを実行する。
-
-このコマンドは以下のフローで PR を解析し GitHub にコメントを投稿する：
-- 5 本の並列 Sonnet エージェントで独立レビュー（CLAUDE.md 準拠・バグ・履歴分析など）
-- Haiku で各指摘を 0–100 スコアリング
-- スコア 80 以上のみ GitHub にコメント投稿
-
-## ステップ 4: サマリ提示
-
-両方のレビューが完了したら、以下のサマリをユーザーに提示する：
+magi-hard の完了後、以下の基準でユーザーに報告する：
 
 ```
 ## PR レビュー完了
 
-| レビュアー | 指摘数 | 状態 |
-|-----------|--------|------|
-| Gemini Code Assist | N 件 | 確認済み |
-| /code-review (Claude) | M 件 | GitHub にコメント済み |
+| ペルソナ | HIGH | MEDIUM | LOW |
+|---------|------|--------|-----|
+| MELCHIOR（コード品質・バグ） | N | M | K |
+| BALTHASAR（設計・アーキテクチャ） | N | M | K |
+| CASPER（ルール遵守） | N | M | K |
+| METATRON（セキュリティ） | N | M | K |
+| SANDALPHON（実行環境・デプロイ） | N | M | K |
+```
 
 ### 次のアクション
-- 指摘への対応: `/pr-review-respond` を実行
-- 指摘なし・軽微な場合: マージ準備完了
-```
+
+- **HIGH/MEDIUM 指摘あり** → `/pr-review-respond` で対応 → 対応完了後に再度 `/pr-review` を実行
+- **HIGH/MEDIUM 指摘なし** → LGTM（マージ準備完了）
 
 ## 注意事項
 
-- Gemini は PR 作成時に自動実行済みのため、このスキルは「確認と /code-review の追加実行」が目的
 - レビュー結果の修正対応は `/pr-review-respond` スキルで行う
-- `/code-review` は 1 PR につき 1 回が基本（既にレビュー済みの場合はスキップされる）
+- `pr-review ↔ pr-review-respond` のループで LGTM まで到達させる
