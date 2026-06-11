@@ -89,7 +89,7 @@ $BALTHASAR_PLAN_REVIEW
 ```
 
 On **2** (修正): return to Phase 1, revise the plan, and re-run BALTHASAR.
-On **1** (承認): call `ExitPlanMode`. Proceed to Phase 3.
+On **1** (承認): call `ExitPlanMode`, then call `ctx_compress` to free context before implementation. Proceed to Phase 3.
 
 ## Phase 3: BRANCH
 

@@ -53,6 +53,10 @@ L<行番号>:<種別>
 | セキュリティ | SECURITY |
 | 実行環境・デプロイ | DEPLOY |
 
+> ⚠️ **重要: ステップ 3〜7 は必ず逐次実行（並列化禁止）**
+> ステップ 3〜7 は **MELCHIOR → BALTHASAR → CASPER → METATRON → SANDALPHON の順に1体ずつ実行すること**。
+> 前の体の結果から `$FLAGS` を更新して次の体に渡すため、並列実行すると FLAGS が空のまま渡され重複排除が機能しない。
+
 ## ステップ 3: MELCHIOR 実行
 
 `/melchior` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
@@ -100,7 +104,7 @@ COMMENT_URL=$(gh api -X POST repos/$OWNER/$REPO/pulls/$PR_NUM/comments \
 
 <指摘内容>" \
   -f path="scripts/example.sh" \
-  -f line=17 \
+  -F line=17 \
   -f side="RIGHT" \
   -f commit_id="$HEAD_SHA" \
   --jq '.html_url')
