@@ -27,7 +27,7 @@ if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
   _distill_retry_callback() {
     local item_file="$1"
     local t c
-    t=$(jq -r '.transcript_path' "$item_file" 2>/dev/null) || { log_error "failed to read transcript_path from $item_file"; return 1; }
+    t=$(jq -e -r '.transcript_path // empty' "$item_file" 2>/dev/null) || { log_error "failed to read transcript_path from $item_file (null or missing)"; return 1; }
     c=$(jq -r '.cwd // ""' "$item_file" 2>/dev/null) || true  # cwd はオプション（// "" で空文字列フォールバック済み）
     log_info "retrying queued item: $(basename "$t")"
     jq -n --arg transcript_path "$t" --arg cwd "$c" \
@@ -97,9 +97,11 @@ fi
 PROJECT_CWD=$(echo "$INPUT" | jq -r '.cwd // "unknown"' 2>/dev/null)
 PROJECT=$(basename "$PROJECT_CWD" 2>/dev/null || echo "unknown")
 DATE=$(date +%Y-%m-%d)
-TIME=$(date +%H%M%S)
+# TRANSCRIPT_BASE: transcript ファイル名（拡張子除く）を基準にする
+# → 初回実行・リトライで同一のファイル名が保証され、raw と distilled が対応する
+TRANSCRIPT_BASE=$(basename "$TRANSCRIPT_PATH" | sed 's/\.[^.]*$//')
 OUTPUT_DIR="$HOME/pcloud/obsidian/sessions"
-OUTPUT_FILE="${OUTPUT_DIR}/${DATE}-${TIME}-${PROJECT}.md"
+OUTPUT_FILE="${OUTPUT_DIR}/${DATE}-${TRANSCRIPT_BASE}-${PROJECT}.md"
 
 # pCloud マウント確認（マウント管理は systemd サービスの責務）
 if ! mountpoint -q "$HOME/pcloud"; then
@@ -120,12 +122,12 @@ mkdir -p "$OUTPUT_DIR"
 # リトライは Ollama 推論のみ再実行すればよく、raw は初回 SessionEnd で既に生成済みのため
 if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]]; then
   RAW_DIR="${OUTPUT_DIR}/raw"
-  RAW_FILE="${RAW_DIR}/${DATE}-${TIME}-${PROJECT}.md"
+  RAW_FILE="${RAW_DIR}/${DATE}-${TRANSCRIPT_BASE}-${PROJECT}.md"
   mkdir -p "$RAW_DIR"
 
   {
     printf -- '---\ndate: %s\nproject: %s\ntags: [session, raw-log]\n---\n\n# セッション記録 %s %s\n\n' \
-      "$DATE" "$PROJECT" "$DATE" "$TIME"
+      "$DATE" "$PROJECT" "$DATE" "$TRANSCRIPT_BASE"
     jq -rn '
       [inputs |
         ((.role // .type // "") | ascii_downcase) as $r |
@@ -277,7 +279,7 @@ if [[ -x "$LLM" ]]; then
   echo "  → knowledge-rag 登録中..." >&2
   KRAG_MODEL="$_DISTILL_MODEL"
   KRAG_STRICT="${KRAG_DISTILL_STRICT:-0}"
-  KRAG_REL="sessions/${DATE}-${TIME}-${PROJECT}.md"
+  KRAG_REL="sessions/${DATE}-${TRANSCRIPT_BASE}-${PROJECT}.md"
   KRAG_LOG="$_HOOK_LOG"
 
   {
