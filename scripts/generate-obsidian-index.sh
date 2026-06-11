@@ -12,7 +12,7 @@ TIMEOUT=600
 log() { echo "[$1] $2" >&2; }
 
 # Ollama 起動確認
-if ! curl -sf "$OLLAMA_URL" > /dev/null 2>&1 && ! curl -sf "http://localhost:11434" > /dev/null 2>&1; then
+if ! curl -sf "http://localhost:11434" > /dev/null 2>&1; then
   log "ERROR" "Ollama が起動していません"
   exit 1
 fi
@@ -35,10 +35,10 @@ collect_summaries() {
     title="$(grep '^# ' "$md" | head -1 | sed 's/^# //')"
     [[ -z "$title" ]] && title="$basename"
 
-    summaries+="- ${folder_name}/${basename}.md : ${title}\n"
+    summaries+="- ${folder_name}/${basename}.md : ${title}"$'\n'
   done
 
-  echo -e "$summaries"
+  printf '%s' "$summaries"
 }
 
 # Ollama でインデックスを生成する
@@ -70,20 +70,14 @@ ${summaries}
 
 _index.md の内容のみを出力してください（前置き・説明・コードブロック不要）:"
 
-  local tmp_prompt tmp_json
-  tmp_prompt="$(mktemp)"
+  local tmp_json
   tmp_json="$(mktemp)"
-  printf '%s' "$prompt" > "$tmp_prompt"
 
-  python3 - "$MODEL" "$tmp_prompt" "$tmp_json" <<'PYEOF'
-import json, sys
-model, prompt_path, out_path = sys.argv[1], sys.argv[2], sys.argv[3]
-with open(prompt_path) as f:
-    prompt = f.read()
-with open(out_path, 'w') as f:
-    json.dump({'model': model, 'prompt': prompt, 'stream': False, 'options': {'num_ctx': 8192, 'num_predict': 4096}}, f)
-PYEOF
-  rm -f "$tmp_prompt"
+  jq -n \
+    --arg model "$MODEL" \
+    --arg prompt "$prompt" \
+    '{"model": $model, "prompt": $prompt, "stream": false, "options": {"num_ctx": 8192, "num_predict": 4096}}' \
+    > "$tmp_json"
 
   local response
   response="$(curl -sf --max-time "$TIMEOUT" "$OLLAMA_URL" \
@@ -114,13 +108,19 @@ PYEOF
 
 # --- メイン ---
 
+has_error=0
+
 # investigations/
 log "INFO" "investigations/ のファイルを収集中..."
 inv_summaries="$(collect_summaries "$INVESTIGATIONS_DIR")"
 inv_count="$(echo "$inv_summaries" | grep -c '^-' || true)"
 log "INFO" "${inv_count} 件のファイルを収集"
 
-generate_index "investigations" "$inv_summaries" "$INVESTIGATIONS_DIR/_index.md"
+if [[ "$inv_count" -gt 0 ]]; then
+  generate_index "investigations" "$inv_summaries" "$INVESTIGATIONS_DIR/_index.md" || has_error=1
+else
+  log "WARN" "investigations/ にインデックス対象のファイルがありません"
+fi
 
 echo ""
 
@@ -130,9 +130,18 @@ know_summaries="$(collect_summaries "$KNOWLEDGE_DIR")"
 know_count="$(echo "$know_summaries" | grep -c '^-' || true)"
 log "INFO" "${know_count} 件のファイルを収集"
 
-generate_index "knowledge" "$know_summaries" "$KNOWLEDGE_DIR/_index.md"
+if [[ "$know_count" -gt 0 ]]; then
+  generate_index "knowledge" "$know_summaries" "$KNOWLEDGE_DIR/_index.md" || has_error=1
+else
+  log "WARN" "knowledge/ にインデックス対象のファイルがありません"
+fi
 
 echo ""
+if [[ "$has_error" -ne 0 ]]; then
+  log "ERROR" "一部のインデックス生成に失敗しました"
+  exit 1
+fi
+
 log "INFO" "完了"
 log "INFO" "  → $INVESTIGATIONS_DIR/_index.md"
 log "INFO" "  → $KNOWLEDGE_DIR/_index.md"
