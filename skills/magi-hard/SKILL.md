@@ -53,9 +53,8 @@ L<行番号>:<種別>
 | セキュリティ | SECURITY |
 | 実行環境・デプロイ | DEPLOY |
 
-## ステップ 3〜7: 各体の実行（**必ず逐次。並列化禁止**）
-
-> ⚠️ ステップ 3〜7 は **MELCHIOR → BALTHASAR → CASPER → METATRON → SANDALPHON の順に1体ずつ実行すること**。
+> ⚠️ **重要: ステップ 3〜7 は必ず逐次実行（並列化禁止）**
+> ステップ 3〜7 は **MELCHIOR → BALTHASAR → CASPER → METATRON → SANDALPHON の順に1体ずつ実行すること**。
 > 前の体の結果から `$FLAGS` を更新して次の体に渡すため、並列実行すると FLAGS が空のまま渡され重複排除が機能しない。
 
 ## ステップ 3: MELCHIOR 実行
