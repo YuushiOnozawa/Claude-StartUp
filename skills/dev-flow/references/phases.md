@@ -94,14 +94,23 @@ On **1** (承認): call `ExitPlanMode`, then call `ctx_compress` to free context
 ## Phase 3: WORKTREE
 
 Check current branch:
-- If already on a non-`main`/`master` branch: skip (worktree already active).
+- If already on a non-`main`/`master` branch: skip (worktree already active, proceed to Phase 4).
 - If on `main`/`master`: Execute `/worktree new <branch-name>`.
   - Branch name auto-generated from plan (English, kebab-case, `feat/` or `fix/` prefix).
-  - `/worktree` skill outputs the working path; hold it as `$WORKTREE_PATH` (e.g., `./worktree/feat-xxx`).
 
-**From Phase 4 onward**: all file operations target `$WORKTREE_PATH`.
-- Edit `$WORKTREE_PATH/path/to/file` (not `./path/to/file`)
-- Run git commands from the worktree: `git -C "$WORKTREE_PATH" diff`
+After worktree creation, present the plan summary and instruct the user:
+
+```
+Worktree を作成しました: ./worktree/<branch>
+
+以下のコマンドで新しいセッションを起動してください：
+  cd ./worktree/<branch> && claude
+
+新しいセッションで Phase 4 (IMPL) から続けてください。
+このセッションは終了します。
+```
+
+**Stop here.** Implementation continues in the new session where CWD = worktree.
 
 ## Phase 4: IMPL
 

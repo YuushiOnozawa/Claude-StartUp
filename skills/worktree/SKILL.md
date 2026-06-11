@@ -13,17 +13,24 @@ Git worktree lifecycle manager. All worktrees are created under `./worktree/` in
 
 ```bash
 BRANCH="$1"
+
+# Validate branch name (alphanumeric, hyphen, slash, underscore only)
+if ! echo "$BRANCH" | grep -qE '^[a-zA-Z0-9/_-]+$'; then
+  echo "ERROR: Invalid branch name: $BRANCH (use alphanumeric, /, -, _ only)"
+  exit 1
+fi
+
 WORKTREE_PATH="./worktree/${BRANCH}"
 mkdir -p ./worktree
 git worktree add "$WORKTREE_PATH" -b "$BRANCH"
 ```
 
-Output `$WORKTREE_PATH` so the caller can hold it (e.g., `$WORKTREE_PATH = ./worktree/feat-xxx`).
-
 Present:
 ```
 ✓ Worktree 作成: $WORKTREE_PATH（ブランチ: $BRANCH）
-  Phase 4 以降のファイル操作はこのパスを基点にしてください。
+
+実装を開始するには新しいターミナルで：
+  cd $WORKTREE_PATH && claude
 ```
 
 ### done \<branch\>
@@ -31,7 +38,13 @@ Present:
 ```bash
 BRANCH="$1"
 WORKTREE_PATH="./worktree/${BRANCH}"
-git worktree remove "$WORKTREE_PATH"
+
+git worktree remove "$WORKTREE_PATH" || {
+  echo "ERROR: Failed to remove worktree at $WORKTREE_PATH"
+  echo "Hint: run 'git worktree prune' manually if the directory was already deleted"
+  exit 1
+}
+git worktree prune
 git branch -d "$BRANCH"
 ```
 
