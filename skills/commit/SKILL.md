@@ -1,5 +1,7 @@
+---
 name: commit
-desc: Git commit workflow. Use every time the user asks to commit, record changes, or save to git history. Never run git commit directly — always use this skill. Handles branch safety, staging, commit message drafting, and Co-Authored-By attribution. Trigger: "コミット", "commit", "変更を保存", "コミットして", or any request to record code changes.
+description: Git commit workflow. Use every time the user asks to commit, record changes, or save to git history. Never run git commit directly — always use this skill. Handles branch safety, staging, commit message drafting, and Co-Authored-By attribution. Trigger: "コミット", "commit", "変更を保存", "コミットして", or any request to record code changes.
+---
 
 # COMMIT
 
