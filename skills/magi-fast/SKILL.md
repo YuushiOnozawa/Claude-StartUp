@@ -66,14 +66,10 @@ HIGH 指摘: N 件 / MEDIUM 指摘: M 件 / LOW 指摘: K 件
 ### HIGH が 1 件以上の場合
 
 ```
-⚠ HIGH 指摘が N 件あります。
-
-修正方法：
-1. /codegen — ローカルLLMに修正実装を委譲（推奨）
-2. Claude が直接修正
-
-修正後に /magi-fast を再実行してください。
+⚠ HIGH 指摘が N 件あります。修正後に /magi-fast を再実行してください。
 ```
+
+HIGH 指摘の修正は `/codegen` で実装すること。Ollama が使えない場合のみ直接修正する。
 
 ### HIGH が 0 件の場合
 
