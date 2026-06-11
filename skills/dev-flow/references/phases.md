@@ -139,9 +139,15 @@ Based on `$PLAN` **Test scenarios**, create test files before implementation.
 
 ### Step 1: Implement
 
-Execute the approved plan steps in order until all tests pass (Green).
+Before writing code directly, ask the user:
 
-> **Alternative**: Use `/codegen` to delegate implementation to a local LLM (Claude plans → Gemma4 implements). Suitable when the plan is well-defined and the changes are self-contained.
+```
+実装方法を選んでください：
+1. /codegen — ローカルLLM（Gemma4）に実装を委譲（コスト削減・推奨）
+2. Claude が直接実装
+```
+
+Execute the approved plan steps in order until all tests pass (Green).
 
 ### Step 2: Verify
 
