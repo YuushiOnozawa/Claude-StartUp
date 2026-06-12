@@ -1,0 +1,15 @@
+name: Security Scan
+on: [push, pull_request]
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+      - name: semgrep
+        run: |
+          pip install semgrep==1.165.0
+          semgrep scan --config=auto --error
