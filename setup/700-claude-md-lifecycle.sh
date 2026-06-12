@@ -13,15 +13,17 @@ _CMLC_TMP="${_CMLC_SETTINGS}.claude-md-lifecycle.tmp"
 
 mkdir -p "$_CMLC_HOOK_DST_DIR"
 
-# フックファイルをコピー
-for _hook in claude-md-stop.sh claude-md-check.sh \
-             lessons-learned-stop.sh lessons-learned-check.sh; do
-  _src="${_CMLC_HOOK_SRC_DIR}/${_hook}"
-  _dst="${_CMLC_HOOK_DST_DIR}/${_hook}"
+# フックファイルをコピー（hooks/ 配下の全 .sh と lib/ ディレクトリを一括）
+mkdir -p "$_CMLC_HOOK_DST_DIR/lib"
+for _src in "${_CMLC_HOOK_SRC_DIR}"/*.sh "${_CMLC_HOOK_SRC_DIR}"/lib/*.sh; do
+  [[ -f "$_src" ]] || continue
+  _rel="${_src#${_CMLC_HOOK_SRC_DIR}/}"
+  _dst="${_CMLC_HOOK_DST_DIR}/${_rel}"
+  mkdir -p "$(dirname "$_dst")"
   if cp "$_src" "$_dst" && chmod +x "$_dst"; then
-    ok "${_hook}"
+    ok "${_rel}"
   else
-    fail "${_hook}  →  手動: cp ${_src} ${_dst} && chmod +x ${_dst}"
+    fail "${_rel}  →  手動: cp ${_src} ${_dst} && chmod +x ${_dst}"
   fi
 done
 

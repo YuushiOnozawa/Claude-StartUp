@@ -162,11 +162,14 @@ else
   SETUP_DIR="$CLAUDE_DIR/setup"
 fi
 [[ -d "$SETUP_DIR" ]] || { echo "ERROR: $SETUP_DIR が見つかりません" >&2; exit 1; }
-shopt -u nullglob  # glob 不一致時にリテラル文字列が返るよう保証
-for mod in "$SETUP_DIR"/*.sh; do
-  [[ -f "$mod" ]] || { echo "ERROR: $SETUP_DIR にモジュールが見つかりません" >&2; exit 1; }
+shopt -s nullglob
+_setup_mods=("$SETUP_DIR"/*.sh)
+shopt -u nullglob
+[[ ${#_setup_mods[@]} -gt 0 ]] || { echo "ERROR: $SETUP_DIR にモジュールが見つかりません" >&2; exit 1; }
+for mod in "${_setup_mods[@]}"; do
   source "$mod"
 done
+unset _setup_mods
 
 # ──────────────────────────────────────
 # サマリー
