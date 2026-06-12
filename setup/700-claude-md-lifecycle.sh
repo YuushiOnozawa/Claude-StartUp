@@ -36,14 +36,21 @@ if [[ ! -f "$_CMLC_SETTINGS" ]]; then
 fi
 
 # hook 登録ヘルパー（冪等）: _register_hook <hook_type> <cmd> <label>
-# 重複チェックはコマンド文字列の完全一致で行う
+# 引数はリテラル必須。外部入力を渡す場合は文字種検証が必要
+# settings.json 構造: .hooks["Stop"] = [{"hooks": [{"type": "command", "command": "..."}]}]
 _register_hook() {
   local hook_type="$1" cmd="$2" label="$3"
+  # 既登録チェック（bash 側で行い、jq は追加のみに専念させる）
+  if jq --arg ht "$hook_type" --arg cmd "$cmd" \
+    '.hooks[$ht][]?.hooks[]?.command // empty | select(. == $cmd)' \
+    "$_CMLC_SETTINGS" 2>/dev/null | grep -q .; then
+    ok "$label"
+    return
+  fi
+  # 未登録の場合のみ追加
   if jq --arg ht "$hook_type" --arg cmd "$cmd" '
     .hooks[$ht] //= [] |
-    if (.hooks[$ht] | map(.hooks[]?.command // "") | any(. == $cmd)) then .
-    else .hooks[$ht] += [{"hooks": [{"type": "command", "command": $cmd}]}]
-    end
+    .hooks[$ht] += [{"hooks": [{"type": "command", "command": $cmd}]}]
   ' "$_CMLC_SETTINGS" > "$_CMLC_TMP" && mv "$_CMLC_TMP" "$_CMLC_SETTINGS"; then
     ok "$label"
   else
