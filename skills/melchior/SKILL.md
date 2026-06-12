@@ -45,9 +45,23 @@ ollama list 2>/dev/null | grep -q "qwen2.5-coder:7b"
    ---レビュー対象---
    [差分]
    ```
-3. 組み立てたプロンプトを `ollama run qwen2.5-coder:7b` に渡す
+3. 組み立てたプロンプトを Ollama に渡す前に、排他ロックを取得する：
+   ```bash
+   # stale lock チェック（Ollama プロセスが存在しない場合はロックを解放）
+   [ -f /tmp/magi-ollama.lock ] && ! pgrep -x ollama > /dev/null 2>&1 && rm -f /tmp/magi-ollama.lock
+   # タイムアウト付きロック取得（最大5分）でプロンプトをパイプ渡し
+   echo "$PROMPT" | flock -w 300 /tmp/magi-ollama.lock ollama run qwen2.5-coder:7b || {
+     echo "⚠ Ollama ロック取得タイムアウト（5分）。他のプロセスが実行中か確認してください。"
+     exit 1
+   }
+   ```
 
 #### Ollama が使えない場合（Haiku fallback）
+
+**Haiku フォールバック確認（必須）:**
+Haiku にフォールバックする前に、ユーザーに必ず確認する：
+「⚠ Ollama が利用できません（モデル `qwen2.5-coder:7b` が見つかりません）。Claude Haiku にフォールバックしてよいですか？」
+ユーザーが拒否した場合はレビューを中止し、「Ollama を確認して再実行してください」と案内する。
 
 **前提条件**: `setup.sh` で `agents/` が `~/.claude/agents/` にコピー済みであること。
 

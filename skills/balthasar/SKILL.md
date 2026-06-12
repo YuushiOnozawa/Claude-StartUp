@@ -43,13 +43,24 @@ ollama list 2>/dev/null | grep -q "phi4:latest"
    ---レビュー対象---
    [差分]
    ```
-3. 一時ファイルを `ollama run phi4:latest` に渡し、実行後に削除する：
+3. 一時ファイルを Ollama に渡す前に、排他ロックを取得する：
    ```bash
-   ollama run phi4:latest < prompt.txt
+   # stale lock チェック（Ollama プロセスが存在しない場合はロックを解放）
+   [ -f /tmp/magi-ollama.lock ] && ! pgrep -x ollama > /dev/null 2>&1 && rm -f /tmp/magi-ollama.lock
+   # タイムアウト付きロック取得（最大5分）
+   flock -w 300 /tmp/magi-ollama.lock ollama run phi4:latest < prompt.txt || {
+     echo "⚠ Ollama ロック取得タイムアウト（5分）。他のプロセスが実行中か確認してください。"
+     rm -f prompt.txt; exit 1
+   }
    rm prompt.txt
    ```
 
 #### Ollama が使えない場合（Haiku fallback）
+
+**Haiku フォールバック確認（必須）:**
+Haiku にフォールバックする前に、ユーザーに必ず確認する：
+「⚠ Ollama が利用できません（モデル `phi4:latest` が見つかりません）。Claude Haiku にフォールバックしてよいですか？」
+ユーザーが拒否した場合はレビューを中止し、「Ollama を確認して再実行してください」と案内する。
 
 **前提条件**: `setup.sh` で `agents/` が `~/.claude/agents/` にコピー済みであること。
 
