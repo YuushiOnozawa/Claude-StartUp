@@ -14,7 +14,9 @@ _CMLC_TMP="${_CMLC_SETTINGS}.claude-md-lifecycle.tmp"
 mkdir -p "$_CMLC_HOOK_DST_DIR"
 
 # フックファイルをコピー（hooks/ 配下の全 .sh と lib/ ディレクトリを一括）
+# 注意: hooks/ 配下の全 .sh が自動配置される。配置対象外ファイルは hooks/ の外に置くこと
 mkdir -p "$_CMLC_HOOK_DST_DIR/lib"
+[[ -d "${_CMLC_HOOK_SRC_DIR}/lib" ]] || echo "  ℹ  hooks/lib/ が見つかりません。lib/ スクリプトはスキップされます。"
 for _src in "${_CMLC_HOOK_SRC_DIR}"/*.sh "${_CMLC_HOOK_SRC_DIR}"/lib/*.sh; do
   [[ -f "$_src" ]] || continue
   _rel="${_src#${_CMLC_HOOK_SRC_DIR}/}"
@@ -24,6 +26,7 @@ for _src in "${_CMLC_HOOK_SRC_DIR}"/*.sh "${_CMLC_HOOK_SRC_DIR}"/lib/*.sh; do
     ok "${_rel}"
   else
     fail "${_rel}  →  手動: cp ${_src} ${_dst} && chmod +x ${_dst}"
+    MISSING_CMDS+=("${_rel}")
   fi
 done
 
@@ -89,4 +92,4 @@ else
 fi
 
 unset _CMLC_HOOK_SRC_DIR _CMLC_HOOK_DST_DIR _CMLC_SETTINGS _CMLC_TMP
-unset _CMLC_STOP_CMD _CMLC_CHECK_CMD _LL_STOP_CMD _LL_CHECK_CMD _hook _src _dst
+unset _CMLC_STOP_CMD _CMLC_CHECK_CMD _LL_STOP_CMD _LL_CHECK_CMD _src _rel _dst
