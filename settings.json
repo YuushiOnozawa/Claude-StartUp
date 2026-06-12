@@ -99,20 +99,13 @@
     ]
   },
   "enabledPlugins": {
-    "code-review@claude-plugins-official": false,
-    "code-review-command@local-skills": true
+    "code-review@claude-plugins-official": false
   },
   "extraKnownMarketplaces": {
     "anthropic-agent-skills": {
       "source": {
         "source": "github",
         "repo": "anthropics/skills"
-      }
-    },
-    "local-skills": {
-      "source": {
-        "source": "directory",
-        "path": "~/.claude/local-plugins"
       }
     },
     "claude-plugins-official": {
