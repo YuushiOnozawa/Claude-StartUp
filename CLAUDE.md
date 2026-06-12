@@ -35,6 +35,10 @@
 - filepath: `lessons-learned/YYYY-MM-DD-HHMMSS-<要約>.md`、category: `lessons-learned`
 - フォーマット: 状況 / ミス / 原因 / 解決 / 防止策
 
+## Skill 実行
+- Skill の手順は必ず全て遵守する。省略・バイパス・ショートカット禁止（確認ステップ含む）
+- コマンド出力を `head` 等で切り捨てない（全件確認してから判断する）
+
 ## 設定ファイルの管理方針
 - プロジェクト固有のルール・コンテキストは、そのプロジェクトの `./CLAUDE.md` に追記する（`~/.claude/CLAUDE.md` は変更しない）
 - プロジェクト固有の設定は、そのプロジェクトの `.claude/settings.json` に追記する（`~/.claude/settings.json` は変更しない）

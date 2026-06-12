@@ -6,13 +6,14 @@ OBSIDIAN_DIR="$HOME/pcloud/obsidian"
 INVESTIGATIONS_DIR="$OBSIDIAN_DIR/investigations"
 KNOWLEDGE_DIR="$OBSIDIAN_DIR/knowledge"
 MODEL="${OBSIDIAN_INDEX_MODEL:-qwen3:8b}"
-OLLAMA_URL="http://localhost:11434/api/generate"
-TIMEOUT=600
+
+# shellcheck source=../hooks/lib/ollama.sh
+source "$(dirname "$0")/../hooks/lib/ollama.sh"
 
 log() { echo "[$1] $2" >&2; }
 
 # Ollama 起動確認
-if ! curl -sf "http://localhost:11434" > /dev/null 2>&1; then
+if ! ollama_is_up; then
   log "ERROR" "Ollama が起動していません"
   exit 1
 fi
@@ -70,24 +71,14 @@ ${summaries}
 
 _index.md の内容のみを出力してください（前置き・説明・コードブロック不要）:"
 
-  local tmp_json
-  tmp_json="$(mktemp)"
-
-  jq -n \
-    --arg model "$MODEL" \
-    --arg prompt "$prompt" \
-    '{"model": $model, "prompt": $prompt, "stream": false, "options": {"num_ctx": 8192, "num_predict": 4096}}' \
-    > "$tmp_json"
-
   local response
-  response="$(curl -sf --max-time "$TIMEOUT" "$OLLAMA_URL" \
-    -H 'Content-Type: application/json' \
-    -d "@${tmp_json}" \
-    | jq -r '.response // empty')"
-  rm -f "$tmp_json"
+  response="$(printf '%s\n' "$prompt" | bash "$(dirname "$0")/ollama-run.sh" "$MODEL")" || {
+    log "ERROR" "${folder_label} の生成に失敗しました"
+    return 1
+  }
 
   if [[ -z "$response" ]]; then
-    log "ERROR" "${folder_label} の生成に失敗しました"
+    log "ERROR" "${folder_label} の生成に失敗しました（空レスポンス）"
     return 1
   fi
 
