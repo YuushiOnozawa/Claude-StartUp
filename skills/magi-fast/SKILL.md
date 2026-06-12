@@ -20,8 +20,8 @@ Ollama が使える場合はローカル実行、使えない場合は Haiku に
 ```bash
 DIFF=$(git diff --staged 2>/dev/null)
 [ -z "$DIFF" ] && DIFF=$(git diff HEAD 2>/dev/null)
-# .md ファイルをローカルLLMに渡す前に除外する（ロールプレイ指示の混入防止）
-DIFF=$(printf '%s\n' "$DIFF" | awk '/^diff --git/{skip=($0 ~ /SKILL\.md |CLAUDE\.md |\/agents\/[^ ]*\.md |\/references\/[^ ]*\.md /)} !skip')
+# ロールプレイ指示ファイルを除外する（各MAGIでも防御的再フィルタを行う二層構造）
+DIFF=$(printf '%s\n' "$DIFF" | awk '/^diff --git/{skip=($0 ~ /SKILL\.md |CLAUDE\.md |\/agents\/.*\.md|\/references\/.*\.md/)} !skip')
 ```
 
 差分が空の場合は「ステージ済み差分がありません」と表示して終了する。

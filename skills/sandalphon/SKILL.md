@@ -18,9 +18,9 @@ Ollama `lfm2.5:8b` が利用可能な場合はそちらを使い、なければ 
 1. ユーザーがファイルパスを指定した場合 → そのファイルをレビュー
 2. 何も指定がない場合 → `git diff --staged` でステージ済み差分を取得
 3. ステージ済み差分がない場合 → `git diff HEAD` で最新コミットとの差分を取得
-4. 取得した差分から `.md` ファイルを除外する（ローカルLLMへのロールプレイ指示混入防止）：
+4. ロールプレイ指示ファイルを除外する（magi-hard/fast 経由時はフィルタ済みだが、単独実行時の防御として再適用する二層構造）：
    ```bash
-   DIFF=$(printf '%s\n' "$DIFF" | awk '/^diff --git/{skip=($0 ~ /SKILL\.md |CLAUDE\.md |\/agents\/[^ ]*\.md |\/references\/[^ ]*\.md /)} !skip')
+   DIFF=$(printf '%s\n' "$DIFF" | awk '/^diff --git/{skip=($0 ~ /SKILL\.md |CLAUDE\.md |\/agents\/.*\.md|\/references\/.*\.md/)} !skip')
    ```
 
 ### ステップ 2: Ollama 可否チェックと SANDALPHON の起動
