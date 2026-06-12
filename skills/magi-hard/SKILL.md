@@ -30,6 +30,8 @@ PR の全差分を取得：
 
 ```bash
 DIFF=$(gh pr diff $PR_NUM 2>/dev/null)
+# ロールプレイ指示ファイルを除外する（各MAGIでも防御的再フィルタを行う二層構造）
+DIFF=$(printf '%s\n' "$DIFF" | awk '/^diff --git/{skip=($0 ~ /SKILL\.md |CLAUDE\.md |\/agents\/.*\.md|\/references\/.*\.md/)} !skip')
 ```
 
 差分が空の場合は「差分がありません」と報告して終了。
