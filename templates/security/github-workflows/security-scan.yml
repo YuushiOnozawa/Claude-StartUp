@@ -11,5 +11,5 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
       - name: semgrep
         run: |
-          pip install semgrep
+          pip install semgrep==1.165.0
           semgrep scan --config=auto --error

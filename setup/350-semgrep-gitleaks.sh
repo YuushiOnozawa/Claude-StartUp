@@ -46,6 +46,7 @@ secinit() {
   local TMPL="${HOME}/.git-templates/security"
   [[ -d "$TMPL" ]] || { echo "Error: security templates not found. Run setup.sh first." >&2; return 1; }
   [[ -d .git ]] || git init || return 1
+  [[ -f .pre-commit-config.yaml ]] && { echo "Warning: .pre-commit-config.yaml が既に存在します。削除後に再実行してください。" >&2; return 1; }
   cp "${TMPL}/.pre-commit-config.yaml" . || return 1
   cp "${TMPL}/.gitleaks.toml"          . || return 1
   pre-commit install || return 1
