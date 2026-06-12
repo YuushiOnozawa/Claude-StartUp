@@ -29,4 +29,5 @@ For full phase instructions with commands and templates, load `references/phases
 /magi-hard          → MAGI 5-persona PR review
 /magi-fast          → quality check after fixes (as needed)
 merge
+/finished-pr        → post-merge cleanup (main pull, Issue close, branch delete)
 ```
