@@ -8,15 +8,26 @@
 #
 # 環境変数:
 #   OLLAMA_LOCK_DIR  ロックファイルのディレクトリ（デフォルト: /tmp）
+#   OLLAMA_TIMEOUT   REST API タイムアウト秒数（デフォルト: 120）
 
 set -euo pipefail
 
 MODEL="${1:?Usage: $(basename "$0") <model>}"
 LOCK="${OLLAMA_LOCK_DIR:-/tmp}/ollama.lock"
+TIMEOUT="${OLLAMA_TIMEOUT:-120}"
+
+# stdin を先に読む（flock 取得前に行う）
+PROMPT="$(cat)"
 
 # stale lock チェック（Ollama プロセスが存在しない場合はロックを解放）
 [ -f "$LOCK" ] && ! pgrep -x ollama > /dev/null 2>&1 && rm -f "$LOCK"
 
-# 排他ロック取得（タイムアウトなし・stale lock チェックで安全性を担保）
-# stdin を flock 経由で ollama に渡す
-exec flock "$LOCK" ollama run "$MODEL"
+# 排他ロック取得 + REST API 呼び出し
+(
+  flock 9
+  curl -s --max-time "$TIMEOUT" http://localhost:11434/api/generate \
+    -H 'Content-Type: application/json' \
+    -d "$(jq -n --arg model "$MODEL" --arg prompt "$PROMPT" \
+      '{"model":$model,"prompt":$prompt,"stream":false}')" \
+  | jq -r '.response // empty'
+) 9>"$LOCK"
