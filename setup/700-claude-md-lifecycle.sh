@@ -35,61 +35,27 @@ if [[ ! -f "$_CMLC_SETTINGS" ]]; then
   echo '{}' > "$_CMLC_SETTINGS"
 fi
 
-# Stop hook 登録（冪等）
-_CMLC_STOP_CMD="bash ${HOME}/.claude/hooks/claude-md-stop.sh"
-if jq --arg cmd "$_CMLC_STOP_CMD" '
-  .hooks.Stop //= [] |
-  if (.hooks.Stop | map(.hooks[]?.command // "") | any(contains("claude-md-stop.sh"))) then .
-  else .hooks.Stop += [{"hooks": [{"type": "command", "command": $cmd}]}]
-  end
-' "$_CMLC_SETTINGS" > "$_CMLC_TMP" && mv "$_CMLC_TMP" "$_CMLC_SETTINGS"; then
-  ok "Stop hook 登録"
-else
-  fail "Stop hook 登録"
-  rm -f "$_CMLC_TMP"
-fi
+# hook 登録ヘルパー（冪等）: _register_hook <hook_type> <cmd> <label>
+# 重複チェックはコマンド文字列の完全一致で行う
+_register_hook() {
+  local hook_type="$1" cmd="$2" label="$3"
+  if jq --arg ht "$hook_type" --arg cmd "$cmd" '
+    .hooks[$ht] //= [] |
+    if (.hooks[$ht] | map(.hooks[]?.command // "") | any(. == $cmd)) then .
+    else .hooks[$ht] += [{"hooks": [{"type": "command", "command": $cmd}]}]
+    end
+  ' "$_CMLC_SETTINGS" > "$_CMLC_TMP" && mv "$_CMLC_TMP" "$_CMLC_SETTINGS"; then
+    ok "$label"
+  else
+    fail "$label"
+    rm -f "$_CMLC_TMP"
+  fi
+}
 
-# UserPromptSubmit hook 登録（冪等）
-_CMLC_CHECK_CMD="bash ${HOME}/.claude/hooks/claude-md-check.sh"
-if jq --arg cmd "$_CMLC_CHECK_CMD" '
-  .hooks.UserPromptSubmit //= [] |
-  if (.hooks.UserPromptSubmit | map(.hooks[]?.command // "") | any(contains("claude-md-check.sh"))) then .
-  else .hooks.UserPromptSubmit += [{"hooks": [{"type": "command", "command": $cmd}]}]
-  end
-' "$_CMLC_SETTINGS" > "$_CMLC_TMP" && mv "$_CMLC_TMP" "$_CMLC_SETTINGS"; then
-  ok "UserPromptSubmit hook 登録"
-else
-  fail "UserPromptSubmit hook 登録"
-  rm -f "$_CMLC_TMP"
-fi
+_register_hook "Stop"             "bash ${HOME}/.claude/hooks/claude-md-stop.sh"       "Stop hook 登録"
+_register_hook "UserPromptSubmit" "bash ${HOME}/.claude/hooks/claude-md-check.sh"      "UserPromptSubmit hook 登録"
+_register_hook "Stop"             "bash ${HOME}/.claude/hooks/lessons-learned-stop.sh"  "Stop hook 登録 (lessons-learned)"
+_register_hook "UserPromptSubmit" "bash ${HOME}/.claude/hooks/lessons-learned-check.sh" "UserPromptSubmit hook 登録 (lessons-learned)"
 
-# Stop hook 登録（lessons-learned-stop.sh / 冪等）
-_LL_STOP_CMD="bash ${HOME}/.claude/hooks/lessons-learned-stop.sh"
-if jq --arg cmd "$_LL_STOP_CMD" '
-  .hooks.Stop //= [] |
-  if (.hooks.Stop | map(.hooks[]?.command // "") | any(contains("lessons-learned-stop.sh"))) then .
-  else .hooks.Stop += [{"hooks": [{"type": "command", "command": $cmd}]}]
-  end
-' "$_CMLC_SETTINGS" > "$_CMLC_TMP" && mv "$_CMLC_TMP" "$_CMLC_SETTINGS"; then
-  ok "Stop hook 登録 (lessons-learned)"
-else
-  fail "Stop hook 登録 (lessons-learned)"
-  rm -f "$_CMLC_TMP"
-fi
-
-# UserPromptSubmit hook 登録（lessons-learned-check.sh / 冪等）
-_LL_CHECK_CMD="bash ${HOME}/.claude/hooks/lessons-learned-check.sh"
-if jq --arg cmd "$_LL_CHECK_CMD" '
-  .hooks.UserPromptSubmit //= [] |
-  if (.hooks.UserPromptSubmit | map(.hooks[]?.command // "") | any(contains("lessons-learned-check.sh"))) then .
-  else .hooks.UserPromptSubmit += [{"hooks": [{"type": "command", "command": $cmd}]}]
-  end
-' "$_CMLC_SETTINGS" > "$_CMLC_TMP" && mv "$_CMLC_TMP" "$_CMLC_SETTINGS"; then
-  ok "UserPromptSubmit hook 登録 (lessons-learned)"
-else
-  fail "UserPromptSubmit hook 登録 (lessons-learned)"
-  rm -f "$_CMLC_TMP"
-fi
-
-unset _CMLC_HOOK_SRC_DIR _CMLC_HOOK_DST_DIR _CMLC_SETTINGS _CMLC_TMP
-unset _CMLC_STOP_CMD _CMLC_CHECK_CMD _LL_STOP_CMD _LL_CHECK_CMD _src _rel _dst
+unset -f _register_hook
+unset _CMLC_HOOK_SRC_DIR _CMLC_HOOK_DST_DIR _CMLC_SETTINGS _CMLC_TMP _src _rel _dst
