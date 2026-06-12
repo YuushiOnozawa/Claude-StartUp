@@ -14,7 +14,7 @@ set -euo pipefail
 
 MODEL="${1:?Usage: $(basename "$0") <model>}"
 LOCK="${OLLAMA_LOCK_DIR:-/tmp}/ollama.lock"
-TIMEOUT="${OLLAMA_TIMEOUT:-120}"
+TIMEOUT="${OLLAMA_TIMEOUT:-1800}"
 
 # stdin を先に読む（flock 取得前に行う）
 PROMPT="$(cat)"
