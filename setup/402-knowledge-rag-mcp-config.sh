@@ -35,9 +35,10 @@ if [[ -x "$KRAG_VENV/bin/python" ]] && command -v jq &>/dev/null; then
     else
       if jq -n --arg py "$KRAG_PYTHON_ABS" \
         '{"mcpServers":{"knowledge-rag":{"type":"stdio","command":$py,"args":["-m","mcp_server.server"]}}}' \
-        > "$LLM_MCP_CONF"; then
+        > "$LLM_MCP_CONF.tmp" && mv "$LLM_MCP_CONF.tmp" "$LLM_MCP_CONF"; then
         ok "llm-tools-mcp config (書き込み完了)"
       else
+        rm -f "$LLM_MCP_CONF.tmp"
         fail "llm-tools-mcp config  →  jq 生成失敗"
         MISSING_CMDS+=("llm-tools-mcp-config")
       fi
@@ -60,20 +61,26 @@ if [[ -x "$KRAG_VENV/bin/python" ]] && command -v jq &>/dev/null; then
     ok "settings.local.json (mcpServers: knowledge-rag)"
   else
     _krag_tmp="${_KRAG_CC_SETTINGS}.tmp"
+    _krag_ok=false
     if [[ -s "$_KRAG_CC_SETTINGS" ]]; then
-      jq --arg py "$_krag_py_abs" \
+      if jq --arg py "$_krag_py_abs" \
         '.mcpServers["knowledge-rag"] = {"type":"stdio","command":$py,"args":["-m","mcp_server.server"]}' \
-        "$_KRAG_CC_SETTINGS" > "$_krag_tmp" && mv "$_krag_tmp" "$_KRAG_CC_SETTINGS"
+        "$_KRAG_CC_SETTINGS" > "$_krag_tmp" && mv "$_krag_tmp" "$_KRAG_CC_SETTINGS"; then
+        _krag_ok=true
+      else
+        rm -f "$_krag_tmp"
+      fi
     else
       mkdir -p "$(dirname "$_KRAG_CC_SETTINGS")"
-      jq -n --arg py "$_krag_py_abs" \
+      if jq -n --arg py "$_krag_py_abs" \
         '{"mcpServers":{"knowledge-rag":{"type":"stdio","command":$py,"args":["-m","mcp_server.server"]}}}' \
-        > "$_KRAG_CC_SETTINGS"
+        > "$_KRAG_CC_SETTINGS"; then
+        _krag_ok=true
+      fi
     fi
-    if [[ $? -eq 0 ]]; then
+    if [[ "$_krag_ok" == true ]]; then
       ok "settings.local.json (mcpServers: knowledge-rag 追加)"
     else
-      rm -f "$_krag_tmp"
       fail "settings.local.json の mcpServers 更新に失敗"
       MISSING_CMDS+=("cc-mcp-settings")
     fi
@@ -131,5 +138,5 @@ if [[ -f "$KRAG_CONFIG" ]] && grep -q '~/pcloud' "$KRAG_CONFIG"; then
   fi
 fi
 
-unset _KRAG_MCP_REPO_DIR KRAG_PYTHON_ABS _KRAG_CC_SETTINGS _krag_py_abs _krag_already _krag_tmp
+unset _KRAG_MCP_REPO_DIR KRAG_PYTHON_ABS _KRAG_CC_SETTINGS _krag_py_abs _krag_already _krag_tmp _krag_ok
 unset LLM_MCP_DIR LLM_MCP_CONF KRAG_CONFIG KRAG_CONFIG_EXAMPLE _KRAG_TMP
