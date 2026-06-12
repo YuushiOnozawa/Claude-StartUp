@@ -31,7 +31,7 @@ PR の全差分を取得：
 ```bash
 DIFF=$(gh pr diff $PR_NUM 2>/dev/null)
 # .md ファイルをローカルLLMに渡す前に除外する（ロールプレイ指示の混入防止）
-DIFF=$(printf '%s\n' "$DIFF" | awk '/^diff --git/{skip=($0 ~ /\.md /)} !skip')
+DIFF=$(printf '%s\n' "$DIFF" | awk '/^diff --git/{skip=($0 ~ /SKILL\.md |CLAUDE\.md |\/agents\/[^ ]*\.md |\/references\/[^ ]*\.md /)} !skip')
 ```
 
 差分が空の場合は「差分がありません」と報告して終了。

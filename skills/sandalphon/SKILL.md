@@ -20,7 +20,7 @@ Ollama `lfm2.5:8b` が利用可能な場合はそちらを使い、なければ 
 3. ステージ済み差分がない場合 → `git diff HEAD` で最新コミットとの差分を取得
 4. 取得した差分から `.md` ファイルを除外する（ローカルLLMへのロールプレイ指示混入防止）：
    ```bash
-   DIFF=$(printf '%s\n' "$DIFF" | awk '/^diff --git/{skip=($0 ~ /\.md /)} !skip')
+   DIFF=$(printf '%s\n' "$DIFF" | awk '/^diff --git/{skip=($0 ~ /SKILL\.md |CLAUDE\.md |\/agents\/[^ ]*\.md |\/references\/[^ ]*\.md /)} !skip')
    ```
 
 ### ステップ 2: Ollama 可否チェックと SANDALPHON の起動
