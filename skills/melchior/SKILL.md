@@ -45,13 +45,10 @@ ollama list 2>/dev/null | grep -q "qwen2.5-coder:7b"
    ---レビュー対象---
    [差分]
    ```
-3. 組み立てたプロンプトを Ollama に渡す前に、排他ロックを取得する：
+3. 組み立てたプロンプトを Ollama に渡す：
    ```bash
-   # stale lock チェック（Ollama プロセスが存在しない場合はロックを解放）
-   [ -f /tmp/magi-ollama.lock ] && ! pgrep -x ollama > /dev/null 2>&1 && rm -f /tmp/magi-ollama.lock
-   # タイムアウト付きロック取得（最大5分）でプロンプトをパイプ渡し
-   echo "$PROMPT" | flock -w 300 /tmp/magi-ollama.lock ollama run qwen2.5-coder:7b || {
-     echo "⚠ Ollama ロック取得タイムアウト（5分）。他のプロセスが実行中か確認してください。"
+   printf '%s' "$PROMPT" | bash ~/.claude/scripts/ollama-run.sh qwen2.5-coder:7b || {
+     echo "⚠ Ollama 排他ロック取得失敗。ollama プロセスを確認してください。"
      exit 1
    }
    ```

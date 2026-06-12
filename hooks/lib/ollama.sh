@@ -48,3 +48,9 @@ ollama_best_model() {
   # 4. hardcoded fallback
   echo "qwen2.5:7b"
 }
+
+# Ollama 起動確認（REST API 応答チェック）
+# 戻り値: 0 = 起動中、1 = 未起動
+ollama_is_up() {
+  curl -sf --max-time 3 http://localhost:11434/api/tags >/dev/null 2>&1
+}

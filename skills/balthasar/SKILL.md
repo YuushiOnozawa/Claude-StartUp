@@ -43,13 +43,10 @@ ollama list 2>/dev/null | grep -q "phi4:latest"
    ---レビュー対象---
    [差分]
    ```
-3. 一時ファイルを Ollama に渡す前に、排他ロックを取得する：
+3. 一時ファイルを Ollama に渡す：
    ```bash
-   # stale lock チェック（Ollama プロセスが存在しない場合はロックを解放）
-   [ -f /tmp/magi-ollama.lock ] && ! pgrep -x ollama > /dev/null 2>&1 && rm -f /tmp/magi-ollama.lock
-   # タイムアウト付きロック取得（最大5分）
-   flock -w 300 /tmp/magi-ollama.lock ollama run phi4:latest < prompt.txt || {
-     echo "⚠ Ollama ロック取得タイムアウト（5分）。他のプロセスが実行中か確認してください。"
+   bash ~/.claude/scripts/ollama-run.sh phi4:latest < prompt.txt || {
+     echo "⚠ Ollama 排他ロック取得失敗。ollama プロセスを確認してください。"
      rm -f prompt.txt; exit 1
    }
    rm prompt.txt

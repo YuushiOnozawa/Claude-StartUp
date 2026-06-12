@@ -39,18 +39,12 @@ ollama list 2>/dev/null | grep -q "deepseek-r1:8b"
    ---レビュー対象---
    [差分]
    ```
-3. プロンプトを一時ファイル経由で Ollama に渡す（特殊文字対策 + 排他ロック）：
+3. プロンプトを Ollama に渡す（特殊文字対策: printf + pipe）：
    ```bash
-   # stale lock チェック（Ollama プロセスが存在しない場合はロックを解放）
-   [ -f /tmp/magi-ollama.lock ] && ! pgrep -x ollama > /dev/null 2>&1 && rm -f /tmp/magi-ollama.lock
-   # プロンプトを一時ファイルに書き出し
-   printf '%s' "$PROMPT" > /tmp/magi-deepseek-prompt.txt
-   # タイムアウト付きロック取得（最大5分）
-   flock -w 300 /tmp/magi-ollama.lock ollama run deepseek-r1:8b < /tmp/magi-deepseek-prompt.txt || {
-     echo "⚠ Ollama ロック取得タイムアウト（5分）。他のプロセスが実行中か確認してください。"
-     rm -f /tmp/magi-deepseek-prompt.txt; exit 1
+   printf '%s' "$PROMPT" | bash ~/.claude/scripts/ollama-run.sh deepseek-r1:8b || {
+     echo "⚠ Ollama 排他ロック取得失敗。ollama プロセスを確認してください。"
+     exit 1
    }
-   rm /tmp/magi-deepseek-prompt.txt
    ```
 
 #### Ollama が使えない場合（Haiku fallback）

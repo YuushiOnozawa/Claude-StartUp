@@ -18,9 +18,9 @@ source "${HOOK_DIR}/lib/ollama.sh"
 
 HOOK_NAME="knowledge-distill"
 
-# Ollama 起動確認（スクリプト全体で共有、複数回 curl 実行を防ぐ）
+# Ollama 起動確認（スクリプト全体で共有、複数回確認を防ぐ）
 _OLLAMA_UP=0
-curl -sf --max-time 3 http://localhost:11434/api/tags >/dev/null 2>&1 && _OLLAMA_UP=1
+ollama_is_up && _OLLAMA_UP=1 || true
 
 # キューdrain（リトライ実行時はスキップして無限ループを防ぐ）
 if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
@@ -206,45 +206,22 @@ ${CONVERSATION}"
 _KRAG_MODEL_FILE="$HOME/.local/share/knowledge-rag/model"
 _DISTILL_MODEL="$(ollama_best_model "$_KRAG_MODEL_FILE")"
 
-echo "⏳ knowledge-distill: Ollama 推論中 ($_DISTILL_MODEL, 最大 120s)..." >&2
-_OLLAMA_TMP=$(mktemp)
-trap 'rm -f "$_OLLAMA_TMP"' EXIT
-_CURL_EXIT=0
-curl -s --max-time 120 http://localhost:11434/api/generate \
-  -H 'Content-Type: application/json' \
-  -d "$(jq -n --arg model "$_DISTILL_MODEL" --arg prompt "$PROMPT" \
-    '{"model":$model,"prompt":$prompt,"stream":false}')" \
-  > "$_OLLAMA_TMP" || _CURL_EXIT=$?
+echo "⏳ knowledge-distill: Ollama 推論中 ($_DISTILL_MODEL)..." >&2
+_OLLAMA_RUN="${HOOK_DIR}/../scripts/ollama-run.sh"
+_OLLAMA_EXIT=0
+RESULT="$(printf '%s\n' "$PROMPT" | bash "$_OLLAMA_RUN" "$_DISTILL_MODEL")" || _OLLAMA_EXIT=$?
 
-if [[ $_CURL_EXIT -ne 0 ]]; then
-  log_warn "Ollama API failed (exit=$_CURL_EXIT), queuing for retry"
+if [[ $_OLLAMA_EXIT -ne 0 ]]; then
+  log_warn "Ollama 実行失敗 (exit=$_OLLAMA_EXIT), queuing for retry"
   if [[ "${KRAG_DISTILL_RETRY:-0}" == "1" ]]; then
-    log_warn "retry: ollama API failed, handing off to queue_drain dead-letter"
+    log_warn "retry: ollama failed, handing off to queue_drain dead-letter"
     exit 1
   fi
   if queue_push "$HOOK_NAME" "ollama" "$TRANSCRIPT_PATH" "$PROJECT_CWD"; then
-    log_info "queued for retry (ollama-timeout): $TRANSCRIPT_PATH"
-    queue_notify_send "knowledge-distill" "Ollama タイムアウトのため distill を保留中 ($PROJECT)"
+    log_info "queued for retry (ollama): $TRANSCRIPT_PATH"
+    queue_notify_send "knowledge-distill" "Ollama 実行失敗のため distill を保留中 ($PROJECT)"
   else
-    log_error "queue_push failed after ollama timeout"
-  fi
-  exit 0
-fi
-
-_JQ_EXIT=0
-RESULT=$(jq -r '.response // ""' "$_OLLAMA_TMP" 2>/dev/null) || _JQ_EXIT=$?
-
-if [[ $_JQ_EXIT -ne 0 ]]; then
-  log_warn "Ollama response parse failed (exit=$_JQ_EXIT), queuing for retry"
-  if [[ "${KRAG_DISTILL_RETRY:-0}" == "1" ]]; then
-    log_warn "retry: ollama response parse failed, handing off to queue_drain dead-letter"
-    exit 1
-  fi
-  if queue_push "$HOOK_NAME" "ollama" "$TRANSCRIPT_PATH" "$PROJECT_CWD"; then
-    log_info "queued for retry (ollama-json): $TRANSCRIPT_PATH"
-    queue_notify_send "knowledge-distill" "Ollama JSON パースエラーのため distill を保留中 ($PROJECT)"
-  else
-    log_error "queue_push failed after ollama json parse error"
+    log_error "queue_push failed after ollama failure"
   fi
   exit 0
 fi

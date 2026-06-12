@@ -44,3 +44,23 @@ else
   echo "  ℹ  agents/ ディレクトリが見つかりません。エージェントのコピーをスキップ。"
 fi
 unset _agents_src _agent_file _agent_count
+
+echo ""
+echo "--- scripts ---"
+
+# repo/scripts/ → ~/.claude/scripts/ にコピー（ollama-run.sh 等の共有スクリプト）
+_scripts_src="$(dirname "$SETUP_DIR")/scripts"
+if [[ -d "$_scripts_src" ]]; then
+  mkdir -p "$HOME/.claude/scripts"
+  _script_count=0
+  for _script_file in "$_scripts_src"/*.sh; do
+    [[ -f "$_script_file" ]] || continue
+    cp "$_script_file" "$HOME/.claude/scripts/"
+    chmod +x "$HOME/.claude/scripts/$(basename "$_script_file")"
+    _script_count=$((_script_count + 1))
+  done
+  ok "scripts $_script_count 件を ~/.claude/scripts/ にコピー"
+else
+  echo "  ℹ  scripts/ ディレクトリが見つかりません。スクリプトのコピーをスキップ。"
+fi
+unset _scripts_src _script_file _script_count
