@@ -51,7 +51,7 @@ kizami stats           # DB 統計情報
 | コンポーネント | 説明 |
 |---|---|
 | knowledge-rag | MCP サーバー（ChromaDB + BM25 ハイブリッド検索） |
-| Ollama + qwen2.5:3b | ローカル LLM（tool calling 対応） |
+| Ollama + qwen3:8b | ローカル LLM（tool calling 対応） |
 | llm + llm-ollama + llm-tools-mcp | CLI から MCP 経由で検索するパイプライン |
 
 すべて `~/.local/share/knowledge-rag/venv/` の Python venv にインストールされる。
@@ -62,7 +62,7 @@ kizami stats           # DB 統計情報
 # Claude から直接 MCP ツールとして利用可能（自動登録済み）
 
 # CLI からの検索（Ollama 経由）
-~/.local/share/knowledge-rag/venv/bin/llm -m qwen2.5:3b -T MCP \
+~/.local/share/knowledge-rag/venv/bin/llm -m qwen3:8b -T MCP \
   "search_knowledge ツールで query='検索語' を検索し、結果を日本語で要約して"
 ```
 

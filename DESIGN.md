@@ -20,6 +20,23 @@
 
 ---
 
+## ローカル LLM モデル選定方針
+
+codegen スキル（Claude → ローカル LLM への委譲）および Obsidian インデックス生成に Ollama を使用する。
+
+| 用途 | モデル | 備考 |
+|------|--------|------|
+| codegen（コード生成委譲） | `gemma4:12b` | VRAM ~8GB。現状の最適解 |
+| knowledge-rag / Obsidian index | `qwen3:8b` | `~/.local/share/knowledge-rag/model` で管理 |
+
+`gemma4:26b` は VRAM 約 17GB を要求するため、現環境では実用的でない。
+
+### llm-checker の推薦について
+
+`llm-checker` コマンドの推薦モデルはセッションごとに変動するため、ドキュメントには記載しない。ドキュメントに記載するモデルは**実績ベース（ollama list で確認済み・動作確認済み）のものに固定**する方針とする。
+
+---
+
 ## effortLevel と adaptive thinking の設定
 
 `settings.json` で `effortLevel: "medium"` を設定している。`effortLevel: high` は adaptive thinking と組み合わさると thinking tokens が最大化され、トークン消費量が激増する。`medium` では単純作業で thinking をスキップするため、コスト対効果が高い。
