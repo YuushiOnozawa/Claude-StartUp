@@ -46,7 +46,11 @@ If still empty: prompt user and validate before continuing:
 ```
 PR が見つかりませんでした。PR 番号を手動で入力してください:
 ```
-After user input: set `PR_NUM` to the entered value and confirm it is numeric before proceeding.
+After user input, validate before proceeding:
+```bash
+# Validate numeric input
+[[ "$PR_NUM" =~ ^[0-9]+$ ]] || { echo "ERROR: PR 番号は数値で入力してください。"; exit 1; }
+```
 
 Hold: `$PR_NUM`, `$PR_URL`, `$PR_TITLE`
 
@@ -55,7 +59,8 @@ Hold: `$PR_NUM`, `$PR_URL`, `$PR_TITLE`
 ```bash
 PR_BODY=$(gh pr view "$PR_NUM" --json body -q '.body')
 # Extract: Closes/Fixes/Resolves #N (case-insensitive)
-ISSUE_NUMS=$(echo "$PR_BODY" | grep -oiE '(closes|fixes|resolves)[[:space:]]+#[0-9]+' | grep -oE '[0-9]+')
+# printf avoids echo misinterpreting body content; tr converts newlines to spaces
+ISSUE_NUMS=$(printf '%s\n' "$PR_BODY" | grep -oiE '(closes|fixes|resolves)[[:space:]]+#[0-9]+' | grep -oE '[0-9]+' | tr '\n' ' ')
 ```
 
 Hold: `$ISSUE_NUMS` (space-separated list, may be empty)
@@ -63,9 +68,9 @@ Hold: `$ISSUE_NUMS` (space-separated list, may be empty)
 ### Step 4: Check remote branch existence
 
 ```bash
-REMOTE_EXISTS=$(($(git ls-remote --heads origin "$BRANCH" | wc -l)))
+REMOTE_EXISTS=$(git ls-remote --heads origin "$BRANCH" | grep -c '^')
 # REMOTE_EXISTS=1 → remote branch exists; 0 → already deleted (by GitHub auto-delete)
-# Arithmetic expansion $((n)) trims whitespace from wc -l output reliably
+# grep -c '^' avoids wc -l trailing-space issues on some platforms
 ```
 
 Hold: `$REMOTE_EXISTS`
@@ -121,21 +126,10 @@ On error: report and stop.
 
 ---
 
-## Phase 4: ISSUE
+## Phase 4: BRANCH
 
-For each issue number in `$ISSUE_NUMS` (or the user-specified list):
-
-```bash
-gh issue close "$ISSUE_NUM" --comment "PR #$PR_NUM のマージにより自動クローズ。"
-```
-
-Show: `✓ Issue #$ISSUE_NUM をクローズ`
-
-If no issues (user chose to skip): show `- Issue クローズをスキップ`
-
----
-
-## Phase 5: BRANCH
+> **Note (WORKTREE_ACTIVE=true):** Execute Phase 6 (WORKTREE) **before** this phase.
+> A worktree must be removed before its branch can be deleted with `-d`.
 
 ### Delete local branch
 
@@ -163,10 +157,29 @@ fi
 
 ---
 
-## Phase 6: WORKTREE（WORKTREE_ACTIVE=true のみ）
+## Phase 5: ISSUE
+
+For each issue number in `$ISSUE_NUMS` (or the user-specified list):
 
 ```bash
-if git worktree remove "$WORKTREE_PATH" 2>/dev/null; then
+gh issue close "$ISSUE_NUM" --comment "PR #$PR_NUM のマージにより自動クローズ。"
+```
+
+Show: `✓ Issue #$ISSUE_NUM をクローズ`
+
+If no issues (user chose to skip): show `- Issue クローズをスキップ`
+
+---
+
+## Phase 6: WORKTREE（WORKTREE_ACTIVE=true のみ）
+
+> **Execution order:** Run this phase **before Phase 4 (BRANCH)** when `WORKTREE_ACTIVE=true`.
+
+```bash
+if [ -z "$WORKTREE_PATH" ]; then
+  WORKTREE_REMOVED=false
+  echo "⚠️  WORKTREE_PATH が未設定のため worktree 削除をスキップ"
+elif git worktree remove "$WORKTREE_PATH" 2>/dev/null; then
   git worktree prune 2>/dev/null || true
   WORKTREE_REMOVED=true
   echo "✓ worktree 削除: $WORKTREE_PATH"
