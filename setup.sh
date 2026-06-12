@@ -8,6 +8,12 @@
 #   bash setup.sh              # clone なし・依存チェックのみ
 #
 set -euo pipefail
+# エラー処理方針:
+#   set -euo pipefail: setup.sh 本体のみ適用（source したサブスクリプトにも継承）
+#   || true の使用基準:
+#     OK: 後続のガード節でハンドル済み（例: mktemp -d || true + [[ -z "$var" ]] チェック）
+#         装飾的・非クリティカルな処理（例: pip upgrade, apt remove の冪等削除）
+#     NG: 重要な処理の失敗を隠す目的（ok/fail 関数でハンドルすること）
 
 REPO_URL="${1:-}"
 CLAUDE_DIR="$HOME/.claude"
