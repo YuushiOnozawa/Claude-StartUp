@@ -25,9 +25,9 @@ PROMPT="$(cat)"
 # 排他ロック取得 + REST API 呼び出し
 (
   flock 9
-  curl -s --max-time "$TIMEOUT" http://localhost:11434/api/generate \
+  curl -s --max-time "$TIMEOUT" http://localhost:11434/api/chat \
     -H 'Content-Type: application/json' \
     -d "$(jq -n --arg model "$MODEL" --arg prompt "$PROMPT" \
-      '{"model":$model,"prompt":$prompt,"stream":false}')" \
-  | jq -r '.response // empty'
+      '{"model":$model,"messages":[{"role":"user","content":$prompt}],"stream":false}')" \
+  | jq -r '.message.content // empty'
 ) 9>"$LOCK"
