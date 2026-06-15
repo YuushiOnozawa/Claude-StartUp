@@ -29,5 +29,6 @@ PROMPT="$(cat)"
     -H 'Content-Type: application/json' \
     -d "$(jq -n --arg model "$MODEL" --arg prompt "$PROMPT" \
       '{"model":$model,"prompt":$prompt,"stream":false}')" \
-  | jq -r '.response // empty'
+  | jq -r '.response // empty' \
+  | perl -0777 -pe 's/<think>.*?<\/think>\n?//gs'
 ) 9>"$LOCK"
