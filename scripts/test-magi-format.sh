@@ -17,7 +17,7 @@ declare -A PERSONAS=(
   [melchior]="qwen2.5-coder:7b"
   [balthasar]="phi4:latest"
   [casper]="llama3.1:8b"
-  [metatron]="deepseek-r1:8b"
+  [metatron]="devstral:latest"
   [sandalphon]="lfm2.5:8b"
 )
 
