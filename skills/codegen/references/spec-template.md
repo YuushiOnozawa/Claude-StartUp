@@ -34,7 +34,7 @@ ollama list 2>/dev/null | grep -q "gemma4:12b"
 ### If Ollama available — pipe spec via heredoc (no temp file)
 
 ```bash
-cat << 'PROMPT_EOF' | ollama run gemma4:12b
+cat << 'PROMPT_EOF' | bash ~/.claude/scripts/ollama-run.sh gemma4:12b
 <expand the spec drafted in SPEC phase here>
 PROMPT_EOF
 ```
