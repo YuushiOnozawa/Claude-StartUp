@@ -28,14 +28,14 @@ Ollama `qwen2.5-coder:7b` が利用可能な場合はそちらを使い、なけ
    ```bash
    DIFF=$(printf '%s\n' "$DIFF" | awk '/^diff --git/{skip=($0 ~ /SKILL\.md |CLAUDE\.md |\/agents\/.*\.md|\/references\/.*\.md/)} !skip')
    ```
-5. `$DIFF` をファイル単位に分割し、各ファイルに対して以降のステップを実行する：
+5. `$DIFF` を hunk 単位に分割し、各チャンクに対して以降のステップを実行する：
    ```bash
-   FILE_SECTIONS=$(printf '%s' "$DIFF" | bash scripts/magi-split-diff.sh)
+   CHUNK_SECTIONS=$(printf '%s' "$DIFF" | bash scripts/magi-split-hunk.sh 400)
    ```
-   `=== FILE: <path> ===` で区切られた各セクションを `$FILE_DIFF` として取り出し、
-   ステップ 2 を `$DIFF` の代わりに `$FILE_DIFF` を使って実行する。
-   各実行結果をファイルパスヘッダー付きで `$RESULT` に追記する。
-   全ファイル処理後、`$RESULT` 全体をステップ 3 の出力として使用する。
+   `=== CHUNK: <path> (<n>) ===` で区切られた各チャンクを `$CHUNK_DIFF` として取り出し、
+   ステップ 2 を `$DIFF` の代わりに `$CHUNK_DIFF` を使って実行する。
+   各実行結果をチャンクヘッダー付きで `$RESULT` に追記する。
+   全チャンク処理後、`$RESULT` 全体をステップ 3 の出力として使用する。
 
 ### ステップ 2: Ollama 可否チェックと MELCHIOR の起動
 
