@@ -26,7 +26,7 @@ _om_shared=(
 # Hard 専用（高品質・重め）
 _om_hard=(
   "phi4:latest"        # BALTHASAR用
-  "deepseek-r1:8b"     # METATRON用
+  "devstral:latest"    # METATRON用
   "qwen3:8b"           # generate-obsidian-index 等で使用
   "lfm2.5:8b"          # SANDALPHON用 (構造化出力安定・低幻覚率) https://ollama.com/library/lfm2.5
 )
