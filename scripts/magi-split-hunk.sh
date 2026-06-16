@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # git unified diff を hunk 単位（行数上限付き）に分割する
 # 使用法: printf '%s' "$DIFF" | bash scripts/magi-split-hunk.sh [MAX_LINES]
-#   MAX_LINES  1チャンクの最大行数（デフォルト: 100）
+#   MAX_LINES  1チャンクの最大行数（デフォルト: 200）
 # 出力: 各チャンクを "=== CHUNK: <path> (<n>) ===" ヘッダーで区切ったセクション
 #       各チャンクにはファイルヘッダー（diff --git / --- / +++）を再付与
 
