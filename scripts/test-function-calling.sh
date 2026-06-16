@@ -32,8 +32,8 @@ PASS=0; FAIL=0; SKIP=0
 test_native() {
   local model="$1"
   local payload
-  payload=$(printf '{"model":"%s","messages":[{"role":"user","content":"Review PR #%s. Use get_pr_diff tool first."}],"tools":[{"type":"function","function":{"name":"get_pr_diff","description":"Get PR diff","parameters":{"type":"object","properties":{"pr_number":{"type":"integer"}},"required":["pr_number"]}}}],"stream":false}' \
-    "$model" "$PR_NUM")
+  payload=$(jq -n --arg model "$model" --arg pr_num "$PR_NUM" \
+    '{"model":$model,"messages":[{"role":"user","content":"Review PR #\($pr_num). Use get_pr_diff tool first."}],"tools":[{"type":"function","function":{"name":"get_pr_diff","description":"Get PR diff","parameters":{"type":"object","properties":{"pr_number":{"type":"integer"}},"required":["pr_number"]}}}],"stream":false}')
   local resp
   resp=$(curl -s --max-time "$TIMEOUT" http://localhost:11434/api/chat \
     -H 'Content-Type: application/json' -d "$payload")
@@ -99,7 +99,7 @@ for persona in melchior balthasar casper metatron sandalphon; do
   model="${PERSONAS[$persona]}"
   printf "%-12s %-25s " "[$persona]" "$model"
 
-  if ! ollama list 2>/dev/null | grep -q "^${model}"; then
+  if ! ollama list 2>/dev/null | grep -Fq -- "${model}"; then
     echo "SKIP: model not found"
     ((SKIP++)) || true
     continue
