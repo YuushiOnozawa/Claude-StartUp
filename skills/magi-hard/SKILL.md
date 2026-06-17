@@ -36,30 +36,34 @@ DIFF=$(printf '%s\n' "$DIFF" | awk '/^diff --git/{skip=($0 ~ /SKILL\.md |CLAUDE\
 
 差分が空の場合は「差分がありません」と報告して終了。
 
-## ステップ 2: MELCHIOR 実行
+## ステップ 2: MELCHIOR 実行（最初）
 
 `/melchior` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
-結果を `$MELCHIOR_RESULT` として保持する。
+実行が**完全に完了**した後、結果を `$MELCHIOR_RESULT` として保持してからステップ 3 に進む。
 
-## ステップ 3: BALTHASAR 実行
+## ステップ 3: BALTHASAR 実行（`$MELCHIOR_RESULT` 取得後）
 
+`$MELCHIOR_RESULT` が得られたことを確認してから起動する。
 `/balthasar` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
-結果を `$BALTHASAR_RESULT` として保持する。
+実行が**完全に完了**した後、結果を `$BALTHASAR_RESULT` として保持してからステップ 4 に進む。
 
-## ステップ 4: CASPER 実行
+## ステップ 4: CASPER 実行（`$BALTHASAR_RESULT` 取得後）
 
+`$BALTHASAR_RESULT` が得られたことを確認してから起動する。
 `/casper` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
-結果を `$CASPER_RESULT` として保持する。
+実行が**完全に完了**した後、結果を `$CASPER_RESULT` として保持してからステップ 5 に進む。
 
-## ステップ 5: METATRON 実行
+## ステップ 5: METATRON 実行（`$CASPER_RESULT` 取得後）
 
+`$CASPER_RESULT` が得られたことを確認してから起動する。
 `/metatron` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
-結果を `$METATRON_RESULT` として保持する。
+実行が**完全に完了**した後、結果を `$METATRON_RESULT` として保持してからステップ 6 に進む。
 
-## ステップ 6: SANDALPHON 実行
+## ステップ 6: SANDALPHON 実行（`$METATRON_RESULT` 取得後）
 
+`$METATRON_RESULT` が得られたことを確認してから起動する。
 `/sandalphon` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
-結果を `$SANDALPHON_RESULT` として保持する。
+実行が**完全に完了**した後、結果を `$SANDALPHON_RESULT` として保持してからステップ 7 に進む。
 
 ## ステップ 7: サマリコメント投稿
 
