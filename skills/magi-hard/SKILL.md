@@ -89,7 +89,7 @@ SUMMARY_URL=$(gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
 
 ### インラインコメントの投稿方法
 
-各 HIGH/MEDIUM 指摘について、出力形式 `### [HIGH/MEDIUM] ファイルパス:行番号 — 見出し` から `path` と `line` を抽出し、以下のコマンドで投稿する：
+各 HIGH/MEDIUM 指摘について、出力形式 `### [HIGH] ファイルパス:行番号 — 見出し` または `### [MEDIUM] ファイルパス:行番号 — 見出し` から `path` と `line` を抽出し、以下のコマンドで投稿する：
 
 ```bash
 gh api -X POST repos/$OWNER/$REPO/pulls/$PR_NUM/comments \
@@ -105,7 +105,7 @@ gh api -X POST repos/$OWNER/$REPO/pulls/$PR_NUM/comments \
 
 コメント本文の形式：
 ```
-[MAGI-HARD] **[HIGH/MEDIUM] <ペルソナ名>（<観点>）**
+[MAGI-HARD] **[HIGH] <ペルソナ名>（<観点>）** または **[MEDIUM] <ペルソナ名>（<観点>）**
 
 <指摘の詳細内容>
 ```
