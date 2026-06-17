@@ -4,35 +4,14 @@
 
 ## Phase 1: EPIC PLAN
 
-### Step 0: CLARIFY（要件確認）
+### Step 0: GRILL-ME（要件深掘り）
 
-Analyze the user's request for design readiness.
+**Skip if** the request already fully specifies target files, tech choices, and acceptance criteria → proceed to Step 1, holding the initial request summary as `$CLARIFY_NOTES`.
 
-**Skip if** the request already specifies target files, tech choices, or step-by-step requirements → proceed to plan creation below.
+**Otherwise**, invoke `/grill-me` to conduct a deep-dive interview.
 
-**Otherwise**, identify gaps from these areas and ask up to 5 questions. **Stop and wait for user input:**
-
-```
-## 設計前の確認事項 ✋
-
-以下を教えてください（分かる範囲で構いません）：
-
-1. [質問]
-2. [質問]
-...
-
-0. このまま設計に進む
-```
-
-| Area | Examples |
-|------|----------|
-| Goal / Users | Who uses it? What problem does it solve? |
-| Scope | What is in and out of scope? |
-| Integration | What existing systems does it connect to? |
-| Constraints | Tech stack, things that must not break, deadlines |
-| Acceptance criteria | What does "done" look like? (✓/✗ format, test perspective) |
-
-After answers (or if skipped / user chose 0): output a 1–2 line summary confirming understanding (or summarize the initial request). Hold as `$CLARIFY_NOTES`.
+- grill-me は `AskUserQuestion` で一問ずつ、洞察が出なくなるまで深さ優先で掘り続ける
+- 完了後に出力される「## まとめ / ### 決まったこと」を `$CLARIFY_NOTES` として保持する
 
 ---
 
