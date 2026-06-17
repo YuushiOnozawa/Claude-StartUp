@@ -26,20 +26,22 @@ DIFF=$(printf '%s\n' "$DIFF" | awk '/^diff --git/{skip=($0 ~ /SKILL\.md |CLAUDE\
 
 差分が空の場合は「ステージ済み差分がありません」と表示して終了する。
 
-## ステップ 2: MELCHIOR 実行
+## ステップ 2: MELCHIOR 実行（最初）
 
 `/melchior` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
-結果を `$MELCHIOR_RESULT` として保持する。
+実行が**完全に完了**した後、結果を `$MELCHIOR_RESULT` として保持してからステップ 3 に進む。
 
-## ステップ 3: BALTHASAR 実行
+## ステップ 3: BALTHASAR 実行（`$MELCHIOR_RESULT` 取得後）
 
+`$MELCHIOR_RESULT` が得られたことを確認してから起動する。
 `/balthasar` スキルの手順に従い、同じ `$DIFF` を渡してレビューを実行する。
-結果を `$BALTHASAR_RESULT` として保持する。
+実行が**完全に完了**した後、結果を `$BALTHASAR_RESULT` として保持してからステップ 4 に進む。
 
-## ステップ 4: CASPER 実行
+## ステップ 4: CASPER 実行（`$BALTHASAR_RESULT` 取得後）
 
+`$BALTHASAR_RESULT` が得られたことを確認してから起動する。
 `/casper` スキルの手順に従い、同じ `$DIFF` を渡してレビューを実行する。
-結果を `$CASPER_RESULT` として保持する。
+実行が**完全に完了**した後、結果を `$CASPER_RESULT` として保持してからステップ 5 に進む。
 
 ## ステップ 5: 結果の集計と判定
 
