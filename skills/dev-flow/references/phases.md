@@ -37,7 +37,9 @@ Hold the result as `$BALTHASAR_PLAN_REVIEW`. Proceed to Phase 2.
 
 ## Phase 2: CHECK ✋
 
-Present the plan and BALTHASAR review in the format below. **Stop here and wait for user input.**
+Present the plan and BALTHASAR review using the format below. Then **call `AskUserQuestion`** with:
+- question: "[要件の 1〜2 行サマリー]\n\n[プラン内容]\n\n### BALTHASAR レビュー（設計観点）\n$BALTHASAR_PLAN_REVIEW"
+- options: ["承認（実装開始）", "修正（修正内容を続けて入力）", "中断"]
 
 ```
 ## 設計レビュー ✋
@@ -60,15 +62,10 @@ Present the plan and BALTHASAR review in the format below. **Stop here and wait 
 ### BALTHASAR レビュー（設計観点）
 $BALTHASAR_PLAN_REVIEW
 
----
-承認しますか？
-1. 承認 → ブランチ作成・実装開始
-2. 修正: 〜 → プランを修正して再提示（BALTHASAR 再実行）
-3. 中断
 ```
 
-On **2** (修正): return to Phase 1, revise the plan, and re-run BALTHASAR.
-On **1** (承認): call `ExitPlanMode`, then call `ctx_compress` to free context before implementation. Proceed to Phase 3.
+On **修正**: return to Phase 1, revise the plan, and re-run BALTHASAR.
+On **承認**: call `ExitPlanMode`, then call `ctx_compress` to free context before implementation. Proceed to Phase 3.
 
 ## Phase 3: WORKTREE
 
