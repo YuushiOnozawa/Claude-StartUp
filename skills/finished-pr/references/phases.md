@@ -79,7 +79,9 @@ Hold: `$REMOTE_EXISTS`
 
 ## Phase 2: CONFIRM ✋
 
-Present a summary and wait for user approval.
+Present a summary using the format below. Then **call `AskUserQuestion`** with:
+- question: "[上記サマリー内容]"
+- options: ["続行", "キャンセル"]
 
 Format:
 ```
@@ -96,19 +98,12 @@ Format:
   - リモート: origin/$BRANCH [またはリモートは既に削除済み]
   [WORKTREE_ACTIVE=true の場合]
   - worktree: $WORKTREE_PATH
-
-1. 続行
-2. キャンセル
 ```
 
-**Issue が見つからなかった場合** (ISSUE_NUMS が空):
-```
-⚠️  PR がどの Issue も参照していませんでした。
+**Issue が見つからなかった場合** (ISSUE_NUMS が空): **call `AskUserQuestion`** with:
+- question: "⚠️  PR がどの Issue も参照していませんでした。\n[上記サマリー]"
+- options: ["Issue番号を手動指定（番号を続けて入力）", "Issueクローズをスキップ", "キャンセル"]
 
-1. Issue 番号を手動で指定する（例: 123 456）
-2. Issue クローズをスキップする
-3. キャンセル
-```
 Handle the response before proceeding.
 
 On **キャンセル**: exit immediately.

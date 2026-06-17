@@ -76,9 +76,10 @@ ollama list 2>/dev/null | grep -q "$OLLAMA_MODEL"
 ### Ollama が使えない場合（Haiku fallback）
 
 **Haiku フォールバック確認（必須）:**
-Haiku にフォールバックする前に、ユーザーに必ず確認する:
-「⚠ Ollama が利用できません（モデル `$OLLAMA_MODEL` が見つかりません）。Claude Haiku にフォールバックしてよいですか？」
-ユーザーが拒否した場合はレビューを中止し、「Ollama を確認して再実行してください」と案内する。
+Haiku にフォールバックする前に、**`AskUserQuestion` ツールを呼び出して**確認する:
+- question: "⚠ Ollama が利用できません（モデル `$OLLAMA_MODEL` が見つかりません）。Claude Haiku にフォールバックしてよいですか？"
+- options: ["はい（Haiku で続行）", "いいえ（中止）"]
+「いいえ」の場合はレビューを中止し、「Ollama を確認して再実行してください」と案内する。
 
 **前提条件**: `setup.sh` で `agents/` が `~/.claude/agents/` にコピー済みであること。
 

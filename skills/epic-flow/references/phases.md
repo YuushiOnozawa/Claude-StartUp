@@ -38,7 +38,9 @@ Hold the result as `$BALTHASAR_EPIC_REVIEW`. Proceed to Phase 2.
 
 ## Phase 2: CHECK ✋
 
-Present in the format below. **Stop here and wait for user input.**
+Present the Epic plan and BALTHASAR review using the format below. Then **call `AskUserQuestion`** with:
+- question: "[要件の 1〜2 行サマリー]\n\n### Feature 分解\n[分解内容]\n\n### 依存関係・実装順序\n[順序]\n\n### BALTHASAR レビュー（設計観点）\n$BALTHASAR_EPIC_REVIEW"
+- options: ["承認（Issue作成・実装開始）", "修正（修正内容を続けて入力）", "中断"]
 
 ```
 ## Epic 設計レビュー ✋
@@ -59,15 +61,10 @@ Present in the format below. **Stop here and wait for user input.**
 ### BALTHASAR レビュー（設計観点）
 $BALTHASAR_EPIC_REVIEW
 
----
-承認しますか？
-1. 承認 → GitHub Issue 作成・フィーチャーループ開始
-2. 修正: 〜 → 分解案を修正して再提示（BALTHASAR 再実行）
-3. 中断
 ```
 
-On **2** (修正): return to Phase 1, revise, and re-run BALTHASAR.
-On **1** (承認): call `ExitPlanMode`, then call `ctx_compress` to free context before implementation. Proceed to Phase 3.
+On **修正**: return to Phase 1, revise, and re-run BALTHASAR.
+On **承認**: call `ExitPlanMode`, then call `ctx_compress` to free context before implementation. Proceed to Phase 3.
 
 ## Phase 3: ISSUE Creation
 
@@ -100,14 +97,9 @@ Process `$ISSUE_LIST` from the top, one at a time.
 
 ### Per-Feature start confirmation ✋
 
-```
-Issue #N: feat/<name> — [タイトル]
-
-この Feature の実装に着手しますか？
-1. 着手 → /dev-flow を開始
-2. スキップ → 次の Issue へ
-3. 終了 → ループを中断
-```
+**Call `AskUserQuestion`** with:
+- question: "Issue #N: feat/<name> — [タイトル]\n\nこの Feature の実装に着手しますか？"
+- options: ["着手（/dev-flow 開始）", "スキップ（次のIssueへ）", "終了（ループ中断）"]
 
 ### Execute /dev-flow
 
@@ -119,13 +111,11 @@ Execute `/dev-flow`, using the relevant Issue's content as the Phase 1 (PLAN) re
 
 After dev-flow Phase 7 (PR creation) completes, stop and present:
 
-```
 ✓ Issue #N: PR 作成完了 → <PR URL>
 
-次の Feature に進みますか？
-1. 進む → Issue #M: feat/<next-name> を開始
-2. あとで → ここで終了（再開は /epic-flow #M で指定可）
-```
+**Call `AskUserQuestion`** with:
+- question: "次の Feature に進みますか？（Issue #M: feat/<next-name>）"
+- options: ["進む（Issue #M を開始）", "あとで（ここで終了 — 再開: /epic-flow #M）"]
 
 ### Loop completion
 
