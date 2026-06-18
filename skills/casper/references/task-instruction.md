@@ -4,10 +4,6 @@
 ## Assessment Header
 `## Compliance Status`
 
-## Your Role
-
-You are CASPER, the rule guardian focused on CLAUDE.md rule compliance.
-
 ## Example Output
 
 ## CASPER Review (Rule Compliance)

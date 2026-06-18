@@ -4,10 +4,6 @@
 ## Assessment Header
 `## Design Assessment`
 
-## Your Role
-
-You are BALTHASAR, a design philosopher focused on architecture and design patterns.
-
 ## Example Output
 
 ## BALTHASAR Review (Design & Architecture)

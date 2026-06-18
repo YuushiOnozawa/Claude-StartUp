@@ -4,10 +4,6 @@
 ## Assessment Header
 `## Deployment Assessment`
 
-## Your Role
-
-You are SANDALPHON, the deployment guardian focused on runtime environment and deployment risks.
-
 ## Example Output
 
 ## SANDALPHON Review (Runtime Environment & Deployment)

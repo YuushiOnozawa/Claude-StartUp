@@ -5,7 +5,7 @@
 呼び出し元 SKILL.md で定義された以下の変数を使用する:
 - `$OLLAMA_MODEL` — Ollama モデル名（例: `qwen2.5-coder:7b`）
 - `$PERSONA_NAME` — ペルソナ名（例: `MELCHIOR`）
-- `$AGENT_PATH` — Haiku fallback 時のエージェント定義パス（例: `agents/melchior.md`）
+- `$PERSONA_FILE` — ペルソナ定義ファイルパス（例: `skills/melchior/references/persona.md`）
 
 ---
 
@@ -47,6 +47,7 @@ ollama list 2>/dev/null | grep -q "$OLLAMA_MODEL"
 
 1. Read ツールで以下を読み込む（repo 内を優先、なければ絶対パスで `~/.claude/` を使用）:
    - `skills/magi-common/references/task-base.md`（repo 内）または `/home/<user>/.claude/skills/magi-common/references/task-base.md`
+   - `$PERSONA_FILE`（repo 内）または `/home/<user>/.claude/skills/<persona>/references/persona.md`
    - `skills/<persona>/references/task-instruction.md`（repo 内）または `/home/<user>/.claude/skills/<persona>/references/task-instruction.md`
    - `skills/<persona>/references/review-criteria.md`（repo 内）または `/home/<user>/.claude/skills/<persona>/references/review-criteria.md`
    - `skills/magi-common/references/output-format.md`（repo 内）または `/home/<user>/.claude/skills/magi-common/references/output-format.md`
@@ -54,6 +55,7 @@ ollama list 2>/dev/null | grep -q "$OLLAMA_MODEL"
 2. 以下の構成でプロンプトを一時ファイル `prompt.txt` に書き出す（差分内の特殊文字によるシェル誤展開を防ぐため）:
    ```
    [task-base.md の内容をそのまま展開]
+   [persona.md の内容をそのまま展開]
    [task-instruction.md の内容をそのまま展開]
    [review-criteria.md の内容をそのまま展開]
    [output-format.md の内容をそのまま展開]
@@ -81,28 +83,23 @@ Haiku にフォールバックする前に、**`AskUserQuestion` ツールを呼
 - options: ["はい（Haiku で続行）", "いいえ（中止）"]
 「いいえ」の場合はレビューを中止し、「Ollama を確認して再実行してください」と案内する。
 
-**前提条件**: `setup.sh` で `agents/` が `~/.claude/agents/` にコピー済みであること。
-
-エージェント定義の読み込み（以下の順で試みる）:
-1. `$AGENT_PATH`（repo 内: `agents/<persona>.md`）
-2. `/home/<user>/.claude/agents/<persona>.md`（setup.sh でデプロイ済みのもの）
-
-Read ツールで以下も読み込む（repo 内を優先、なければ絶対パスで `~/.claude/` を使用）:
+Read ツールで以下を読み込む（repo 内を優先、なければ絶対パスで `~/.claude/` を使用）:
 - `skills/magi-common/references/task-base.md`
+- `$PERSONA_FILE`（repo 内）または `/home/<user>/.claude/skills/<persona>/references/persona.md`
 - `skills/<persona>/references/task-instruction.md`
 - `skills/<persona>/references/review-criteria.md`
 - `skills/magi-common/references/output-format.md`
 
 取得したコード・差分とペルソナ定義・references/ の内容を合わせて `Agent(subagent_type="general-purpose", model="haiku")` に渡す:
-- `agents/<persona>.md` の全内容（ペルソナ・人格）
+- `skills/<persona>/references/persona.md` の全内容（ペルソナ・人格）
 - `skills/magi-common/references/task-base.md` の内容（共通タスク指示）
-- `skills/<persona>/references/task-instruction.md` の内容（ロール定義・few-shot例）
+- `skills/<persona>/references/task-instruction.md` の内容（few-shot例）
 - `skills/<persona>/references/review-criteria.md` の内容（レビュー観点・重大度基準）
 - `skills/magi-common/references/output-format.md` の内容（出力形式）
 - 「上記の $PERSONA_NAME ペルソナに従い、担当観点でレビューしてください」という指示
 
 **CASPER のみ:** エージェントへの指示に以下を追加:
-> CLAUDE.md 群の読み込みは agents/casper.md のステップ 1 で CASPER 自身が行う（`~/.claude/CLAUDE.md`、`./CLAUDE.md`、`./CLAUDE.local.md`）。
+> CLAUDE.md 群の読み込みは skills/casper/references/persona.md のステップ 1 で CASPER 自身が行う（`~/.claude/CLAUDE.md`、`./CLAUDE.md`、`./CLAUDE.local.md`）。
 
 ---
 

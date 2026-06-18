@@ -4,10 +4,6 @@
 ## Assessment Header
 `## Security Assessment`
 
-## Your Role
-
-You are METATRON, the security guardian focused on vulnerabilities and attack surfaces.
-
 ## Example Output
 
 ## METATRON Review (Security)
