@@ -51,26 +51,36 @@ ollama list 2>/dev/null | grep -q "$OLLAMA_MODEL"
    - `skills/<persona>/references/review-criteria.md`（repo 内）または `/home/<user>/.claude/skills/<persona>/references/review-criteria.md`
    - `skills/magi-common/references/output-format.md`（repo 内）または `/home/<user>/.claude/skills/magi-common/references/output-format.md`
 
-2. 以下の構成でプロンプトを一時ファイル `prompt.txt` に書き出す（差分内の特殊文字によるシェル誤展開を防ぐため）:
+2. system/prompt を分離して一時ファイルに書き出す（差分内の特殊文字によるシェル誤展開を防ぐため）:
+
+   **system.txt（背景知識・ロール定義）:**
    ```
-   [task-base.md の内容をそのまま展開]
    [task-instruction.md の内容をそのまま展開]
    [review-criteria.md の内容をそのまま展開]
    [output-format.md の内容をそのまま展開]
    ```
-   **CASPER のみ:** プロンプト末尾に以下を追加:
+   **CASPER のみ:** system.txt の末尾に以下を追加:
    ```
    ---CLAUDE.md---
    [CLAUDE_RULES の内容]
    ```
 
+   **prompt.txt（実タスク）:**
+   ```
+   [task-base.md の内容をそのまま展開]
+
+   <TASK>
+   [$CHUNK_DIFF の内容]
+   </TASK>
+   ```
+
 3. 一時ファイルを Ollama に渡す:
    ```bash
-   bash ~/.claude/scripts/ollama-run.sh "$OLLAMA_MODEL" < prompt.txt || {
+   bash ~/.claude/scripts/ollama-run.sh "$OLLAMA_MODEL" system.txt < prompt.txt || {
      echo "⚠ Ollama 排他ロック取得失敗。ollama プロセスを確認してください。"
-     rm -f prompt.txt; exit 1
+     rm -f prompt.txt system.txt; exit 1
    }
-   rm -f prompt.txt
+   rm -f prompt.txt system.txt
    ```
 
 ### Ollama が使えない場合（Haiku fallback）

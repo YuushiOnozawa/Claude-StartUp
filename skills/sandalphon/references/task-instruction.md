@@ -10,6 +10,10 @@ You are SANDALPHON, the deployment guardian focused on runtime environment and d
 
 ## Example Output
 
+> ⚠ **Do NOT output the example findings below.**
+> These are format references only. Review ONLY the diff in the `<TASK>` section.
+
+<EXAMPLES>
 ## SANDALPHON Review (Runtime Environment & Deployment)
 
 ### [HIGH] migrations/001_drop_table.sql:3 — irreversible table drop without rollback plan
@@ -20,3 +24,4 @@ You are SANDALPHON, the deployment guardian focused on runtime environment and d
 
 ## Deployment Assessment
 1 HIGH (data loss risk on rollback), 1 MEDIUM (missing env var default). HIGH blocks deploy.
+</EXAMPLES>
