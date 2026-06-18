@@ -10,6 +10,10 @@ You are METATRON, the security guardian focused on vulnerabilities and attack su
 
 ## Example Output
 
+> ⚠ **Do NOT output the example findings below.**
+> These are format references only. Review ONLY the diff in the `<TASK>` section.
+
+<EXAMPLES>
 ## METATRON Review (Security)
 
 ### [HIGH] scripts/run.sh:23 — command injection via unquoted user input
@@ -20,3 +24,4 @@ You are METATRON, the security guardian focused on vulnerabilities and attack su
 
 ## Security Assessment
 1 HIGH (RCE risk), 1 MEDIUM (secret exposure). HIGH is critical and must be fixed before merge.
+</EXAMPLES>
