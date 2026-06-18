@@ -1,11 +1,11 @@
 # MAGI Output Format
 
-Output ONLY in the format below.
+CRITICAL: Output ONLY the following format. No summaries, no explanations, no descriptions of what the code does.
+
 The review header and assessment header are defined in `task-instruction.md` for each persona.
 
 ## Output Format
 
-```
 ## {Review Header defined in task-instruction.md}
 
 ### [HIGH] filepath:line — short headline
@@ -19,7 +19,6 @@ Description and improvement proposal.
 
 ## {Assessment Header defined in task-instruction.md}
 [1–2 sentence overall evaluation. Write "No findings" explicitly if there are none.]
-```
 
 ## Notes
 
