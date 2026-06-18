@@ -53,7 +53,12 @@ ollama list 2>/dev/null | grep -q "$OLLAMA_MODEL"
 
 2. system/prompt を分離して一時ファイルに書き出す（差分内の特殊文字によるシェル誤展開を防ぐため）:
 
-   **system.txt（背景知識・ロール定義）:**
+   まず一時ディレクトリを作成する（並列実行時のファイル名競合を防ぐため）:
+   ```bash
+   MAGI_TMPDIR=$(mktemp -d)
+   ```
+
+   **$MAGI_TMPDIR/system.txt（背景知識・ロール定義）:**
    ```
    [task-instruction.md の内容をそのまま展開]
    [review-criteria.md の内容をそのまま展開]
@@ -65,7 +70,7 @@ ollama list 2>/dev/null | grep -q "$OLLAMA_MODEL"
    [CLAUDE_RULES の内容]
    ```
 
-   **prompt.txt（実タスク）:**
+   **$MAGI_TMPDIR/prompt.txt（実タスク）:**
    ```
    [task-base.md の内容をそのまま展開]
 
@@ -76,11 +81,11 @@ ollama list 2>/dev/null | grep -q "$OLLAMA_MODEL"
 
 3. 一時ファイルを Ollama に渡す:
    ```bash
-   bash ~/.claude/scripts/ollama-run.sh "$OLLAMA_MODEL" system.txt < prompt.txt || {
+   bash ~/.claude/scripts/ollama-run.sh "$OLLAMA_MODEL" "$MAGI_TMPDIR/system.txt" < "$MAGI_TMPDIR/prompt.txt" || {
      echo "⚠ Ollama 排他ロック取得失敗。ollama プロセスを確認してください。"
-     rm -f prompt.txt system.txt; exit 1
+     rm -rf "$MAGI_TMPDIR"; exit 1
    }
-   rm -f prompt.txt system.txt
+   rm -rf "$MAGI_TMPDIR"
    ```
 
 ### Ollama が使えない場合（Haiku fallback）
