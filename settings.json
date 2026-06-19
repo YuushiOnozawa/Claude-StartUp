@@ -103,7 +103,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.claude/hooks/error-detector.sh"
+            "command": "[ -f ~/.claude/hooks/error-detector.sh ] && bash ~/.claude/hooks/error-detector.sh || true"
           }
         ]
       }

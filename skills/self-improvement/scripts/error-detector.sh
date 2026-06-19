@@ -21,6 +21,11 @@ except Exception:
   fi
 }
 
+# Exit early if neither jq nor python3 is available (cannot safely parse JSON input)
+if ! command -v jq >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
+  exit 0
+fi
+
 # Filter to shell commands only (for agents without matcher support)
 TOOL_NAME=$(json_extract '.tool_name // .toolName // ""' 'print(d.get("tool_name") or d.get("toolName") or "")')
 if [ -n "$TOOL_NAME" ] && ! printf '%s' "$TOOL_NAME" | grep -qiE '^bash$|^shell$'; then
