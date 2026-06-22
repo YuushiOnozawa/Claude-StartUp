@@ -8,6 +8,12 @@
 #   bash setup.sh              # clone なし・依存チェックのみ
 #
 set -euo pipefail
+
+# ログ設定（失敗時に Claude へ渡せるよう /tmp に保存）
+_LOG_FILE="/tmp/setup-claude-$(date +%Y%m%d-%H%M%S).log"
+exec > >(tee -a "$_LOG_FILE") 2>&1
+echo "ログ: $_LOG_FILE"
+
 # エラー処理方針:
 #   set -euo pipefail: setup.sh 本体のみ適用（source したサブスクリプトにも継承）
 #   || true の使用基準:
@@ -189,7 +195,9 @@ ALL_MISSING=()
 if [[ ${#ALL_MISSING[@]} -gt 0 ]]; then
   echo "⚠  不足: ${ALL_MISSING[*]}"
   echo "   上記をインストールしてから再実行してください。"
+  echo "   ログ: $_LOG_FILE"
   exit 1
 else
   echo "✓ 依存ツールはすべて揃っています。セットアップ完了です。"
+  echo "   ログ: $_LOG_FILE"
 fi
