@@ -4,6 +4,18 @@
 
 ## セットアップ
 
+### 前提: Claude Code のインストール
+
+```bash
+# バージョン固定インストール（推奨）
+npm install -g @anthropic-ai/claude-code@2.1.98
+
+# 最新版
+npm install -g @anthropic-ai/claude-code
+```
+
+インストール後、`claude` コマンドで認証まで完了させてから次のステップへ進む。
+
 ### 方式 A: ワンライナー（新規マシン推奨）
 
 ```bash
