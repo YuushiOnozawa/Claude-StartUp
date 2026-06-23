@@ -62,7 +62,7 @@ CONVERSATION=$(jq -rn '
   [inputs |
     ((.role // .type // "") | ascii_downcase) as $r |
     (
-      (.msg.content // .content // "") |
+      (.message.content // .msg.content // .content // "") |
       if type == "array" then map(select(.type == "text") | .text) | join(" ")
       elif type == "string" then .
       else "" end
