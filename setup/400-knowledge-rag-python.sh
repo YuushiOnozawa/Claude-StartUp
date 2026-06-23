@@ -1,5 +1,5 @@
 # setup/400-knowledge-rag-python.sh — knowledge-rag: Python 環境セットアップ
-# Requires: ok, fail, _detect_os, _detect_arch, MISSING_CMDS (append-only)
+# Requires: ok, fail, _detect_os, _detect_arch, _install_binary_direct, MISSING_CMDS (append-only)
 # Exports: KRAG_VENV, KRAG_PYTHON_CMD (for 402-knowledge-rag-mcp-config.sh and later modules)
 
 [[ "${BASH_SOURCE[0]}" == "$0" ]] && { echo "ERROR: setup.sh から source してください" >&2; exit 1; }
@@ -29,11 +29,8 @@ fi
 if ! command -v jq &>/dev/null; then
   echo "  → jq が未導入。静的バイナリをダウンロード中..."
   _install_jq() {
-    local bin_dir="$HOME/.local/bin"
-    mkdir -p "$bin_dir"
-    curl -fsSL "https://github.com/jqlang/jq/releases/latest/download/jq-$(_detect_os)-$(_detect_arch jq)" \
-      -o "$bin_dir/jq"
-    chmod +x "$bin_dir/jq"
+    _install_binary_direct "jq" \
+      "https://github.com/jqlang/jq/releases/latest/download/jq-$(_detect_os)-$(_detect_arch jq)"
   }
   if _install_jq; then
     ok "jq (バイナリ自動インストール完了)"

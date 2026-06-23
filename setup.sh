@@ -67,9 +67,38 @@ _detect_arch() {
   local style="${1:-github}"
   local raw; raw=$(uname -m)
   case "$style" in
-    github) [[ "$raw" == "x86_64" ]] && echo "x64"   || echo "arm64" ;;
-    jq)     [[ "$raw" == "x86_64" ]] && echo "amd64" || echo "arm64" ;;
+    github)
+      case "$raw" in
+        x86_64)  echo "x64" ;;
+        aarch64) echo "arm64" ;;
+        *) fail "_detect_arch: 未対応アーキテクチャ: $raw"; return 1 ;;
+      esac ;;
+    jq)
+      case "$raw" in
+        x86_64)  echo "amd64" ;;
+        aarch64) echo "arm64" ;;
+        *) fail "_detect_arch: 未対応アーキテクチャ: $raw"; return 1 ;;
+      esac ;;
+    *) fail "_detect_arch: 未対応スタイル: $style"; return 1 ;;
   esac
+}
+
+# GitHub バイナリ共通インストール（tar.gz 内バイナリ抽出用）
+_install_binary_tar() {
+  local name="$1" url="$2"
+  local bin_dir="$HOME/.local/bin"
+  mkdir -p "$bin_dir"
+  curl -fsSL "$url" | tar -xz -C "$bin_dir" "$name"
+  chmod +x "$bin_dir/$name"
+}
+
+# GitHub バイナリ共通インストール（直接バイナリ DL 用）
+_install_binary_direct() {
+  local name="$1" url="$2"
+  local bin_dir="$HOME/.local/bin"
+  mkdir -p "$bin_dir"
+  curl -fsSL "$url" -o "$bin_dir/$name"
+  chmod +x "$bin_dir/$name"
 }
 
 # ~/.local/bin を PATH に恒久追加 (冪等)

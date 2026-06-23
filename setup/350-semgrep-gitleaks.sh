@@ -1,5 +1,5 @@
 # setup/350-semgrep-gitleaks.sh — Semgrep + gitleaks セキュリティ土台セットアップ
-# Requires: ok, fail, check_package, _detect_os, _detect_arch, MISSING_CMDS (append-only)
+# Requires: ok, fail, check_package, _detect_os, _detect_arch, _install_binary_tar, MISSING_CMDS (append-only)
 [[ "${BASH_SOURCE[0]}" == "$0" ]] && { echo "ERROR: setup.sh から source してください" >&2; exit 1; }
 
 echo ""
@@ -12,15 +12,15 @@ check_package "semgrep"    pip semgrep
 if ! command -v gitleaks &>/dev/null; then
   echo "  → gitleaks が未導入。バイナリをダウンロード中..."
   _install_gitleaks() {
-    local bin_dir="$HOME/.local/bin"
-    local version url
+    local version
     version=$(curl -fsSL "https://api.github.com/repos/gitleaks/gitleaks/releases/latest" \
               | grep '"tag_name"' | sed 's/.*"v\([^"]*\)".*/\1/' | head -1)
     [[ -z "$version" ]] && return 1
-    url="https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_$(_detect_os)_$(_detect_arch github).tar.gz"
-    mkdir -p "$bin_dir"
-    curl -fsSL "$url" | tar -xz -C "$bin_dir" gitleaks
-    chmod +x "$bin_dir/gitleaks"
+    [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && {
+      fail "gitleaks: 予期しないバージョン形式: $version"; return 1
+    }
+    _install_binary_tar "gitleaks" \
+      "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_$(_detect_os)_$(_detect_arch github).tar.gz"
   }
   if _install_gitleaks; then
     ok "gitleaks (バイナリ自動インストール完了)"
