@@ -1,5 +1,5 @@
 # setup/411-hooks-auto.sh — knowledge-rag: 自動メンテナンス hook 配置・登録
-# Hooks: knowledge-auto-promote (copy only), knowledge-prune (SessionEnd)
+# Hooks: knowledge-auto-promote (copy only), knowledge-prune (SessionStart)
 # Requires: ok, fail, MISSING_CMDS (append-only)
 
 [[ "${BASH_SOURCE[0]}" == "$0" ]] && { echo "ERROR: setup.sh から source してください" >&2; exit 1; }
@@ -23,7 +23,7 @@ if [[ -f "$_KRAG_PROMOTE_SRC" ]]; then
   fi
 fi
 
-# knowledge-prune.sh の配置と SessionEnd 登録（bash-only decay/pruning, Issue #92/#103）
+# knowledge-prune.sh の配置と SessionStart 登録（bash-only decay/pruning, Issue #92/#103）
 _KRAG_PRUNE_SRC="${_KHOOK_AUTO_REPO_DIR}/hooks/knowledge-prune.sh"
 _KRAG_PRUNE_DST="$HOME/.claude/hooks/knowledge-prune.sh"
 if [[ -f "$_KRAG_PRUNE_SRC" ]]; then
@@ -38,16 +38,22 @@ if [[ -f "$_KRAG_PRUNE_SRC" ]]; then
   if [[ -f "$_KHOOK_SETTINGS" ]] && command -v jq &>/dev/null; then
     _KRAG_PRUNE_CMD="bash -c 'trap \"\" INT TERM; bash \"${HOME}/.claude/hooks/knowledge-prune.sh\" 2>> \"${HOME}/.claude/hooks/logs/knowledge-prune.log\"'"
     _krag_tmp="${_KHOOK_SETTINGS}.tmp"
+    # SessionEnd から knowledge-prune エントリを削除（SessionStart 移行時の二重登録防止）
+    jq '
+      .hooks.SessionEnd |= (if . then map(
+        select((.hooks // [])[] | .command // "" | contains("knowledge-prune.sh") | not)
+      ) else . end)
+    ' "$_KHOOK_SETTINGS" > "$_krag_tmp" && mv "$_krag_tmp" "$_KHOOK_SETTINGS" || rm -f "$_krag_tmp"
     if jq --arg cmd "$_KRAG_PRUNE_CMD" '
-      .hooks.SessionEnd //= [] |
-      if (.hooks.SessionEnd | map(.hooks[]?.command // "") | any(contains("knowledge-prune.sh"))) then .
-      else .hooks.SessionEnd += [{"hooks": [{"type": "command", "command": $cmd}]}]
+      .hooks.SessionStart //= [] |
+      if (.hooks.SessionStart | map(.hooks[]?.command // "") | any(contains("knowledge-prune.sh"))) then .
+      else .hooks.SessionStart += [{"hooks": [{"type": "command", "command": $cmd}]}]
       end
     ' "$_KHOOK_SETTINGS" > "$_krag_tmp" && mv "$_krag_tmp" "$_KHOOK_SETTINGS"; then
-      ok "settings.json (SessionEnd: knowledge-prune)"
+      ok "settings.json (SessionStart: knowledge-prune)"
     else
       rm -f "$_krag_tmp"
-      fail "settings.json の SessionEnd 更新に失敗"
+      fail "settings.json の SessionStart 更新に失敗"
       MISSING_CMDS+=("knowledge-prune-hook-settings")
     fi
   fi

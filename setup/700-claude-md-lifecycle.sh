@@ -59,10 +59,8 @@ _register_hook() {
   fi
 }
 
-_register_hook "Stop"             "bash ${HOME}/.claude/hooks/claude-md-stop.sh"       "Stop hook 登録"
+_register_hook "Stop"             "bash ${HOME}/.claude/hooks/claude-md-stop.sh"  "Stop hook 登録"
 _register_hook "UserPromptSubmit" "bash ${HOME}/.claude/hooks/claude-md-check.sh"      "UserPromptSubmit hook 登録"
-_register_hook "Stop"             "bash ${HOME}/.claude/hooks/lessons-learned-stop.sh"  "Stop hook 登録 (lessons-learned)"
-_register_hook "UserPromptSubmit" "bash ${HOME}/.claude/hooks/lessons-learned-check.sh" "UserPromptSubmit hook 登録 (lessons-learned)"
 
 unset -f _register_hook
 unset _CMLC_HOOK_SRC_DIR _CMLC_HOOK_DST_DIR _CMLC_SETTINGS _CMLC_TMP _src _rel _dst
