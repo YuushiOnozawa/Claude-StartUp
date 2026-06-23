@@ -38,6 +38,12 @@ if [[ -f "$_KRAG_PRUNE_SRC" ]]; then
   if [[ -f "$_KHOOK_SETTINGS" ]] && command -v jq &>/dev/null; then
     _KRAG_PRUNE_CMD="bash -c 'trap \"\" INT TERM; bash \"${HOME}/.claude/hooks/knowledge-prune.sh\" 2>> \"${HOME}/.claude/hooks/logs/knowledge-prune.log\"'"
     _krag_tmp="${_KHOOK_SETTINGS}.tmp"
+    # SessionEnd から knowledge-prune エントリを削除（SessionStart 移行時の二重登録防止）
+    jq '
+      .hooks.SessionEnd |= (if . then map(
+        select((.hooks // [])[] | .command // "" | contains("knowledge-prune.sh") | not)
+      ) else . end)
+    ' "$_KHOOK_SETTINGS" > "$_krag_tmp" && mv "$_krag_tmp" "$_KHOOK_SETTINGS" || rm -f "$_krag_tmp"
     if jq --arg cmd "$_KRAG_PRUNE_CMD" '
       .hooks.SessionStart //= [] |
       if (.hooks.SessionStart | map(.hooks[]?.command // "") | any(contains("knowledge-prune.sh"))) then .
