@@ -1,14 +1,37 @@
 # setup/350-semgrep-gitleaks.sh — Semgrep + gitleaks セキュリティ土台セットアップ
-# Requires: ok, fail, MISSING_CMDS (append-only)
+# Requires: ok, fail, check_package, _detect_os, _detect_arch, _install_binary_tar, MISSING_CMDS (append-only)
 [[ "${BASH_SOURCE[0]}" == "$0" ]] && { echo "ERROR: setup.sh から source してください" >&2; exit 1; }
 
 echo ""
 echo "--- semgrep + gitleaks ---"
 
-# Phase 1: ツール確認
-check_cmd "pre-commit" "pre-commit" "pip install pre-commit"
-check_cmd "gitleaks"   "gitleaks"   "https://github.com/gitleaks/gitleaks#installing"
-check_cmd "semgrep"    "semgrep"    "pip install semgrep"
+# Phase 1: ツール確認・自動インストール
+check_package "pre-commit" pip pre-commit
+check_package "semgrep"    pip semgrep
+
+if ! command -v gitleaks &>/dev/null; then
+  echo "  → gitleaks が未導入。バイナリをダウンロード中..."
+  _install_gitleaks() {
+    local version
+    version=$(curl -fsSL "https://api.github.com/repos/gitleaks/gitleaks/releases/latest" \
+              | grep '"tag_name"' | sed 's/.*"v\([^"]*\)".*/\1/' | head -1)
+    [[ -z "$version" ]] && return 1
+    [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && {
+      fail "gitleaks: 予期しないバージョン形式: $version"; return 1
+    }
+    _install_binary_tar "gitleaks" \
+      "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_$(_detect_os)_$(_detect_arch github).tar.gz"
+  }
+  if _install_gitleaks; then
+    ok "gitleaks (バイナリ自動インストール完了)"
+  else
+    fail "gitleaks  →  https://github.com/gitleaks/gitleaks#installing"
+    MISSING_CMDS+=("gitleaks")
+  fi
+  unset -f _install_gitleaks
+else
+  ok "gitleaks"
+fi
 
 # Phase 2: テンプレートを ~/.git-templates/security/ に配置
 _SEC_SRC="$(dirname "${BASH_SOURCE[0]}")/../templates/security"
@@ -18,14 +41,20 @@ if [[ ! -d "$_SEC_SRC" ]]; then
   fail "templates/security/  →  ソースディレクトリが見つかりません: $_SEC_SRC"
   MISSING_CMDS+=("security-templates")
 else
-  mkdir -p "$_SEC_DST" "$_SEC_DST/github-workflows"
-  if cp "$_SEC_SRC/.pre-commit-config.yaml" "$_SEC_DST/" \
-    && cp "$_SEC_SRC/.gitleaks.toml"        "$_SEC_DST/" \
-    && cp "$_SEC_SRC/github-workflows/security-scan.yml" "$_SEC_DST/github-workflows/"; then
-    ok "テンプレート配置 → $_SEC_DST"
+  _src_real=$(realpath "$_SEC_SRC" 2>/dev/null || echo "$_SEC_SRC")
+  _dst_real=$(realpath "$_SEC_DST" 2>/dev/null || echo "$_SEC_DST")
+  if [[ "$_src_real" == "$_dst_real" ]]; then
+    ok "テンプレート配置済み（ソース＝デスティネーション — スキップ）"
   else
-    fail "テンプレート配置失敗  →  手動: cp -r $_SEC_SRC/* $_SEC_DST/"
-    MISSING_CMDS+=("security-templates")
+    mkdir -p "$_SEC_DST" "$_SEC_DST/github-workflows"
+    if cp "$_SEC_SRC/.pre-commit-config.yaml" "$_SEC_DST/" \
+      && cp "$_SEC_SRC/.gitleaks.toml"        "$_SEC_DST/" \
+      && cp "$_SEC_SRC/github-workflows/security-scan.yml" "$_SEC_DST/github-workflows/"; then
+      ok "テンプレート配置 → $_SEC_DST"
+    else
+      fail "テンプレート配置失敗  →  手動: cp -r $_SEC_SRC/* $_SEC_DST/"
+      MISSING_CMDS+=("security-templates")
+    fi
   fi
 fi
 
@@ -58,4 +87,4 @@ SECINIT_EOF
   ok "secinit 登録 → $_SEC_RC"
 fi
 
-unset _SEC_SRC _SEC_DST _SEC_RC _SEC_RC_MARKER
+unset _SEC_SRC _SEC_DST _SEC_RC _SEC_RC_MARKER _src_real _dst_real

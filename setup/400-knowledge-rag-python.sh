@@ -1,5 +1,5 @@
 # setup/400-knowledge-rag-python.sh — knowledge-rag: Python 環境セットアップ
-# Requires: ok, fail, check_cmd, MISSING_CMDS (append-only)
+# Requires: ok, fail, _detect_os, _detect_arch, _install_binary_direct, MISSING_CMDS (append-only)
 # Exports: KRAG_VENV, KRAG_PYTHON_CMD (for 402-knowledge-rag-mcp-config.sh and later modules)
 
 [[ "${BASH_SOURCE[0]}" == "$0" ]] && { echo "ERROR: setup.sh から source してください" >&2; exit 1; }
@@ -26,7 +26,22 @@ else
 fi
 
 # jq (JSON 操作に必要)
-check_cmd "jq" "jq" "brew install jq  /  apt install jq"
+if ! command -v jq &>/dev/null; then
+  echo "  → jq が未導入。静的バイナリをダウンロード中..."
+  _install_jq() {
+    _install_binary_direct "jq" \
+      "https://github.com/jqlang/jq/releases/latest/download/jq-$(_detect_os)-$(_detect_arch jq)"
+  }
+  if _install_jq; then
+    ok "jq (バイナリ自動インストール完了)"
+  else
+    fail "jq  →  brew install jq  /  apt install jq"
+    MISSING_CMDS+=("jq")
+  fi
+  unset -f _install_jq
+else
+  ok "jq"
+fi
 
 # venv 作成 + pip パッケージ
 KRAG_VENV="$HOME/.local/share/knowledge-rag/venv"

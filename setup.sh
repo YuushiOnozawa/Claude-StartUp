@@ -38,7 +38,7 @@ check_cmd() {
   else fail "$label  →  $hint"; MISSING_CMDS+=("$label"); fi
 }
 
-# パッケージマネージャアダプタ (将来 pip/cargo 等を足すときはここに 3 関数追加)
+# パッケージマネージャアダプタ (将来 cargo 等を足すときはここに 3 関数追加)
 npm_is_installed() {
   # npm list -g に複数パッケージを渡すと片方欠損でも exit 0 を返すバージョンがあるため、1 つずつ確認する
   local pkg
@@ -48,6 +48,58 @@ npm_is_installed() {
 }
 npm_install()       { npm install -g "$@"; }
 npm_install_hint()  { echo "npm install -g $*"; }
+
+pip_is_installed() {
+  command -v pip3 &>/dev/null || return 1
+  local pkg
+  for pkg in "$@"; do
+    pip3 show "$pkg" >/dev/null 2>&1 || return 1
+  done
+}
+pip_install()      { pip3 install "$@"; }
+pip_install_hint() { echo "pip3 install $*"; }
+
+# バイナリダウンロード用 OS/arch 検出（GitHub releases 命名規則に合わせた正規化）
+# _detect_os  → stdout に "linux"/"darwin" など
+# _detect_arch <style>  → style=github: x64/arm64、style=jq: amd64/arm64
+_detect_os()   { uname -s | tr '[:upper:]' '[:lower:]'; }
+_detect_arch() {
+  local style="${1:-github}"
+  local raw; raw=$(uname -m)
+  case "$style" in
+    github)
+      case "$raw" in
+        x86_64)  echo "x64" ;;
+        aarch64) echo "arm64" ;;
+        *) fail "_detect_arch: 未対応アーキテクチャ: $raw"; return 1 ;;
+      esac ;;
+    jq)
+      case "$raw" in
+        x86_64)  echo "amd64" ;;
+        aarch64) echo "arm64" ;;
+        *) fail "_detect_arch: 未対応アーキテクチャ: $raw"; return 1 ;;
+      esac ;;
+    *) fail "_detect_arch: 未対応スタイル: $style"; return 1 ;;
+  esac
+}
+
+# GitHub バイナリ共通インストール（tar.gz 内バイナリ抽出用）
+_install_binary_tar() {
+  local name="$1" url="$2"
+  local bin_dir="$HOME/.local/bin"
+  mkdir -p "$bin_dir"
+  curl -fsSL "$url" | tar -xz -C "$bin_dir" "$name"
+  chmod +x "$bin_dir/$name"
+}
+
+# GitHub バイナリ共通インストール（直接バイナリ DL 用）
+_install_binary_direct() {
+  local name="$1" url="$2"
+  local bin_dir="$HOME/.local/bin"
+  mkdir -p "$bin_dir"
+  curl -fsSL "$url" -o "$bin_dir/$name"
+  chmod +x "$bin_dir/$name"
+}
 
 # ~/.local/bin を PATH に恒久追加 (冪等)
 ensure_local_bin_in_path() {
