@@ -17,6 +17,7 @@ else
     ok "codegraph インストール済み"
   fi
 
+  # setup/402-knowledge-rag-mcp-config.sh と同じ規約パターンで MCP 登録を行う
   _SETTINGS_LOCAL="${HOME}/.claude/settings.local.json"
   _CODEGRAPH_BIN="$(command -v codegraph 2>/dev/null)"
 

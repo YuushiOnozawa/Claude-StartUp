@@ -12,11 +12,12 @@ DIFF="${1:-}"
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
 MAX_CALLERS=10
 CONTEXT_LINES=10
+MAX_SYMBOLS=20  # LLM コンテキスト圧迫防止のための上限（パフォーマンス制限）
 
 SYMBOLS=$(printf '%s\n' "$DIFF" \
   | grep '^+' | grep -v '^+++' \
   | grep -oP '(?<=(def |function |fn |const |let |var )\s{0,5})\w+' \
-  | sort -u | head -20) || true
+  | sort -u | head -"$MAX_SYMBOLS") || true
 
 if [ -z "$SYMBOLS" ]; then
   exit 0
@@ -25,6 +26,8 @@ fi
 OUTPUT=""
 for SYMBOL in $SYMBOLS; do
   if command -v codegraph &>/dev/null; then
+    # codegraph の出力は `file:line:content` 形式を期待（rg と同形式）
+    # 形式が異なる場合、後続の cut -d: -f1/f2 がサイレント失敗する（空 FILEPATH/LINENUM）
     CALLERS=$(codegraph --find-callers "$SYMBOL" --root "$REPO_ROOT" 2>/dev/null | head -"$MAX_CALLERS" || true)
   else
     CALLERS=$(rg -n --no-heading "$SYMBOL" "$REPO_ROOT" --glob '!*.md' --glob '!*.txt' 2>/dev/null | head -"$MAX_CALLERS" || true)
