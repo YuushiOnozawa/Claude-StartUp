@@ -17,7 +17,7 @@ if [[ -f "$KRAG_HOOK" ]]; then
   ok "knowledge-distill hook (chmod)"
 
   if [[ -f "$_KHOOK_SETTINGS" ]] && command -v jq &>/dev/null; then
-    KRAG_HOOK_CMD="bash -c 'trap \"\" INT TERM; bash ${HOME}/.claude/hooks/knowledge-distill.sh 2> >(tee -a ${HOME}/.claude/hooks/knowledge-distill.log >&2)'"
+    KRAG_HOOK_CMD="bash ${HOME}/.claude/hooks/knowledge-distill.sh 2>> ${HOME}/.claude/hooks/knowledge-distill.log"
     _krag_tmp="${_KHOOK_SETTINGS}.tmp"
     if jq --arg cmd "$KRAG_HOOK_CMD" '
       .hooks.SessionEnd //= [] |
@@ -47,7 +47,7 @@ if [[ -f "$_KRAG_LL_SRC" ]]; then
   fi
 
   if [[ -f "$_KHOOK_SETTINGS" ]] && command -v jq &>/dev/null; then
-    KRAG_LL_CMD="bash -c 'trap \"\" INT TERM; bash \"${HOME}/.claude/hooks/lessons-learned-distill.sh\" 2>> \"${HOME}/.claude/hooks/logs/lessons-learned-distill.log\"'"
+    KRAG_LL_CMD="bash ${HOME}/.claude/hooks/lessons-learned-distill.sh 2>> ${HOME}/.claude/hooks/logs/lessons-learned-distill.log"
     _krag_tmp="${_KHOOK_SETTINGS}.tmp"
     if jq --arg cmd "$KRAG_LL_CMD" '
       .hooks.SessionEnd //= [] |
