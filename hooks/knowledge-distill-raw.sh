@@ -27,7 +27,7 @@ mkdir -p "$RAW_DIR"
     [inputs |
       ((.role // .type // "") | ascii_downcase) as $r |
       (
-        (.msg.content // .content // "") |
+        (.message.content // .msg.content // .content // "") |
         if type == "array" then
           [.[] |
             if .type == "text" then .text
