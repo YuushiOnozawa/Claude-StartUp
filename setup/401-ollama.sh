@@ -10,7 +10,7 @@ echo "--- ollama: install ---"
 # zstd は Ollama 公式インストーラの展開に必要
 if ! command -v zstd &>/dev/null; then
   echo "  → zstd が未導入。インストール..."
-  if sudo apt-get install -y zstd &>/dev/null 2>&1 || sudo brew install zstd &>/dev/null 2>&1; then
+  if sudo apt-get install -y zstd >/dev/null || sudo brew install zstd >/dev/null; then
     ok "zstd"
   else
     fail "zstd  →  手動: sudo apt install zstd"

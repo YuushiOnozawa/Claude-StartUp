@@ -17,6 +17,7 @@ if [[ -f "$KRAG_HOOK" ]]; then
   ok "knowledge-distill hook (chmod)"
 
   if [[ -f "$_KHOOK_SETTINGS" ]] && command -v jq &>/dev/null; then
+    # bash -c 'trap "" INT TERM; ...' は Claude Code shell allowlist でブロックされるため除去（#226）
     KRAG_HOOK_CMD="bash ${HOME}/.claude/hooks/knowledge-distill.sh 2>> ${HOME}/.claude/hooks/knowledge-distill.log"
     _krag_tmp="${_KHOOK_SETTINGS}.tmp"
     if jq --arg cmd "$KRAG_HOOK_CMD" '
@@ -47,6 +48,7 @@ if [[ -f "$_KRAG_LL_SRC" ]]; then
   fi
 
   if [[ -f "$_KHOOK_SETTINGS" ]] && command -v jq &>/dev/null; then
+    # bash -c 'trap "" INT TERM; ...' は Claude Code shell allowlist でブロックされるため除去（#226）
     KRAG_LL_CMD="bash ${HOME}/.claude/hooks/lessons-learned-distill.sh 2>> ${HOME}/.claude/hooks/logs/lessons-learned-distill.log"
     _krag_tmp="${_KHOOK_SETTINGS}.tmp"
     if jq --arg cmd "$KRAG_LL_CMD" '

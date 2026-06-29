@@ -18,6 +18,7 @@ if command -v lean-ctx &>/dev/null; then
   echo "  → lean-ctx onboard を実行（冪等）..."
   if _lctx_msg=$(lean-ctx onboard 2>&1); then
     ok "lean-ctx onboard 完了"
+  # 冪等実行時: 既存設定済みの場合は非ゼロ終了 + "lean-ctx is connected" を出力する
   elif echo "$_lctx_msg" | grep -q "lean-ctx is connected"; then
     ok "lean-ctx onboard 完了（既存設定を確認）"
   else
