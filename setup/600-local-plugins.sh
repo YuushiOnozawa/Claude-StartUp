@@ -13,6 +13,10 @@ if [[ -d "$_skills_src" ]]; then
   for _skill_dir in "$_skills_src"/*/; do
     [[ -d "$_skill_dir" ]] || continue
     _skill_name="$(basename "$_skill_dir")"
+    # src=dst になる場合はスキップ（リポジトリが ~/.claude/ 直下の場合）
+    if [[ "$_skill_dir" -ef "$HOME/.claude/skills/$_skill_name" ]]; then
+      continue
+    fi
     rm -rf "$HOME/.claude/skills/$_skill_name"
     mkdir -p "$HOME/.claude/skills/$_skill_name"
     cp -r "$_skill_dir/." "$HOME/.claude/skills/$_skill_name/"

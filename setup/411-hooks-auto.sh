@@ -36,7 +36,8 @@ if [[ -f "$_KRAG_PRUNE_SRC" ]]; then
   fi
 
   if [[ -f "$_KHOOK_SETTINGS" ]] && command -v jq &>/dev/null; then
-    _KRAG_PRUNE_CMD="bash -c 'trap \"\" INT TERM; bash \"${HOME}/.claude/hooks/knowledge-prune.sh\" 2>> \"${HOME}/.claude/hooks/logs/knowledge-prune.log\"'"
+    # bash -c 'trap "" INT TERM; ...' は Claude Code shell allowlist でブロックされるため除去（#226）
+    _KRAG_PRUNE_CMD="bash ${HOME}/.claude/hooks/knowledge-prune.sh 2>> ${HOME}/.claude/hooks/logs/knowledge-prune.log"
     _krag_tmp="${_KHOOK_SETTINGS}.tmp"
     # SessionEnd から knowledge-prune エントリを削除（SessionStart 移行時の二重登録防止）
     jq '

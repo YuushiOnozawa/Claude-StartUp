@@ -7,6 +7,17 @@
 echo ""
 echo "--- ollama: install ---"
 
+# zstd は Ollama 公式インストーラの展開に必要
+if ! command -v zstd &>/dev/null; then
+  echo "  → zstd が未導入。インストール..."
+  if sudo apt-get install -y zstd >/dev/null || sudo brew install zstd >/dev/null; then
+    ok "zstd"
+  else
+    fail "zstd  →  手動: sudo apt install zstd"
+    MISSING_CMDS+=("zstd")
+  fi
+fi
+
 if ! command -v ollama &>/dev/null; then
   echo "  → Ollama が未導入。公式インストーラを実行..."
   if curl -fsSL https://ollama.com/install.sh | sh; then
