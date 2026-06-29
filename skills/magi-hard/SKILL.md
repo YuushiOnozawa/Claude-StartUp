@@ -1,11 +1,11 @@
 ---
 name: magi-hard
-description: MAGI 5体（melchior→balthasar→casper→metatron→sandalphon）でPRレビューを行う。指摘をGitHubにコメント投稿する。Trigger: "/magi-hard", "magi-hard", "ハードレビュー", "PRをMAGIにレビューさせて"
+description: MAGI 6体（melchior→balthasar→casper→metatron→sandalphon→leliel）でPRレビューを行う。指摘をGitHubにコメント投稿する。Trigger: "/magi-hard", "magi-hard", "ハードレビュー", "PRをMAGIにレビューさせて"
 ---
 
 # MAGI-HARD スキル
 
-MAGI の5体を順次実行し、PR の全差分を深くレビューする。
+MAGI の6体を順次実行し、PR の全差分を深くレビューする。
 各体は担当ドメインに専念し、ドメイン分離によって重複を防ぐ。
 HIGH/MEDIUM 指摘を GitHub PR のインラインコメントとして投稿し、サマリも別途投稿する。
 
@@ -36,38 +36,52 @@ DIFF=$(printf '%s\n' "$DIFF" | awk '/^diff --git/{skip=($0 ~ /SKILL\.md |CLAUDE\
 
 差分が空の場合は「差分がありません」と報告して終了。
 
-## ステップ 2: MELCHIOR 実行（最初）
+## ステップ 2: $IMPACT_CONTEXT 生成
+
+```bash
+IMPACT_CONTEXT=$(bash scripts/magi-impact-context.sh "$DIFF" 2>/dev/null || true)
+```
+
+失敗時は空文字で続行（中断しない）。
+
+## ステップ 3.1: MELCHIOR 実行（最初）
 
 `/melchior` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
-実行が**完全に完了**した後、結果を `$MELCHIOR_RESULT` として保持してからステップ 3 に進む。
+実行が**完全に完了**した後、結果を `$MELCHIOR_RESULT` として保持してからステップ 3.2 に進む。
 
-## ステップ 3: BALTHASAR 実行（`$MELCHIOR_RESULT` 取得後）
+## ステップ 3.2: BALTHASAR 実行（`$MELCHIOR_RESULT` 取得後）
 
 `$MELCHIOR_RESULT` が得られたことを確認してから起動する。
-`/balthasar` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
-実行が**完全に完了**した後、結果を `$BALTHASAR_RESULT` として保持してからステップ 4 に進む。
+`MAGI_IMPACT_CONTEXT="$IMPACT_CONTEXT"` を設定して `/balthasar` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
+実行が**完全に完了**した後、結果を `$BALTHASAR_RESULT` として保持してからステップ 3.3 に進む。
 
-## ステップ 4: CASPER 実行（`$BALTHASAR_RESULT` 取得後）
+## ステップ 3.3: CASPER 実行（`$BALTHASAR_RESULT` 取得後）
 
 `$BALTHASAR_RESULT` が得られたことを確認してから起動する。
 `/casper` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
-実行が**完全に完了**した後、結果を `$CASPER_RESULT` として保持してからステップ 5 に進む。
+実行が**完全に完了**した後、結果を `$CASPER_RESULT` として保持してからステップ 3.4 に進む。
 
-## ステップ 5: METATRON 実行（`$CASPER_RESULT` 取得後）
+## ステップ 3.4: METATRON 実行（`$CASPER_RESULT` 取得後）
 
 `$CASPER_RESULT` が得られたことを確認してから起動する。
 `/metatron` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
-実行が**完全に完了**した後、結果を `$METATRON_RESULT` として保持してからステップ 6 に進む。
+実行が**完全に完了**した後、結果を `$METATRON_RESULT` として保持してからステップ 3.5 に進む。
 
-## ステップ 6: SANDALPHON 実行（`$METATRON_RESULT` 取得後）
+## ステップ 3.5: SANDALPHON 実行（`$METATRON_RESULT` 取得後）
 
 `$METATRON_RESULT` が得られたことを確認してから起動する。
 `/sandalphon` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
-実行が**完全に完了**した後、結果を `$SANDALPHON_RESULT` として保持してからステップ 7 に進む。
+実行が**完全に完了**した後、結果を `$SANDALPHON_RESULT` として保持してからステップ 3.6 に進む。
 
-## ステップ 7: サマリコメント投稿
+## ステップ 3.6: LELIEL 実行（`$SANDALPHON_RESULT` 取得後）
 
-5体のレビュー完了後、まず PR 全体に**サマリコメント**を1件投稿する。インライン指摘より先に投稿することで、レビュー全体像をレビュアーが把握しやすくなる。
+`$SANDALPHON_RESULT` が得られたことを確認してから起動する。
+`MAGI_IMPACT_CONTEXT="$IMPACT_CONTEXT"` を設定して `/leliel` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
+実行が**完全に完了**した後、結果を `$LELIEL_RESULT` として保持してからステップ 4 に進む。
+
+## ステップ 4: サマリコメント投稿
+
+6体のレビュー完了後、まず PR 全体に**サマリコメント**を1件投稿する。インライン指摘より先に投稿することで、レビュー全体像をレビュアーが把握しやすくなる。
 
 ```bash
 SUMMARY_URL=$(gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
@@ -80,6 +94,7 @@ SUMMARY_URL=$(gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
 | CASPER（ルール遵守） | N | M | K |
 | METATRON（セキュリティ） | N | M | K |
 | SANDALPHON（実行環境・デプロイ） | N | M | K |
+| LELIEL（既存ソース影響） | N | M | K |
 
 **HIGH: N件 / MEDIUM: M件 / LOW: K件**（LOW はインラインコメント対象外）
 
@@ -87,9 +102,9 @@ SUMMARY_URL=$(gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
   --jq '.html_url')
 ```
 
-## ステップ 8: GitHub インラインコメント投稿
+## ステップ 5: GitHub インラインコメント投稿
 
-5体の結果から HIGH/MEDIUM 指摘を抽出し、**指摘ごとに個別の PR インラインコメント**として投稿する。
+6体の結果から HIGH/MEDIUM 指摘を抽出し、**指摘ごとに個別の PR インラインコメント**として投稿する。
 
 ### インラインコメントの投稿方法
 
@@ -125,7 +140,7 @@ gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
 <指摘内容>"
 ```
 
-## ステップ 9: 結果のサマリ表示
+## ステップ 6: 結果のサマリ表示
 
 ユーザーに以下を表示する：
 
@@ -139,6 +154,7 @@ gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
 | CASPER | N | M | K |
 | METATRON | N | M | K |
 | SANDALPHON | N | M | K |
+| LELIEL | N | M | K |
 
 インラインコメント: N件投稿
 サマリコメント: $SUMMARY_URL
