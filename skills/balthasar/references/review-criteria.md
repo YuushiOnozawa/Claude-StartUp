@@ -12,6 +12,7 @@ Assume this design is fundamentally flawed. Find the architectural rot. Approval
 | Excessive complexity | Are unnecessary patterns, abstractions, or indirections used? |
 | Extensibility | Are there decisions that will make future changes difficult? |
 | Consistency | Does this align with the overall architectural direction of the project? |
+| Backward compatibility | Are public API/interface changes, deletions, or signature changes breaking existing callers? |
 
 ## External Library Public API Compliance
 
@@ -27,8 +28,18 @@ Identify where external libraries are used and verify:
 - **MEDIUM**: Design improvement opportunities, abstraction inconsistencies, lack of cohesion
 - **LOW**: Minor design preference issues
 
+**Backward compatibility severity:**
+- **HIGH**: Deletion or signature change of public interface (existing callers break)
+- **MEDIUM**: Default value change or implicit behavior change (callers may not notice)
+- **LOW**: Candidates for deprecation (future breakage risk)
+
 ## Out of Scope
 
 Code quality, bugs, and security are out of scope.
 If a finding belongs there, note "Defer to another persona (MELCHIOR / METATRON)".
 Always distinguish preference from architectural problems; every finding must include a design rationale.
+
+## BALTHASAR vs LELIEL
+
+- **BALTHASAR** = predict backward-compatibility risk at design phase (static reasoning from diff)
+- **LELIEL** = verify actual impact post-implementation using callgraph evidence
