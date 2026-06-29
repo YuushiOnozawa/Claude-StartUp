@@ -36,7 +36,7 @@ DIFF=$(printf '%s\n' "$DIFF" | awk '/^diff --git/{skip=($0 ~ /SKILL\.md |CLAUDE\
 
 差分が空の場合は「差分がありません」と報告して終了。
 
-## ステップ 1.5: $IMPACT_CONTEXT 生成
+## ステップ 2: $IMPACT_CONTEXT 生成
 
 ```bash
 IMPACT_CONTEXT=$(bash scripts/magi-impact-context.sh "$DIFF" 2>/dev/null || true)
@@ -44,44 +44,44 @@ IMPACT_CONTEXT=$(bash scripts/magi-impact-context.sh "$DIFF" 2>/dev/null || true
 
 失敗時は空文字で続行（中断しない）。
 
-## ステップ X.1: MELCHIOR 実行（最初）
+## ステップ 3.1: MELCHIOR 実行（最初）
 
 `/melchior` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
-実行が**完全に完了**した後、結果を `$MELCHIOR_RESULT` として保持してからステップ X.2 に進む。
+実行が**完全に完了**した後、結果を `$MELCHIOR_RESULT` として保持してからステップ 3.2 に進む。
 
-## ステップ X.2: BALTHASAR 実行（`$MELCHIOR_RESULT` 取得後）
+## ステップ 3.2: BALTHASAR 実行（`$MELCHIOR_RESULT` 取得後）
 
 `$MELCHIOR_RESULT` が得られたことを確認してから起動する。
 `MAGI_IMPACT_CONTEXT="$IMPACT_CONTEXT"` を設定して `/balthasar` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
-実行が**完全に完了**した後、結果を `$BALTHASAR_RESULT` として保持してからステップ X.3 に進む。
+実行が**完全に完了**した後、結果を `$BALTHASAR_RESULT` として保持してからステップ 3.3 に進む。
 
-## ステップ X.3: CASPER 実行（`$BALTHASAR_RESULT` 取得後）
+## ステップ 3.3: CASPER 実行（`$BALTHASAR_RESULT` 取得後）
 
 `$BALTHASAR_RESULT` が得られたことを確認してから起動する。
 `/casper` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
-実行が**完全に完了**した後、結果を `$CASPER_RESULT` として保持してからステップ X.4 に進む。
+実行が**完全に完了**した後、結果を `$CASPER_RESULT` として保持してからステップ 3.4 に進む。
 
-## ステップ X.4: METATRON 実行（`$CASPER_RESULT` 取得後）
+## ステップ 3.4: METATRON 実行（`$CASPER_RESULT` 取得後）
 
 `$CASPER_RESULT` が得られたことを確認してから起動する。
 `/metatron` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
-実行が**完全に完了**した後、結果を `$METATRON_RESULT` として保持してからステップ X.5 に進む。
+実行が**完全に完了**した後、結果を `$METATRON_RESULT` として保持してからステップ 3.5 に進む。
 
-## ステップ X.5: SANDALPHON 実行（`$METATRON_RESULT` 取得後）
+## ステップ 3.5: SANDALPHON 実行（`$METATRON_RESULT` 取得後）
 
 `$METATRON_RESULT` が得られたことを確認してから起動する。
 `/sandalphon` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
-実行が**完全に完了**した後、結果を `$SANDALPHON_RESULT` として保持してからステップ X.6 に進む。
+実行が**完全に完了**した後、結果を `$SANDALPHON_RESULT` として保持してからステップ 3.6 に進む。
 
-## ステップ X.6: LELIEL 実行（`$SANDALPHON_RESULT` 取得後）
+## ステップ 3.6: LELIEL 実行（`$SANDALPHON_RESULT` 取得後）
 
 `$SANDALPHON_RESULT` が得られたことを確認してから起動する。
 `MAGI_IMPACT_CONTEXT="$IMPACT_CONTEXT"` を設定して `/leliel` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
-実行が**完全に完了**した後、結果を `$LELIEL_RESULT` として保持してからステップ 7 に進む。
+実行が**完全に完了**した後、結果を `$LELIEL_RESULT` として保持してからステップ 4 に進む。
 
-## ステップ 7: サマリコメント投稿
+## ステップ 4: サマリコメント投稿
 
-5体のレビュー完了後、まず PR 全体に**サマリコメント**を1件投稿する。インライン指摘より先に投稿することで、レビュー全体像をレビュアーが把握しやすくなる。
+6体のレビュー完了後、まず PR 全体に**サマリコメント**を1件投稿する。インライン指摘より先に投稿することで、レビュー全体像をレビュアーが把握しやすくなる。
 
 ```bash
 SUMMARY_URL=$(gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
@@ -102,9 +102,9 @@ SUMMARY_URL=$(gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
   --jq '.html_url')
 ```
 
-## ステップ 8: GitHub インラインコメント投稿
+## ステップ 5: GitHub インラインコメント投稿
 
-5体の結果から HIGH/MEDIUM 指摘を抽出し、**指摘ごとに個別の PR インラインコメント**として投稿する。
+6体の結果から HIGH/MEDIUM 指摘を抽出し、**指摘ごとに個別の PR インラインコメント**として投稿する。
 
 ### インラインコメントの投稿方法
 
@@ -140,7 +140,7 @@ gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
 <指摘内容>"
 ```
 
-## ステップ 9: 結果のサマリ表示
+## ステップ 6: 結果のサマリ表示
 
 ユーザーに以下を表示する：
 
