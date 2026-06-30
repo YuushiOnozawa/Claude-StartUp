@@ -82,7 +82,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c '(bash ~/.claude/hooks/knowledge-distill.sh 2>> ~/.claude/hooks/logs/knowledge-distill.log) &'"
+            "command": "bash ~/.claude/hooks/knowledge-distill.sh 2>> ~/.claude/hooks/logs/knowledge-distill.log"
           }
         ]
       }
