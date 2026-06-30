@@ -22,7 +22,10 @@ for _src in "${_CMLC_HOOK_SRC_DIR}"/*.sh "${_CMLC_HOOK_SRC_DIR}"/lib/*.sh; do
   _rel="${_src#${_CMLC_HOOK_SRC_DIR}/}"
   _dst="${_CMLC_HOOK_DST_DIR}/${_rel}"
   mkdir -p "$(dirname "$_dst")"
-  if cp "$_src" "$_dst" && chmod +x "$_dst"; then
+  if [[ "$_src" -ef "$_dst" ]]; then
+    chmod +x "$_dst"
+    ok "${_rel} (配置済み)"
+  elif cp "$_src" "$_dst" && chmod +x "$_dst"; then
     ok "${_rel}"
   else
     fail "${_rel}  →  手動: cp ${_src} ${_dst} && chmod +x ${_dst}"
