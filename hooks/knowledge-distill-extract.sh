@@ -67,7 +67,7 @@ if [[ -z "$RESULT" ]] || [[ "$RESULT" == "記録なし" ]]; then
   exit 0
 fi
 
-printf '---\ndate: %s\nproject: %s\ntags: [session, auto-distilled]\n---\n# セッション記録 %s %s\n\n%s\n' \
+printf -- '---\ndate: %s\nproject: %s\ntags: [session, auto-distilled]\n---\n# セッション記録 %s %s\n\n%s\n' \
   "$DATE" "$PROJECT" "$DATE" "$TRANSCRIPT_BASE" "$RESULT" > "$OUTPUT_FILE"
 
 log_info "saved: $OUTPUT_FILE"
