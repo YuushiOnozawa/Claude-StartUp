@@ -129,10 +129,20 @@ ok "systemd サービスファイル生成: $SERVICE_FILE"
 
 if $SYSTEMD_ENABLED && systemctl --user is-system-running &>/dev/null; then
   systemctl --user daemon-reload
-  systemctl --user enable --now rclone-pcloud
-  ok "rclone-pcloud サービス: 有効化・起動完了"
-  echo "  ℹ  状態確認: systemctl --user status rclone-pcloud"
-  echo "  ℹ  アンマウント: systemctl --user stop rclone-pcloud"
+  systemctl --user enable rclone-pcloud
+  # pCloud リモート未設定時は start をスキップ（start 失敗で set -e がスクリプトを終了させるのを防ぐ）
+  if rclone listremotes 2>/dev/null | grep -q '^pcloud:'; then
+    if systemctl --user start rclone-pcloud; then
+      ok "rclone-pcloud サービス: 有効化・起動完了"
+      echo "  ℹ  状態確認: systemctl --user status rclone-pcloud"
+      echo "  ℹ  アンマウント: systemctl --user stop rclone-pcloud"
+    else
+      fail "rclone-pcloud サービス起動失敗  →  手動: systemctl --user start rclone-pcloud"
+    fi
+  else
+    ok "rclone-pcloud サービス: 有効化完了 (pCloud 未設定のため起動はスキップ)"
+    echo "  ℹ  pCloud 設定後に起動: systemctl --user start rclone-pcloud"
+  fi
 else
   echo "  ℹ  WSL 再起動後に以下を実行してサービスを有効化してください:"
   echo "     systemctl --user enable --now rclone-pcloud"
