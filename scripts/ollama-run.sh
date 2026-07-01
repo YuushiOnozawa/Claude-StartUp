@@ -13,10 +13,9 @@
 # 環境変数:
 #   OLLAMA_LOCK_DIR     ロックファイルのディレクトリ（デフォルト: /tmp）
 #   OLLAMA_TIMEOUT      REST API タイムアウト秒数（デフォルト: 1800）
-#   OLLAMA_NUM_CTX      コンテキストウィンドウサイズ（デフォルト: 65536）
-#                       65536 に引き上げた理由: MAGI LELIEL が受け取る $IMPACT_CONTEXT（呼び出し元
-#                       スニペット群）と PR 差分を合わせると 8192 では不足するケースが多いため。
-#                       VRAM 不足の環境ではこの環境変数で上書きして小さくすること。
+#   OLLAMA_NUM_CTX      コンテキストウィンドウサイズ（デフォルト: 16384）
+#                       以前は 65536 だったが VRAM 8GB 環境で KV キャッシュが溢れ推論不能になるため
+#                       16384 に変更。LELIEL など長い diff を扱う場合は環境変数で上書きすること。
 #   OLLAMA_TEMPERATURE  サンプリング温度（デフォルト: 0.1）
 
 set -euo pipefail
@@ -24,7 +23,7 @@ set -euo pipefail
 MODEL="${1:?Usage: $(basename "$0") <model> [system_file]}"
 LOCK="${OLLAMA_LOCK_DIR:-/tmp}/ollama.lock"
 TIMEOUT="${OLLAMA_TIMEOUT:-1800}"
-NUM_CTX="${OLLAMA_NUM_CTX:-65536}"
+NUM_CTX="${OLLAMA_NUM_CTX:-16384}"
 TEMPERATURE="${OLLAMA_TEMPERATURE:-0.1}"
 
 # system プロンプトファイルの読み込み（省略可）
