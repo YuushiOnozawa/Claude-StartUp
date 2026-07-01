@@ -105,6 +105,7 @@ SUMMARY_URL=$(gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
 ## ステップ 5: GitHub インラインコメント投稿
 
 6体の結果から HIGH/MEDIUM 指摘を抽出し、**指摘ごとに個別の PR インラインコメント**として投稿する。
+> ⚠ ローカルLLMが英語で出力した場合は、コメント本文に使用する前に日本語に翻訳する。
 
 ### インラインコメントの投稿方法
 
