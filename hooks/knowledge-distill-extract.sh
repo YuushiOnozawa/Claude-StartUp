@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # knowledge-distill-extract: CONVERSATION 抽出 + Ollama 蒸留 + result ファイル生成
-# 引数: $1=TRANSCRIPT_PATH $2=DATE $3=PROJECT $4=TRANSCRIPT_BASE $5=OUTPUT_DIR $6=DISTILL_MODEL
+# 引数: $1=RAW_MD_PATH $2=DATE $3=PROJECT $4=TRANSCRIPT_BASE $5=OUTPUT_DIR $6=DISTILL_MODEL
 set -euo pipefail
 
 HOOK_DIR="$(dirname "$0")"
@@ -9,7 +9,7 @@ source "${HOOK_DIR}/lib/logging.sh"
 _HOOK_NAME="knowledge-distill"  # ログファイルを orchestrator と統一
 _HOOK_LOG="${HOOK_LOG_DIR}/${_HOOK_NAME}.log"
 
-TRANSCRIPT_PATH="$1"
+RAW_MD_PATH="$1"
 DATE="$2"
 PROJECT="$3"
 TRANSCRIPT_BASE="$4"
@@ -18,23 +18,8 @@ DISTILL_MODEL="$6"
 
 OUTPUT_FILE="${OUTPUT_DIR}/${DATE}-${TRANSCRIPT_BASE}-${PROJECT}.md"
 
-# CONVERSATION 抽出（TRANSCRIPT_PATH から jq で再抽出）
-CONVERSATION=$(jq -rn '
-  [inputs |
-    ((.role // .type // "") | ascii_downcase) as $r |
-    (
-      (.message.content // .msg.content // .content // "") |
-      if type == "array" then map(select(.type == "text") | .text) | join(" ")
-      elif type == "string" then .
-      else "" end
-    ) as $text |
-    if ($r == "human" or $r == "user") and ($text | length) > 0 then
-      "User: \($text)"
-    elif $r == "assistant" and ($text | length) > 0 then
-      "Claude: \($text)"
-    else empty end
-  ] | join("\n") | .[0:4000]
-' "$TRANSCRIPT_PATH" 2>/dev/null)
+# CONVERSATION 抽出（Raw .md から frontmatter を除去して取得）
+CONVERSATION=$(sed '/^---$/,/^---$/d' "$RAW_MD_PATH" | head -c 4000)
 
 if [[ -z "$CONVERSATION" ]]; then
   log_info "empty conversation, skipping"

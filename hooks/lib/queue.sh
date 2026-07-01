@@ -6,11 +6,11 @@ QUEUE_BASE_DIR="${HOME}/.claude/hooks/queue"
 QUEUE_LOCK_DIR="${QUEUE_BASE_DIR}/.locks"
 
 # queue_push: キューにアイテムを追加する
-# 引数: hook_name reason transcript_path [cwd]
+# 引数: hook_name reason source_path [cwd]
 queue_push() {
   local hook_name="$1"
   local reason="$2"
-  local transcript_path="$3"
+  local source_path="$3"
   local cwd="${4:-}"
 
   local queue_dir="${QUEUE_BASE_DIR}/${hook_name}"
@@ -22,10 +22,10 @@ queue_push() {
   local tmp_file="${item_file}.tmp"
 
   jq -n \
-    --arg transcript_path "$transcript_path" \
+    --arg source_path "$source_path" \
     --arg cwd "$cwd" \
     --arg reason "$reason" \
-    '{"transcript_path":$transcript_path,"cwd":$cwd,"reason":$reason,"retry_count":0}' \
+    '{"source_path":$source_path,"cwd":$cwd,"reason":$reason,"retry_count":0}' \
     > "$tmp_file" && mv "$tmp_file" "$item_file" && return 0 || { rm -f "$tmp_file"; return 1; }
 }
 
@@ -101,11 +101,11 @@ queue_drain() {
         [[ "$item_reason" == "$reason_filter" ]] || continue
       fi
 
-      # transcript ファイル存在確認
-      local transcript_path
-      transcript_path=$(jq -r '.transcript_path // ""' "$item_file" 2>/dev/null)
-      if [[ -n "$transcript_path" ]] && [[ ! -f "$transcript_path" ]]; then
-        queue_deadletter "$hook_name" "$item_file" "transcript_not_found"
+      # source ファイル存在確認
+      local source_path
+      source_path=$(jq -r '.source_path // ""' "$item_file" 2>/dev/null)
+      if [[ -n "$source_path" ]] && [[ ! -f "$source_path" ]]; then
+        queue_deadletter "$hook_name" "$item_file" "source_not_found"
         continue
       fi
 
