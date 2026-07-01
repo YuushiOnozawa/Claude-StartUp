@@ -24,7 +24,7 @@ if [[ "${KRAG_LL_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
   _ll_retry_callback() {
     local item_file="$1"
     local t c
-    t=$(jq -e -r '.transcript_path // empty' "$item_file" 2>/dev/null) || { log_error "failed to read transcript_path from $item_file"; return 1; }
+    t=$(jq -e -r '.source_path // empty' "$item_file" 2>/dev/null) || { log_error "failed to read source_path from $item_file"; return 1; }
     c=$(jq -r '.cwd // ""' "$item_file" 2>/dev/null) || true
     log_info "retrying queued item: $(basename "$t")"
     jq -n --arg transcript_path "$t" --arg cwd "$c" \
