@@ -41,8 +41,13 @@ fi
 # stdin を先に読む（flock 取得前に行う）
 PROMPT="$(cat)"
 
-# stale lock チェック（Ollama プロセスが存在しない場合はロックを解放）
-[ -f "$LOCK" ] && ! pgrep -x ollama > /dev/null 2>&1 && rm -f "$LOCK"
+# stale lock チェック（flock ホルダープロセスが死んでいる場合はロックを解放）
+if [ -f "$LOCK" ]; then
+  LOCK_PID=$(lsof "$LOCK" 2>/dev/null | awk 'NR>1{print $2}' | head -1)
+  if [ -z "$LOCK_PID" ] || ! kill -0 "$LOCK_PID" 2>/dev/null; then
+    rm -f "$LOCK"
+  fi
+fi
 
 # 排他ロック取得 + REST API 呼び出し
 (
