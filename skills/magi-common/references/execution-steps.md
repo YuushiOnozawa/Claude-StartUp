@@ -23,7 +23,7 @@ CLAUDE_RULES=$(cat ~/.claude/CLAUDE.md 2>/dev/null; cat "$ROOT/CLAUDE.md" 2>/dev
 
 4. ロールプレイ指示ファイルを除外する（magi-hard/fast 経由時はフィルタ済みだが、単独実行時の防御として再適用する二層構造）:
    ```bash
-   DIFF=$(printf '%s\n' "$DIFF" | awk '/^diff --git/{skip=($0 ~ /SKILL\.md |CLAUDE\.md |\/agents\/.*\.md|\/references\/.*\.md/)} !skip')
+   DIFF=$(printf '%s\n' "$DIFF" | bash scripts/magi-diff-filter.sh)
    ```
 
 5. `$DIFF` を hunk 単位に分割し、各チャンクに対してステップ 2 を実行する:

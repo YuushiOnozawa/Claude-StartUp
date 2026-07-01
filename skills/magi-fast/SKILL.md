@@ -21,7 +21,7 @@ Ollama が使える場合はローカル実行、使えない場合は Haiku に
 DIFF=$(git diff --staged 2>/dev/null)
 [ -z "$DIFF" ] && DIFF=$(git diff HEAD 2>/dev/null)
 # ロールプレイ指示ファイルを除外する（各MAGIでも防御的再フィルタを行う二層構造）
-DIFF=$(printf '%s\n' "$DIFF" | awk '/^diff --git/{skip=($0 ~ /SKILL\.md |CLAUDE\.md |\/agents\/.*\.md|\/references\/.*\.md/)} !skip')
+DIFF=$(printf '%s\n' "$DIFF" | bash scripts/magi-diff-filter.sh)
 ```
 
 差分が空の場合は「ステージ済み差分がありません」と表示して終了する。
