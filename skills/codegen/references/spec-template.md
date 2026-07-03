@@ -1,50 +1,39 @@
 # Codegen — Spec Template & Commands
 
-## SPEC Phase: Implementation Spec Format
+## SPEC Phase: Task Description Format
 
-Draft the spec in this structure before calling the local LLM:
+Draft the task description in this structure before calling Codex:
 
 ```
-## Implementation Spec
+## Task Description
 
 ### Target File
 <file path>
 
-### Change Location
-<code snippet with surrounding context (before)>
-
 ### Requirements
 <bullet list — what to implement, concisely and specifically>
-
-### Code Style
-<indent style, naming convention, type hints, etc. extracted from the target file>
-
-### Output Format
-Output only the replacement code block. No explanations, no added comments, no code fences.
 ```
 
 ## GENERATE Phase: Commands
 
-### Ollama availability check
+### Codex availability check
 
 ```bash
-ollama list 2>/dev/null | grep -q "gemma4:12b"
+node "/home/ylocal/.claude/plugins/cache/openai-codex/codex/1.0.5/scripts/codex-companion.mjs" status 2>/dev/null
 ```
 
-### If Ollama available — pipe spec via heredoc (no temp file)
+### If Codex available — pass task description via heredoc (writes files directly via --write)
 
 ```bash
-cat << 'PROMPT_EOF' | bash ~/.claude/scripts/ollama-run.sh gemma4:12b
-<expand the spec drafted in SPEC phase here>
-PROMPT_EOF
+node "/home/ylocal/.claude/plugins/cache/openai-codex/codex/1.0.5/scripts/codex-companion.mjs" task "$(cat <<'TASK_EOF'
+<expand the task description drafted in SPEC phase here>
+TASK_EOF
+)" --write
 ```
 
-### If Ollama unavailable — Haiku fallback
+### If Codex unavailable — Haiku fallback
 
-Pass the spec to `Agent(subagent_type="general-purpose", model="haiku")` with instruction to output code only.
-
-## APPLY Phase: Validation
-
+Pass the task description to `Agent(subagent_type="general-purpose", model="haiku")` with instruction to output code only.
 Before applying, verify syntax:
 - Python: `python -m py_compile <file>`
 - Shell: `bash -n <file>`

@@ -93,8 +93,8 @@ Based on `$PLAN` **Test scenarios**, create test files before implementation.
 
 ### Step 1: Implement
 
-Execute `/codegen` with the approved plan. Claude writes the spec; Gemma4 implements.
-Fall back to direct implementation only if Ollama is unavailable.
+Execute `/codegen` with the approved plan. Claude writes the task description; Codex implements and writes files directly.
+Fall back to direct implementation only if Codex is unavailable.
 
 ### Step 2: Verify
 

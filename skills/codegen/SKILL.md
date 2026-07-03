@@ -1,22 +1,21 @@
 ---
 name: codegen
-desc: Delegate code generation to a local LLM (gemma4:12b). Claude writes the implementation spec; the local LLM writes the code — reducing Claude output-token cost. Trigger: "/codegen", "codegenで実装", "ローカルLLMで実装"
+desc: Delegate code gen to Codex Plugin (GPT-5.4). Claude writes the task description; Codex implements and writes files directly — reducing Claude output-token cost. Trigger: "/codegen", "codegenで実装", "Codexで実装"
 argument-hint: "<what to implement>"
 ---
 
 # CODEGEN
 
-Cost-efficient code generation: Claude plans, gemma4:12b implements.
-Falls back to Haiku when Ollama is unavailable.
+Cost-efficient code gen: Claude plans, Codex (GPT-5.4) implements.
+Falls back to Haiku when Codex is unavailable.
 
 ## Phase Overview
 
 | # | Phase | Content |
 |---|-------|---------|
 | 1 | ORIENT | Read target files; extract style, naming, patterns |
-| 2 | SPEC | Draft detailed implementation spec |
-| 3 | GENERATE | Run `gemma4:12b` via Ollama (or Haiku fallback) |
-| 4 | APPLY | Edit target files with generated code; verify syntax |
-| 5 | REPORT | State which path was used (Ollama / Haiku fallback) |
+| 2 | SPEC | Draft task description for Codex |
+| 3 | GENERATE | Run Codex via `codex-companion.mjs` — writes files directly (or Haiku fallback) |
+| 4 | REPORT | State which path was used (Codex / Haiku fallback) |
 
 For spec format and generate commands, see `references/spec-template.md`.
