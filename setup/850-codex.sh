@@ -1,0 +1,47 @@
+# setup/850-codex.sh — Codex CLI & Claude Code プラグイン確認
+# Requires: ok, fail, MISSING_CMDS (append-only)
+
+[[ "${BASH_SOURCE[0]}" == "$0" ]] && { echo "ERROR: setup.sh から source してください" >&2; exit 1; }
+
+echo ""
+echo "--- codex ---"
+
+_codex_ok=true
+
+if ! command -v codex &>/dev/null; then
+  fail "codex CLI  →  npm install -g @openai/codex"
+  MISSING_CMDS+=("codex")
+  _codex_ok=false
+else
+  _codex_ver=$(codex --version 2>/dev/null || echo "unknown")
+  ok "codex CLI ($_codex_ver)"
+fi
+
+_PLUGINS_JSON="$HOME/.claude/plugins/installed_plugins.json"
+_plugin_ok=true
+
+if [[ ! -f "$_PLUGINS_JSON" ]]; then
+  fail "codex plugin  →  /plugin marketplace add openai/codex-plugin-cc  →  /plugin install codex@openai-codex"
+  MISSING_CMDS+=("codex-plugin")
+  _plugin_ok=false
+else
+  if command -v jq &>/dev/null; then
+    _has_plugin=$(jq -r '.plugins | keys | map(select(. == "codex@openai-codex")) | length' "$_PLUGINS_JSON" 2>/dev/null || echo "0")
+  else
+    _has_plugin=$(grep -c '"codex@openai-codex"' "$_PLUGINS_JSON" 2>/dev/null || echo "0")
+  fi
+
+  if [[ "$_has_plugin" -gt 0 ]]; then
+    ok "codex plugin"
+  else
+    fail "codex plugin  →  /plugin marketplace add openai/codex-plugin-cc  →  /plugin install codex@openai-codex"
+    MISSING_CMDS+=("codex-plugin")
+    _plugin_ok=false
+  fi
+fi
+
+if [[ "$_codex_ok" == true && "$_plugin_ok" == true ]]; then
+  ok "codex"
+fi
+
+unset _codex_ok _plugin_ok _codex_ver _PLUGINS_JSON _has_plugin
