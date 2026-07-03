@@ -25,8 +25,10 @@ set -euo pipefail
 
 # hooks/lib/ollama.sh を source して Windows Ollama 対応の ollama_base_url() を使う
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_OLLAMA_SH="$_SCRIPT_DIR/../hooks/lib/ollama.sh"
 # shellcheck source=../hooks/lib/ollama.sh
-source "$_SCRIPT_DIR/../hooks/lib/ollama.sh"
+[[ -f "$_OLLAMA_SH" ]] || { echo "Error: ollama.sh not found: $_OLLAMA_SH" >&2; exit 1; }
+source "$_OLLAMA_SH"
 OLLAMA_URL="$(ollama_base_url)/api/generate"
 
 MODEL="${1:?Usage: $(basename "$0") <model> [system_file]}"
