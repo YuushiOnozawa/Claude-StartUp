@@ -19,13 +19,13 @@ Draft the task description in this structure before calling Codex:
 ### Codex availability check
 
 ```bash
-node "/home/ylocal/.claude/plugins/cache/openai-codex/codex/1.0.5/scripts/codex-companion.mjs" status 2>/dev/null
+node "${HOME}/.claude/plugins/cache/openai-codex/codex/1.0.5/scripts/codex-companion.mjs" status 2>/dev/null
 ```
 
 ### If Codex available — pass task description via heredoc (writes files directly via --write)
 
 ```bash
-node "/home/ylocal/.claude/plugins/cache/openai-codex/codex/1.0.5/scripts/codex-companion.mjs" task "$(cat <<'TASK_EOF'
+node "${HOME}/.claude/plugins/cache/openai-codex/codex/1.0.5/scripts/codex-companion.mjs" task "$(cat <<'TASK_EOF'
 <expand the task description drafted in SPEC phase here>
 TASK_EOF
 )" --write
