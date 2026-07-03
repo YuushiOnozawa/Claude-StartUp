@@ -6,13 +6,13 @@ argument-hint: "<ファイルパス または差分>"
 # BALTHASAR スキル
 
 MAGI BALTHASAR（設計哲学者）の観点でコードをレビューする。
-Ollama `phi4:latest` が利用可能な場合はそちらを使い、なければ Haiku にフォールバックする。
+Ollama `gemma4:e4b-it-qat` が利用可能な場合はそちらを使い、なければ Haiku にフォールバックする。
 
 ## ペルソナ固有設定
 
 | 項目 | 値 |
 |-----|---|
-| OLLAMA_MODEL | `phi4:latest` |
+| OLLAMA_MODEL | `gemma4:e4b-it-qat` |
 | PERSONA_NAME | `BALTHASAR` |
 | エージェント定義 | `agents/balthasar.md`（repo 内）または `/home/<user>/.claude/agents/balthasar.md` |
 
