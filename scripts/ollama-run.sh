@@ -18,8 +18,16 @@
 #                       16384 に変更。LELIEL など長い diff を扱う場合は環境変数で上書きすること。
 #                       例: OLLAMA_NUM_CTX=65536 bash ollama-run.sh <model> system.txt < prompt.txt
 #   OLLAMA_TEMPERATURE  サンプリング温度（デフォルト: 0.1）
+#   OLLAMA_BASE_URL     Ollama ベース URL（デフォルト: WSL2 は自動検出、それ以外は http://localhost:11434）
+#                       例: OLLAMA_BASE_URL=http://172.17.96.1:11434 bash ollama-run.sh <model>
 
 set -euo pipefail
+
+# hooks/lib/ollama.sh を source して Windows Ollama 対応の ollama_base_url() を使う
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../hooks/lib/ollama.sh
+source "$_SCRIPT_DIR/../hooks/lib/ollama.sh"
+OLLAMA_URL="$(ollama_base_url)/api/generate"
 
 MODEL="${1:?Usage: $(basename "$0") <model> [system_file]}"
 LOCK="${OLLAMA_LOCK_DIR:-/tmp}/ollama.lock"
@@ -42,6 +50,36 @@ fi
 # stdin を先に読む（flock 取得前に行う）
 PROMPT="$(cat)"
 
+# モデルアンロード用ヘルパー（keep_alive:0 で使用後即時解放）
+_unload_model() {
+  [[ -n "${MODEL:-}" ]] || return 0
+  local unload_json
+  unload_json="$(jq -n --arg model "$MODEL" '{"model":$model,"keep_alive":0}')"
+  curl -sf --max-time 10 "$OLLAMA_URL" \
+    -H 'Content-Type: application/json' \
+    -d "$unload_json" >/dev/null 2>&1 || true
+}
+
+# シグナルハンドリング: curl kill → モデルアンロード → ロック解放
+_CURL_PID=""
+_RESP=""
+_CLEANED_UP=0
+_cleanup() {
+  [[ "$_CLEANED_UP" -eq 1 ]] && return 0
+  _CLEANED_UP=1
+  if [[ -n "${_CURL_PID:-}" ]]; then
+    kill "$_CURL_PID" 2>/dev/null || true
+    wait "$_CURL_PID" 2>/dev/null || true
+    _CURL_PID=""
+  fi
+  [[ -n "${MODEL:-}" ]] && _unload_model
+  exec 9>&- 2>/dev/null || true
+  [[ -n "${_RESP:-}" ]] && rm -f "$_RESP" || true
+}
+trap '_cleanup; trap - EXIT; exit 130' INT
+trap '_cleanup; trap - EXIT; exit 143' TERM
+trap '_cleanup' EXIT
+
 # stale lock チェック（flock ホルダープロセスが死んでいる場合はロックを解放）
 # pgrep -x ollama では ollama サーバーの生死しか判定できず、flock ホルダーである
 # シェルプロセスが異なる場合に stale lock を正しく検出できない。そのため lsof で
@@ -49,34 +87,50 @@ PROMPT="$(cat)"
 # 注意: lsof チェック後 rm -f するまでの間に別プロセスがロックを取得する TOCTOU
 # 競合状態が理論上存在するが、flock 自体が排他制御を担保するため実害は限定的。
 if [ -f "$LOCK" ]; then
-  LOCK_PID=$(lsof "$LOCK" 2>/dev/null | awk 'NR>1{print $2}' | head -1)
+  LOCK_PID=$(lsof "$LOCK" 2>/dev/null | awk 'NR>1{print $2}' | head -1 || true)
   if [ -z "$LOCK_PID" ] || ! kill -0 "$LOCK_PID" 2>/dev/null; then
     rm -f "$LOCK"
   fi
 fi
 
-# 排他ロック取得 + REST API 呼び出し
-(
-  flock 9
-  if [[ -n "$SYSTEM" ]]; then
-    JSON="$(jq -n \
-      --arg model "$MODEL" \
-      --arg system "$SYSTEM" \
-      --arg prompt "$PROMPT" \
-      --argjson num_ctx "$CONTEXT_SIZE" \
-      --argjson temperature "$TEMPERATURE" \
-      '{"model":$model,"system":$system,"prompt":$prompt,"stream":false,"options":{"num_ctx":$num_ctx,"temperature":$temperature}}')"
-  else
-    JSON="$(jq -n \
-      --arg model "$MODEL" \
-      --arg prompt "$PROMPT" \
-      --argjson num_ctx "$CONTEXT_SIZE" \
-      --argjson temperature "$TEMPERATURE" \
-      '{"model":$model,"prompt":$prompt,"stream":false,"options":{"num_ctx":$num_ctx,"temperature":$temperature}}')"
-  fi
-  curl -s --max-time "$TIMEOUT" http://localhost:11434/api/generate \
-    -H 'Content-Type: application/json' \
-    -d "$JSON" \
-  | jq -r '.response // empty' \
+# 排他ロック取得（subshell なし: main shell で _CURL_PID を管理するため）
+mkdir -p "$(dirname "$LOCK")"
+exec 9>"$LOCK"
+flock 9
+
+if [[ -n "$SYSTEM" ]]; then
+  JSON="$(jq -n \
+    --arg model "$MODEL" \
+    --arg system "$SYSTEM" \
+    --arg prompt "$PROMPT" \
+    --argjson num_ctx "$CONTEXT_SIZE" \
+    --argjson temperature "$TEMPERATURE" \
+    '{"model":$model,"system":$system,"prompt":$prompt,"stream":false,"keep_alive":0,"options":{"num_ctx":$num_ctx,"temperature":$temperature}}')"
+else
+  JSON="$(jq -n \
+    --arg model "$MODEL" \
+    --arg prompt "$PROMPT" \
+    --argjson num_ctx "$CONTEXT_SIZE" \
+    --argjson temperature "$TEMPERATURE" \
+    '{"model":$model,"prompt":$prompt,"stream":false,"keep_alive":0,"options":{"num_ctx":$num_ctx,"temperature":$temperature}}')"
+fi
+
+_RESP="$(mktemp)"
+curl -sf --max-time "$TIMEOUT" "$OLLAMA_URL" \
+  -H 'Content-Type: application/json' \
+  -d "$JSON" \
+  -o "$_RESP" &
+_CURL_PID=$!
+_curl_status=0
+wait "$_CURL_PID" || _curl_status=$?
+_CURL_PID=""
+exec 9>&-
+
+if [[ "$_curl_status" -ne 0 ]]; then
+  exit "$_curl_status"
+fi
+
+jq -r '.response // empty' "$_RESP" \
   | perl -0777 -pe 's/<think>.*?<\/think>\n?//gs'
-) 9>"$LOCK"
+rm -f "$_RESP"
+_RESP=""
