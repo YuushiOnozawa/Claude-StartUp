@@ -16,6 +16,7 @@ backups/
 memory/*
 !memory/.gitkeep
 config.yaml
+.codex/hooks.json
 
 # マーケットプレイスプラグイン（再取得可能）
 plugins/
