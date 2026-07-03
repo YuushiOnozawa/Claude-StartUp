@@ -40,7 +40,9 @@ CLAUDE_RULES=$(cat ~/.claude/CLAUDE.md 2>/dev/null; cat "$ROOT/CLAUDE.md" 2>/dev
 ## ステップ 2: Ollama 可否チェックと起動
 
 ```bash
-ollama list 2>/dev/null | grep -q "$OLLAMA_MODEL"
+_magi_base_url=$(bash -c 'source ~/.claude/hooks/lib/ollama.sh && ollama_base_url' 2>/dev/null)
+curl -sf --max-time 5 "${_magi_base_url:-http://localhost:11434}/api/tags" 2>/dev/null \
+  | jq -r '.models[].name' 2>/dev/null | grep -qxF "$OLLAMA_MODEL"
 ```
 
 ### Ollama が使える場合
