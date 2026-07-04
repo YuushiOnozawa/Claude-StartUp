@@ -28,18 +28,20 @@ Call `EnterPlanMode`. Create an Epic design containing:
 
 Hold the design as `$EPIC_PLAN`. Proceed to Phase 1.5.
 
-## Phase 1.5: BALTHASAR（Epic Design Review）
+## Phase 1.5: Design Review
 
-Execute BALTHASAR following the `/balthasar` skill steps 2–3, passing **`$EPIC_PLAN` as the review target**.
+`skills/flow-common/references/design-review.md` を Read し、以下の変数をセットして手順に従う。
 
-> Pass the Epic design text, not a diff. Instruction to BALTHASAR: 「以下の Epic 設計プランを設計・アーキテクチャ観点でレビューしてください」
+- `PLAN_TEXT=$EPIC_PLAN`（必須）
+- `REVIEW_TYPE="epic"`（文脈補助のみ）
+- `REVIEW_CONTEXT=$CLARIFY_NOTES`（grill-me 結果があれば設定）
 
-Hold the result as `$BALTHASAR_EPIC_REVIEW`. Proceed to Phase 2.
+Hold `$DESIGN_REVIEW_RESULT` and `$DESIGN_REVIEW_SOURCE`. Proceed to Phase 2.
 
 ## Phase 2: CHECK ✋
 
-Present the Epic plan and BALTHASAR review using the format below. Then **call `AskUserQuestion`** with:
-- question: "[要件の 1〜2 行サマリー]\n\n### Feature 分解\n[分解内容]\n\n### 依存関係・実装順序\n[順序]\n\n### BALTHASAR レビュー（設計観点）\n$BALTHASAR_EPIC_REVIEW"
+Present the Epic plan and design review using the format below. Then **call `AskUserQuestion`** with:
+- question: "[要件の 1〜2 行サマリー]\n\n### Feature 分解\n[分解内容]\n\n### 依存関係・実装順序\n[順序]\n\n### 設計レビュー（$DESIGN_REVIEW_SOURCE）\n$DESIGN_REVIEW_RESULT"
 - options: ["承認（Issue作成・実装開始）", "修正（修正内容を続けて入力）", "中断"]
 
 ```
@@ -58,12 +60,12 @@ Present the Epic plan and BALTHASAR review using the format below. Then **call `
 
 ---
 
-### BALTHASAR レビュー（設計観点）
-$BALTHASAR_EPIC_REVIEW
+### 設計レビュー（$DESIGN_REVIEW_SOURCE）
+$DESIGN_REVIEW_RESULT
 
 ```
 
-On **修正**: return to Phase 1, revise, and re-run BALTHASAR.
+On **修正**: return to Phase 1, revise, and re-run design-review.
 On **承認**: call `ExitPlanMode`, then call `ctx_compress` to free context before implementation. Proceed to Phase 3.
 
 ## Phase 3: ISSUE Creation
@@ -105,7 +107,7 @@ Process `$ISSUE_LIST` from the top, one at a time.
 
 Execute `/dev-flow`, using the relevant Issue's content as the Phase 1 (PLAN) requirements.
 
-> BALTHASAR review inside dev-flow targets the plan (as normal).
+> Design review inside dev-flow targets the plan (as normal).
 
 ### Stop after PR creation
 

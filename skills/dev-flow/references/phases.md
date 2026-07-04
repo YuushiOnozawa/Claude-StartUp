@@ -27,18 +27,20 @@ Call `EnterPlanMode`. Create a design plan containing:
 
 Hold the plan as `$PLAN`. Proceed to Phase 1.5.
 
-## Phase 1.5: BALTHASAR（Design Review）
+## Phase 1.5: Design Review
 
-Execute BALTHASAR following the `/balthasar` skill steps 2–3, passing **`$PLAN` as the review target**.
+`skills/flow-common/references/design-review.md` を Read し、以下の変数をセットして手順に従う。
 
-> Pass the plan text, not a diff. Instruction to BALTHASAR: 「以下の設計プランを設計・アーキテクチャ観点でレビューしてください」
+- `PLAN_TEXT=$PLAN`（必須）
+- `REVIEW_TYPE="feature"`（文脈補助のみ）
+- `REVIEW_CONTEXT=$CLARIFY_NOTES`（grill-me 結果があれば設定）
 
-Hold the result as `$BALTHASAR_PLAN_REVIEW`. Proceed to Phase 2.
+Hold `$DESIGN_REVIEW_RESULT` and `$DESIGN_REVIEW_SOURCE`. Proceed to Phase 2.
 
 ## Phase 2: CHECK ✋
 
-Present the plan and BALTHASAR review using the format below. Then **call `AskUserQuestion`** with:
-- question: "[要件の 1〜2 行サマリー]\n\n[プラン内容]\n\n### BALTHASAR レビュー（設計観点）\n$BALTHASAR_PLAN_REVIEW"
+Present the plan and design review using the format below. Then **call `AskUserQuestion`** with:
+- question: "[要件の 1〜2 行サマリー]\n\n[プラン内容]\n\n### 設計レビュー（$DESIGN_REVIEW_SOURCE）\n$DESIGN_REVIEW_RESULT"
 - options: ["承認（実装開始）", "修正（修正内容を続けて入力）", "中断"]
 
 ```
@@ -59,12 +61,12 @@ Present the plan and BALTHASAR review using the format below. Then **call `AskUs
 
 ---
 
-### BALTHASAR レビュー（設計観点）
-$BALTHASAR_PLAN_REVIEW
+### 設計レビュー（$DESIGN_REVIEW_SOURCE）
+$DESIGN_REVIEW_RESULT
 
 ```
 
-On **修正**: return to Phase 1, revise the plan, and re-run BALTHASAR.
+On **修正**: return to Phase 1, revise the plan, and re-run design-review.
 On **承認**: call `ExitPlanMode`, then call `ctx_compress` to free context before implementation. Proceed to Phase 3.
 
 ## Phase 3: WORKTREE
