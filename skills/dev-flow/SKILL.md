@@ -1,6 +1,6 @@
 ---
 name: dev-flow
-description: This skill should be used to execute a single-feature development cycle from design planning to PR creation. It guides through: design plan creation, BALTHASAR architectural review, user approval checkpoint, branch/worktree creation, implementation, magi-fast review loop, commit, and PR. Trigger on "/dev-flow" or "dev-flow". Natural language triggers ("〜を作りたい" etc.) are handled by epic-flow which routes here internally.
+description: This skill should be used to execute a single-feature development cycle from design planning to PR creation. It guides through: design plan creation, Codex design review (BALTHASAR fallback), user approval checkpoint, branch/worktree creation, implementation, magi-fast review loop, commit, and PR. Trigger on "/dev-flow" or "dev-flow". Natural language triggers ("〜を作りたい" etc.) are handled by epic-flow which routes here internally.
 ---
 
 # DEV-FLOW
@@ -12,7 +12,7 @@ Single-feature development workflow from plan to PR.
 | # | Phase | Content | Stop |
 |---|-------|---------|------|
 | 1 | PLAN | /grill-me による要件深掘り → 設計プラン作成 | |
-| 1.5 | BALTHASAR | Architectural review of plan | |
+| 1.5 | DESIGN REVIEW | Codex design review of plan (BALTHASAR fallback) | |
 | 2 | CHECK | User approval | ✋ |
 | 3 | BRANCH | Branch / worktree creation | |
 | 4 | IMPL | Implementation | |
