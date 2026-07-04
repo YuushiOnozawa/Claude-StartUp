@@ -79,7 +79,45 @@ IMPACT_CONTEXT=$(bash scripts/magi-impact-context.sh "$DIFF" 2>/dev/null || true
 `MAGI_IMPACT_CONTEXT="$IMPACT_CONTEXT"` を設定して `/leliel` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
 実行が**完全に完了**した後、結果を `$LELIEL_RESULT` として保持してからステップ 4 に進む。
 
-## ステップ 4: サマリコメント投稿
+## ステップ 4: Codex 監査
+
+6体の結果から HIGH/MEDIUM 指摘に finding ID を付与し、Codex で妥当性を検証する。
+
+### 4-1. Finding ID の付与
+
+6体の結果（`$MELCHIOR_RESULT`〜`$LELIEL_RESULT`）から HIGH/MEDIUM 指摘を抽出し、`M-001`, `M-002`, ... の形式で連番付与する。
+
+```text
+M-001: [HIGH] MELCHIOR — filepath:line — headline
+M-002: [MEDIUM] BALTHASAR — filepath:line — headline
+...
+```
+
+このリストを `$FINDING_LIST` として保持する（plain text）。
+HIGH/MEDIUM 指摘が 0 件の場合は Codex 監査をスキップしてステップ 5 に進む。
+
+### 4-2. Codex 監査の実行
+
+```bash
+MAGI_TMPDIR=$(mktemp -d)
+```
+
+`skills/magi-common/references/codex-audit.md`（repo 内）または `~/.claude/skills/magi-common/references/codex-audit.md` を Read ツールで読み込み、記載の手順に従って Codex を呼び出す。
+
+- 入力: `$FINDING_LIST`（finding-list fence）+ `$DIFF`（diff-block fence）
+- 出力: `$MAGI_TMPDIR/codex-audit.json`
+
+### 4-3. 結果の判定
+
+`$MAGI_TMPDIR/codex-audit.json` の内容に基づき、投稿対象を確定する：
+
+- **`AUDIT_SKIPPED`**（ファイル不在）: 全件投稿対象扱い。`$AUDIT_NOTE="Codex audit skipped"` を設定
+- **`AUDIT_ERROR`**（`{"error":"AUDIT_ERROR",...}`）: 全件投稿対象扱い。`$AUDIT_NOTE` にエラー旨を設定
+- **成功時**: `verdict == "false_positive"` の finding ID を `$FALSE_POSITIVE_IDS` に収集する。それ以外（`valid` / `needs_human`）は投稿対象。`$AUDIT_NOTE` は空
+
+ステップ 5 に進む。
+
+## ステップ 5: サマリコメント投稿
 
 6体のレビュー完了後、まず PR 全体に**サマリコメント**を1件投稿する。インライン指摘より先に投稿することで、レビュー全体像をレビュアーが把握しやすくなる。
 
@@ -98,13 +136,20 @@ SUMMARY_URL=$(gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
 
 **HIGH: N件 / MEDIUM: M件 / LOW: K件**（LOW はインラインコメント対象外）
 
-> 各行への指摘はインラインコメントとして続けて投稿します。対応完了後は各インラインコメントに返信してください（\`/pr-review-respond\` で自動化可能）" \
+> 各行への指摘はインラインコメントとして続けて投稿します。対応完了後は各インラインコメントに返信してください（\`/pr-review-respond\` で自動化可能）
+
+$AUDIT_NOTE が空でない場合はサマリ末尾に以下を追記する:
+> ⚠ Codex 監査: \`$AUDIT_NOTE\`
+
+Codex 監査で `false_positive` 除外が発生した場合は以下を追記する:
+> Codex 監査除外: N件（誤検知と判定）" \
   --jq '.html_url')
 ```
 
-## ステップ 5: GitHub インラインコメント投稿
+## ステップ 6: GitHub インラインコメント投稿
 
 6体の結果から HIGH/MEDIUM 指摘を抽出し、**指摘ごとに個別の PR インラインコメント**として投稿する。
+`$FALSE_POSITIVE_IDS` に含まれる finding ID（`false_positive` 判定済み）は投稿をスキップする。
 > ⚠ ローカルLLMが英語で出力した場合は、コメント本文に使用する前に日本語に翻訳する。
 
 ### インラインコメントの投稿方法
@@ -141,7 +186,11 @@ gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
 <指摘内容>"
 ```
 
-## ステップ 6: 結果のサマリ表示
+## ステップ 7: 結果のサマリ表示
+
+```bash
+rm -rf "$MAGI_TMPDIR"
+```
 
 ユーザーに以下を表示する：
 
