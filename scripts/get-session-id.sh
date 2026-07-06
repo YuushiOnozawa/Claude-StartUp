@@ -11,10 +11,15 @@ slug=$(printf '%s' "$cwd" | sed 's/[\/.]/-/g')
 dir="$HOME/.claude/projects/$slug"
 [[ -d "$dir" ]] || exit 1
 
-latest=$(ls -t "$dir"/*.jsonl 2>/dev/null | head -1)
+# glob 展開を避け find + mtime ソートで最新 .jsonl を取得
+latest=$(find "$dir" -maxdepth 1 -type f -name '*.jsonl' -printf '%T@ %p\n' 2>/dev/null \
+  | sort -nr | head -1 | cut -d' ' -f2-)
 [[ -n "$latest" ]] || exit 1
 
-# 直近 5 分以内に更新されていなければ現セッションと見なさない（誤爆防止）
-[[ -n $(find "$latest" -mmin -5 2>/dev/null) ]] || exit 1
+# 直近 N 分以内に更新されていなければ現セッションと見なさない（誤爆防止）
+# CLAUDE_SESSION_TIMEOUT 環境変数で上書き可能（デフォルト 5 分）
+SESSION_TIMEOUT="${CLAUDE_SESSION_TIMEOUT:-5}"
+[[ "${SESSION_TIMEOUT}" =~ ^[1-9][0-9]*$ ]] || SESSION_TIMEOUT=5
+[[ -n $(find "$latest" -mmin -"$SESSION_TIMEOUT" 2>/dev/null) ]] || exit 1
 
 basename "$latest" .jsonl

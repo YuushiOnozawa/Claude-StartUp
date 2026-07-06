@@ -137,6 +137,7 @@ ensure_autocompact_in_rc() {
     {
       echo ''
       echo '# Claude-StartUp: autocompact'
+      echo '# compact 警告閾値（75%）との二段構えのため 75→85 に変更（compact-hardening 導入）'
       echo 'export CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=85'
     } >> "$rc"
     echo "  ℹ  $rc に CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=85 を書き込みました"
