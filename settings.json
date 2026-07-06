@@ -1,4 +1,273 @@
 {
+  "effortLevel": "medium",
+  "enabledPlugins": {
+    "code-review-command@local-skills": true,
+    "code-review@claude-plugins-official": false,
+    "codex@openai-codex": true,
+    "commit-skill@local-skills": true,
+    "pr-review-respond-skill@local-skills": true,
+    "pr-review-skill@local-skills": true
+  },
+  "env": {
+    "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1",
+    "DISABLE_AUTOUPDATER": "1"
+  },
+  "extraKnownMarketplaces": {
+    "anthropic-agent-skills": {
+      "source": {
+        "repo": "anthropics/skills",
+        "source": "github"
+      }
+    },
+    "claude-plugins-official": {
+      "source": {
+        "repo": "anthropics/claude-plugins-official",
+        "source": "github"
+      }
+    },
+    "local-skills": {
+      "source": {
+        "path": "~/.claude/local-plugins",
+        "source": "directory"
+      }
+    },
+    "openai-codex": {
+      "source": {
+        "repo": "openai/codex-plugin-cc",
+        "source": "github"
+      }
+    }
+  },
+  "hooks": {
+    "PostCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "command": "~/.claude/hooks/compaction-recovery.sh",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "lean-ctx hook observe",
+            "type": "command"
+          }
+        ],
+        "matcher": ".*"
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f ~/.claude/hooks/error-detector.sh ] && bash ~/.claude/hooks/error-detector.sh || true"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "command": "lean-ctx hook observe",
+            "type": "command"
+          }
+        ],
+        "matcher": ".*"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "rtk hook claude",
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash"
+      },
+      {
+        "hooks": [
+          {
+            "command": "lean-ctx hook rewrite",
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash|bash"
+      },
+      {
+        "hooks": [
+          {
+            "command": "lean-ctx hook redirect",
+            "type": "command"
+          }
+        ],
+        "matcher": "Read|read|ReadFile|read_file|View|view|Grep|grep|Search|search|ListFiles|list_files|ListDirectory|list_directory"
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "command": "bash ~/.claude/hooks/session-end-queue.sh 2>> ~/.claude/hooks/logs/session-end-queue.log",
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "bash /home/ylocal/.claude/hooks/knowledge-distill.sh 2> >(tee -a /home/ylocal/.claude/hooks/knowledge-distill.log >&2)",
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "lean-ctx hook observe",
+            "type": "command"
+          }
+        ],
+        "matcher": ".*"
+      },
+      {
+        "hooks": [
+          {
+            "command": "bash \"/home/ylocal/.claude/hooks/lessons-learned-distill.sh\" 2>> \"/home/ylocal/.claude/hooks/logs/lessons-learned-distill.log\"",
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "bash -c 'INPUT=$(cat); (printf \"%s\" \"$INPUT\" | kizami save --stdin >/dev/null 2>> \"/home/ylocal/.local/share/kizami/error.log\" &); exit 0'",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "command": "~/.claude/hooks/sessionstart-compaction-recovery.sh",
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "bash ~/.claude/hooks/knowledge-distill.sh 2>> ~/.claude/hooks/logs/knowledge-distill.log",
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "lean-ctx hook observe",
+            "type": "command"
+          }
+        ],
+        "matcher": ".*"
+      },
+      {
+        "hooks": [
+          {
+            "command": "bash /home/ylocal/.claude/hooks/knowledge-prune.sh 2>> /home/ylocal/.claude/hooks/logs/knowledge-prune.log",
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "kizami inject --stdin",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": "bash /home/ylocal/.claude/hooks/claude-md-stop.sh",
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "lean-ctx hook observe",
+            "type": "command"
+          }
+        ],
+        "matcher": ".*"
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "command": "~/.claude/hooks/userpromptsubmit-compaction-recovery.sh",
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "~/.claude/hooks/userpromptsubmit-compact-prep-reminder.sh",
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "bash /home/ylocal/.claude/hooks/check-queue.sh",
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "bash /home/ylocal/.claude/hooks/claude-md-check.sh",
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "lean-ctx hook observe",
+            "type": "command"
+          }
+        ],
+        "matcher": ".*"
+      },
+      {
+        "hooks": [
+          {
+            "command": "kizami recall --stdin",
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  },
   "permissions": {
     "allow": [
       "Bash(git status)",
@@ -23,7 +292,19 @@
       "WebFetch(domain:docs.python.org)",
       "WebFetch(domain:developer.mozilla.org)",
       "WebFetch(domain:docs.anthropic.com)",
-      "WebFetch(domain:x.com)"
+      "mcp__lean-ctx__ctx_read",
+      "mcp__lean-ctx__ctx_search",
+      "mcp__lean-ctx__ctx_tree",
+      "mcp__lean-ctx__ctx_overview",
+      "mcp__lean-ctx__ctx_plan",
+      "mcp__lean-ctx__ctx_metrics",
+      "mcp__lean-ctx__ctx_compress",
+      "mcp__lean-ctx__ctx_session",
+      "mcp__lean-ctx__ctx_knowledge",
+      "mcp__lean-ctx__ctx_graph",
+      "mcp__lean-ctx__ctx_retrieve",
+      "mcp__lean-ctx__ctx_provider",
+      "Monitor"
     ],
     "deny": [
       "Bash(git push --force*)",
@@ -65,65 +346,10 @@
       "Bash(*rclone*dedupe*)"
     ]
   },
-  "effortLevel": "medium",
   "statusLine": {
-    "type": "command",
-    "command": "ccstatusline",
+    "command": "~/.claude/scripts/statusline-wrapper.sh",
     "padding": 0,
-    "refreshInterval": 10
-  },
-  "env": {
-    "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1",
-    "DISABLE_AUTOUPDATER": "1"
-  },
-  "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/hooks/knowledge-distill.sh 2>> ~/.claude/hooks/logs/knowledge-distill.log"
-          }
-        ]
-      }
-    ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/hooks/session-end-queue.sh 2>> ~/.claude/hooks/logs/session-end-queue.log"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "[ -f ~/.claude/hooks/error-detector.sh ] && bash ~/.claude/hooks/error-detector.sh || true"
-          }
-        ]
-      }
-    ]
-  },
-  "enabledPlugins": {
-    "code-review@claude-plugins-official": false
-  },
-  "extraKnownMarketplaces": {
-    "anthropic-agent-skills": {
-      "source": {
-        "source": "github",
-        "repo": "anthropics/skills"
-      }
-    },
-    "claude-plugins-official": {
-      "source": {
-        "source": "github",
-        "repo": "anthropics/claude-plugins-official"
-      }
-    }
+    "refreshInterval": 10,
+    "type": "command"
   }
 }

@@ -1,0 +1,30 @@
+#!/bin/bash
+# warn-marker-check.sh: context 使用率が閾値を超えたら warn marker を書き込む。
+# stdin から statusline の JSON input を受け取る。
+# いかなる失敗も呼び出し元を壊してはならない（fail-open）。
+set -uo pipefail
+INPUT=$(cat)
+
+_TMPDIR=$(realpath -m "${TMPDIR:-/tmp}" 2>/dev/null || echo "/tmp")
+[[ "${_TMPDIR}" = /* ]] || _TMPDIR="/tmp"
+
+COMPACT_WARN_THRESHOLD=75   # 不変条件: CLAUDE_AUTOCOMPACT_PCT_OVERRIDE (85) より 10pt 以上低く保つ
+CONTEXT_LIMIT=200000
+session_id=$(printf '%s' "$INPUT" | jq -r '.session_id // empty')
+transcript=$(printf '%s' "$INPUT" | jq -r '.transcript_path // empty')
+if [[ -n "$session_id" && -n "$transcript" && -f "$transcript" ]] \
+   && [[ ! -f "${_TMPDIR}/claude-compact-warned/$session_id" ]]; then
+  # 直近の usage エントリから context 消費を推定（head -1 で早期打ち切り）
+  used=$(tac "$transcript" | jq -r '
+    select(.message.usage != null) |
+    (.message.usage.input_tokens // 0)
+    + (.message.usage.cache_creation_input_tokens // 0)
+    + (.message.usage.cache_read_input_tokens // 0)' 2>/dev/null | head -1)
+  if [[ "$used" =~ ^[0-9]+$ ]]; then
+    int_pct=$(( used * 100 / CONTEXT_LIMIT ))
+    if [ "$int_pct" -ge "$COMPACT_WARN_THRESHOLD" ]; then
+      mkdir -p "${_TMPDIR}/claude-compact-warn"
+      printf '%s\n' "$int_pct" > "${_TMPDIR}/claude-compact-warn/$session_id"
+    fi
+  fi
+fi
