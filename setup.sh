@@ -137,9 +137,9 @@ ensure_autocompact_in_rc() {
     {
       echo ''
       echo '# Claude-StartUp: autocompact'
-      echo 'export CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=75'
+      echo 'export CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=85'
     } >> "$rc"
-    echo "  ℹ  $rc に CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=75 を書き込みました"
+    echo "  ℹ  $rc に CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=85 を書き込みました"
   fi
 }
 
