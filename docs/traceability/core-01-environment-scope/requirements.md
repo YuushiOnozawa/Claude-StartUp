@@ -38,4 +38,4 @@ setup/hooks はbash前提だが、WindowsホストOllama利用や commandWindows
 
 ## 重複・横断関係
 
-Fable 09/12 は core-01、12 は core-06 と重複する。
+Fable 09/12 は core-03.3、12 は core-03.4 と重複する。

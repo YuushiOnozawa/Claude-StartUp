@@ -1,4 +1,6 @@
-# Core 03: hooks / knowledge-distill / 知識ストアの基盤が二重化・欠落・密結合している
+# Core 03.2: hooks / knowledge-distill / 知識ストアの基盤が二重化・欠落・密結合している
+
+> 旧番号: core-03（2026-07-06 実行順に並べ替え）
 
 ## 核問題名
 
@@ -48,7 +50,7 @@ compact 強化セット（compact-prep skill + 復旧 hook + 閾値通知。`com
 
 ## 重複・横断関係
 
-Fable 05 は core-01、13 は core-04 と重複する。
+Fable 05 は core-03.3、13 は core-04 と重複する。
 
 ## 注意
 

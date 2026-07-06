@@ -40,4 +40,4 @@ hooks と knowledge-distill に、二重登録、配備漏れ、pCloud/rclone mo
 
 ## 重複・横断関係
 
-Fable 05 は core-01、13 は core-04 と重複する。
+Fable 05 は core-03.3、13 は core-04 と重複する。
