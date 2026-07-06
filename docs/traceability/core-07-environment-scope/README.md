@@ -1,0 +1,54 @@
+# Core 07: 対応環境のスコープと優先度が未確定である
+
+## 核問題名
+
+対応環境のスコープと優先度が未確定である
+
+## 関連Fable項目
+
+- 09: setup 内での Ollama サーバー起動・常駐化
+- 12: セットアップ後の手動ステップ・チェックリスト整備
+- 14: Windows ネイティブ環境対応
+
+## 関連するリポジトリ目的
+
+- 新規環境へのワンライナー展開
+- Windows / WSL / Linux の運用範囲
+- 個人用 ~/.claude/ 共通設定の再現可能な展開
+
+## 問題概要
+
+setup/hooks はbash前提だが、WindowsホストOllama利用や commandWindows の痕跡もあり、Windowsネイティブをサポート範囲に含めるか未確定である。
+
+## 分類
+
+要確認
+
+## confidence
+
+medium
+
+## 人間確認が必要な点
+
+- Windowsネイティブ対応を目的範囲に含めるか
+- WindowsホストOllama利用を標準構成にするか
+- pCloud/Obsidian Windows Syncを13の前提として固定するか
+
+## 重複・横断関係
+
+Fable 09/12 は core-01、12 は core-06 と重複する。
+
+## 注意
+
+このフォルダは作業構造の再配置であり、要求・仕様・実装方針を確定するものではない。
+## ステータス
+
+| Document | Status | Notes |
+|---|---|---|
+| requirements.md | draft | 人間確認前 |
+| specification.md | draft | requirements 確定後に更新 |
+| implementation-plan.md | draft | specification 確定後に更新 |
+| test-plan.md | draft | specification 確定後に更新 |
+| design-review.md | todo | Step 7 で作成 |
+| traceability-map.md | draft | 各工程で更新 |
+| traceability-audit.md | todo | Step 9 で作成 |

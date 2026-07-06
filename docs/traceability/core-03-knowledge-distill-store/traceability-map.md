@@ -1,0 +1,17 @@
+# Traceability Map: Core 03
+
+## 重複・横断関係
+
+Fable 05 は core-01、13 は core-04 と重複する。
+
+## 対応表
+
+| Fable項目 | 問題 | 要求候補 | 仕様候補 | 実装項目候補 | テスト観点 | 状態 |
+|---|---|---|---|---|---|---|
+| 04 | knowledge-distill フック登録の二重化と設計競合。hooks と knowledge-distill に、二重登録、配備漏れ、pCloud/rclone mount への密結合がある。長期記憶の品質、重複登録、トークン消費、再現可能性に影響する。 | 蒸留は1 transcript につき1回だけ処理される<br>hooks の登録元、ログ出力先、配備対象を明確にする<br>記録層はローカルstoreで完結する<br>配送層と取込層は一方向同期にする<br>error-detector の配備と実行コスト上限を要求する | settings.json直書き方式かsetup動的注入か<br>SessionEnd queue push / SessionStart drain の役割<br>hooks/logs へのログ統一<br>store / vault / index-en の責務とwriter<br>pCloud reasonキューの廃止または移行期間<br>knowledge-rag API登録と documents_dir + watch の扱い | settings.json は SessionStart=knowledge-distill / SessionEnd=session-end-queue のキュー方式<br>setup/410 は SessionEnd に knowledge-distill を追加登録する<br>410のログパスは hooks/logs と不一致<br>410/411/412/700 は settings.json を動的に書き換える<br>複数 hooks/skills/scripts が ~/pcloud/obsidian と mountpoint に依存<br>knowledge-distill は register.sh に登録を委譲し store+watch は未実装 | 1 transcript が一度だけ蒸留・登録されるか<br>SessionEndにknowledge-distill直接実行が残らないか<br>settings.json参照hooksが存在し実行可能か<br>rclone mountなしで蒸留・RAG登録・自動昇格できるか<br>store/vault同期が一方向で冪等か | 未確定 / 要整理 |
+| 05 | error-detector.sh が配備されず自動エラー検知が無音で無効。hooks と knowledge-distill に、二重登録、配備漏れ、pCloud/rclone mount への密結合がある。長期記憶の品質、重複登録、トークン消費、再現可能性に影響する。 | 蒸留は1 transcript につき1回だけ処理される<br>hooks の登録元、ログ出力先、配備対象を明確にする<br>記録層はローカルstoreで完結する<br>配送層と取込層は一方向同期にする<br>error-detector の配備と実行コスト上限を要求する | settings.json直書き方式かsetup動的注入か<br>SessionEnd queue push / SessionStart drain の役割<br>hooks/logs へのログ統一<br>store / vault / index-en の責務とwriter<br>pCloud reasonキューの廃止または移行期間<br>knowledge-rag API登録と documents_dir + watch の扱い | settings.json は SessionStart=knowledge-distill / SessionEnd=session-end-queue のキュー方式<br>setup/410 は SessionEnd に knowledge-distill を追加登録する<br>410のログパスは hooks/logs と不一致<br>410/411/412/700 は settings.json を動的に書き換える<br>複数 hooks/skills/scripts が ~/pcloud/obsidian と mountpoint に依存<br>knowledge-distill は register.sh に登録を委譲し store+watch は未実装 | 1 transcript が一度だけ蒸留・登録されるか<br>SessionEndにknowledge-distill直接実行が残らないか<br>settings.json参照hooksが存在し実行可能か<br>rclone mountなしで蒸留・RAG登録・自動昇格できるか<br>store/vault同期が一方向で冪等か | 未確定 / 要整理 |
+| 13 | 知識ストアの疎結合化。hooks と knowledge-distill に、二重登録、配備漏れ、pCloud/rclone mount への密結合がある。長期記憶の品質、重複登録、トークン消費、再現可能性に影響する。 | 蒸留は1 transcript につき1回だけ処理される<br>hooks の登録元、ログ出力先、配備対象を明確にする<br>記録層はローカルstoreで完結する<br>配送層と取込層は一方向同期にする<br>error-detector の配備と実行コスト上限を要求する | settings.json直書き方式かsetup動的注入か<br>SessionEnd queue push / SessionStart drain の役割<br>hooks/logs へのログ統一<br>store / vault / index-en の責務とwriter<br>pCloud reasonキューの廃止または移行期間<br>knowledge-rag API登録と documents_dir + watch の扱い | settings.json は SessionStart=knowledge-distill / SessionEnd=session-end-queue のキュー方式<br>setup/410 は SessionEnd に knowledge-distill を追加登録する<br>410のログパスは hooks/logs と不一致<br>410/411/412/700 は settings.json を動的に書き換える<br>複数 hooks/skills/scripts が ~/pcloud/obsidian と mountpoint に依存<br>knowledge-distill は register.sh に登録を委譲し store+watch は未実装 | 1 transcript が一度だけ蒸留・登録されるか<br>SessionEndにknowledge-distill直接実行が残らないか<br>settings.json参照hooksが存在し実行可能か<br>rclone mountなしで蒸留・RAG登録・自動昇格できるか<br>store/vault同期が一方向で冪等か | 未確定 / 要整理 |
+
+## 注意
+
+状態はすべて暫定。要求・仕様・実装計画・テスト設計の各段階で更新する。
