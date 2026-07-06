@@ -59,6 +59,15 @@
           }
         ],
         "matcher": ".*"
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f ~/.claude/hooks/error-detector.sh ] && bash ~/.claude/hooks/error-detector.sh || true"
+          }
+        ]
       }
     ],
     "PreCompact": [
