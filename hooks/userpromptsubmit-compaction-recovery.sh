@@ -8,14 +8,17 @@ INPUT=$(cat)
 SESSION_ID=$(printf '%s' "$INPUT" | jq -r '.session_id // empty' 2>/dev/null)
 [[ -z "$SESSION_ID" ]] && exit 0
 
-MARKER="${TMPDIR:-/tmp}/claude-compacted/$SESSION_ID"
+_TMPDIR=$(realpath -m "${TMPDIR:-/tmp}" 2>/dev/null || echo "/tmp")
+[[ "${_TMPDIR}" = /* ]] || _TMPDIR="/tmp"
+
+MARKER="${_TMPDIR}/claude-compacted/$SESSION_ID"
 [[ -f "$MARKER" ]] || exit 0
 rm -f "$MARKER" 2>/dev/null || true
 
 CTX="[COMPACTION RECOVERY] コンテキスト圧縮が発生した。作業再開前に以下を実行すること。"
 CTX+=$'\n'
 
-PTR="${TMPDIR:-/tmp}/claude-active-plan/$SESSION_ID"
+PTR="${_TMPDIR}/claude-active-plan/$SESSION_ID"
 if [[ -f "$PTR" ]]; then
   PLAN_FILE=$(cat "$PTR" 2>/dev/null || true)
   if [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]]; then
@@ -24,7 +27,7 @@ if [[ -f "$PTR" ]]; then
   fi
 fi
 
-STATE_FILE="${TMPDIR:-/tmp}/claude-compact-state/$SESSION_ID.md"
+STATE_FILE="${_TMPDIR}/claude-compact-state/$SESSION_ID.md"
 if [[ -f "$STATE_FILE" ]]; then
   CTX+=$'\n'"- state file \`${STATE_FILE}\` を Read で読み、作業状態を復元せよ"
   CTX+=$'\n'"- Session Decisions と Recovery Notes を特に重視せよ"

@@ -8,11 +8,14 @@ INPUT=$(cat)
 SESSION_ID=$(printf '%s' "$INPUT" | jq -r '.session_id // empty' 2>/dev/null)
 [[ -z "$SESSION_ID" ]] && exit 0
 
-MARKER_DIR="${TMPDIR:-/tmp}/claude-compacted"
+_TMPDIR=$(realpath -m "${TMPDIR:-/tmp}" 2>/dev/null || echo "/tmp")
+[[ "${_TMPDIR}" = /* ]] || _TMPDIR="/tmp"
+
+MARKER_DIR="${_TMPDIR}/claude-compacted"
 mkdir -p "$MARKER_DIR" 2>/dev/null || true
 printf '%s\n' "$(date +%s)" > "$MARKER_DIR/$SESSION_ID" 2>/dev/null || true
 
 # compact が実行されたら閾値通知の cooldown をリセットする
-rm -f "${TMPDIR:-/tmp}/claude-compact-warned/$SESSION_ID" 2>/dev/null || true
+rm -f "${_TMPDIR}/claude-compact-warned/$SESSION_ID" 2>/dev/null || true
 
 exit 0

@@ -141,6 +141,9 @@ ensure_autocompact_in_rc() {
       echo 'export CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=85'
     } >> "$rc"
     echo "  ℹ  $rc に CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=85 を書き込みました"
+  elif grep -q 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=75' "$rc"; then
+    sed -i 's/CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=75/CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=85/' "$rc"
+    echo "  ℹ  $rc の CLAUDE_AUTOCOMPACT_PCT_OVERRIDE を 75 → 85 に更新しました (compact-hardening migration)"
   fi
 }
 
