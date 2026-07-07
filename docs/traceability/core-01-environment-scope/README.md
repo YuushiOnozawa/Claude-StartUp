@@ -47,7 +47,7 @@ Fable 09/12 は core-03.3、12 は core-03.4 と重複する。
 
 | Document | Status | Notes |
 |---|---|---|
-| requirements.md | draft | 人間確認前 |
+| requirements.md | approved | 人間確認・承認済み（2026-07-07） |
 | specification.md | draft | requirements 確定後に更新 |
 | implementation-plan.md | draft | specification 確定後に更新 |
 | test-plan.md | draft | specification 確定後に更新 |

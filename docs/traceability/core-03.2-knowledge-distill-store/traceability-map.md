@@ -1,17 +1,36 @@
-# Traceability Map: Core 03
+# Traceability Map: Core 03.2 — hooks / knowledge-distill / 知識ストアの二重化・欠落・密結合
 
-## 重複・横断関係
+> requirements approved: 2026-07-07
 
-Fable 05 は core-03.3、13 は core-04 と重複する。
+## Step 3 — 問題 → 要求
 
-## 対応表
+| PROB ID | 問題 | 対応 REQ | ステータス |
+|---|---|---|---|
+| PROB-03.2-01 | setup/410 が SessionEnd に knowledge-distill.sh を直接追加し settings.json キュー方式と競合（二重蒸留） | REQ-03.2-01 | approved |
+| PROB-03.2-02 | setup/410 ログパスと settings.json ログパスが不一致（hooks/ vs hooks/logs/） | REQ-03.2-02 | approved |
+| PROB-03.2-03 | setup/410-412-700 が settings.json を動的書き換え（設計事項として spec 以降で扱う。独立 REQ なし） | — | 設計事項 |
+| PROB-03.2-04 | hooks/skills が ~/pcloud/obsidian mount に密結合・rclone 未起動で失敗 | REQ-03.2-03 | approved |
+| PROB-03.2-05 | error-detector.sh が新規環境の hooks/ に存在せず PostToolUse が無音で無効 | REQ-03.2-04 | approved |
+| PROB-03.2-06 | compact 強化フック群（PR #267）が動的注入で先行導入済み（audit のみで管理。独立 REQ なし） | — | audit対象 |
 
-| Fable項目 | 問題 | 要求候補 | 仕様候補 | 実装項目候補 | テスト観点 | 状態 |
-|---|---|---|---|---|---|---|
-| 04 | knowledge-distill フック登録の二重化と設計競合。hooks と knowledge-distill に、二重登録、配備漏れ、pCloud/rclone mount への密結合がある。長期記憶の品質、重複登録、トークン消費、再現可能性に影響する。 | 蒸留は1 transcript につき1回だけ処理される<br>hooks の登録元、ログ出力先、配備対象を明確にする<br>記録層はローカルstoreで完結する<br>配送層と取込層は一方向同期にする<br>error-detector の配備と実行コスト上限を要求する | settings.json直書き方式かsetup動的注入か<br>SessionEnd queue push / SessionStart drain の役割<br>hooks/logs へのログ統一<br>store / vault / index-en の責務とwriter<br>pCloud reasonキューの廃止または移行期間<br>knowledge-rag API登録と documents_dir + watch の扱い | settings.json は SessionStart=knowledge-distill / SessionEnd=session-end-queue のキュー方式<br>setup/410 は SessionEnd に knowledge-distill を追加登録する<br>410のログパスは hooks/logs と不一致<br>410/411/412/700 は settings.json を動的に書き換える<br>複数 hooks/skills/scripts が ~/pcloud/obsidian と mountpoint に依存<br>knowledge-distill は register.sh に登録を委譲し store+watch は未実装 | 1 transcript が一度だけ蒸留・登録されるか<br>SessionEndにknowledge-distill直接実行が残らないか<br>settings.json参照hooksが存在し実行可能か<br>rclone mountなしで蒸留・RAG登録・自動昇格できるか<br>store/vault同期が一方向で冪等か | 未確定 / 要整理 |
-| 05 | error-detector.sh が配備されず自動エラー検知が無音で無効。hooks と knowledge-distill に、二重登録、配備漏れ、pCloud/rclone mount への密結合がある。長期記憶の品質、重複登録、トークン消費、再現可能性に影響する。 | 蒸留は1 transcript につき1回だけ処理される<br>hooks の登録元、ログ出力先、配備対象を明確にする<br>記録層はローカルstoreで完結する<br>配送層と取込層は一方向同期にする<br>error-detector の配備と実行コスト上限を要求する | settings.json直書き方式かsetup動的注入か<br>SessionEnd queue push / SessionStart drain の役割<br>hooks/logs へのログ統一<br>store / vault / index-en の責務とwriter<br>pCloud reasonキューの廃止または移行期間<br>knowledge-rag API登録と documents_dir + watch の扱い | settings.json は SessionStart=knowledge-distill / SessionEnd=session-end-queue のキュー方式<br>setup/410 は SessionEnd に knowledge-distill を追加登録する<br>410のログパスは hooks/logs と不一致<br>410/411/412/700 は settings.json を動的に書き換える<br>複数 hooks/skills/scripts が ~/pcloud/obsidian と mountpoint に依存<br>knowledge-distill は register.sh に登録を委譲し store+watch は未実装 | 1 transcript が一度だけ蒸留・登録されるか<br>SessionEndにknowledge-distill直接実行が残らないか<br>settings.json参照hooksが存在し実行可能か<br>rclone mountなしで蒸留・RAG登録・自動昇格できるか<br>store/vault同期が一方向で冪等か | 未確定 / 要整理 |
-| 13 | 知識ストアの疎結合化。hooks と knowledge-distill に、二重登録、配備漏れ、pCloud/rclone mount への密結合がある。長期記憶の品質、重複登録、トークン消費、再現可能性に影響する。 | 蒸留は1 transcript につき1回だけ処理される<br>hooks の登録元、ログ出力先、配備対象を明確にする<br>記録層はローカルstoreで完結する<br>配送層と取込層は一方向同期にする<br>error-detector の配備と実行コスト上限を要求する | settings.json直書き方式かsetup動的注入か<br>SessionEnd queue push / SessionStart drain の役割<br>hooks/logs へのログ統一<br>store / vault / index-en の責務とwriter<br>pCloud reasonキューの廃止または移行期間<br>knowledge-rag API登録と documents_dir + watch の扱い | settings.json は SessionStart=knowledge-distill / SessionEnd=session-end-queue のキュー方式<br>setup/410 は SessionEnd に knowledge-distill を追加登録する<br>410のログパスは hooks/logs と不一致<br>410/411/412/700 は settings.json を動的に書き換える<br>複数 hooks/skills/scripts が ~/pcloud/obsidian と mountpoint に依存<br>knowledge-distill は register.sh に登録を委譲し store+watch は未実装 | 1 transcript が一度だけ蒸留・登録されるか<br>SessionEndにknowledge-distill直接実行が残らないか<br>settings.json参照hooksが存在し実行可能か<br>rclone mountなしで蒸留・RAG登録・自動昇格できるか<br>store/vault同期が一方向で冪等か | 未確定 / 要整理 |
+## 要求一覧
+
+| REQ ID | 要求概要 | Fable | ステータス |
+|---|---|---|---|
+| REQ-03.2-01 | SessionEnd は queue push のみ。knowledge-distill.sh 直接実行を settings.json/setup から除去 | 04 | approved |
+| REQ-03.2-02 | hook ログ出力先を hooks/logs/ 配下に統一（setup/410 のパス修正） | 04 | approved |
+| REQ-03.2-03 | 記録層は rclone mount なしで完結。pCloud/Obsidian へは配送層として分離 | 04, 13 | approved |
+| REQ-03.2-04 | error-detector.sh を hooks/ に配備。PostToolUse で実行可能な状態を保証 | 05 | approved |
+
+## 依存・横断関係
+
+- core-02 REQ-02-05（settings.json は還流・配備対象外）→ approved ✅
+- core-01 REQ-01-03（pCloud は最終集約点）→ approved ✅
+- Fable 05 → core-03.3（error-detector の setup verify 組み込み）と重複
+- Fable 13 → core-04（知識ストア疎結合化の詳細設計）と重複
 
 ## 注意
 
-状態はすべて暫定。要求・仕様・実装計画・テスト設計の各段階で更新する。
+要求・仕様・実装計画・テスト設計の各段階で更新する。
+PROB-03.2-03（settings.json 動的注入）は spec の設計事項として扱い、独立 REQ は設けない。
+PROB-03.2-06（compact フック）は Step 9（audit）で orphan implementation として確認する。

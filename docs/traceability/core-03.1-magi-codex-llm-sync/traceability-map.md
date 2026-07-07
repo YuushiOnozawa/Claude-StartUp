@@ -1,19 +1,36 @@
-# Traceability Map: Core 02
+# Traceability Map: Core 03.1 — MAGI/Codex/ローカルLLM 実体・参照・割当ズレ
 
-## 重複・横断関係
+> requirements approved: 2026-07-07
 
-Fable 02 は core-03.3、03 は core-03.4、08 は core-03.3 と重複する。
+## Step 3 — 問題 → 要求
 
-## 対応表
+| PROB ID | 問題 | 対応 REQ | ステータス |
+|---|---|---|---|
+| PROB-03.1-01 | 全ペルソナ SKILL.md に削除済み agents/xxx.md 参照が残存 | REQ-03.1-01 | approved |
+| PROB-03.1-02 | agents/leliel.md が haiku 固定・スキルフローをバイパス可能 | REQ-03.1-02 | approved |
+| PROB-03.1-03 | magi-fast/hard が bash scripts/... 相対パス参照 | REQ-03.1-04 | approved |
+| PROB-03.1-04 | setup/800-ollama-models.sh が WSL2内にモデルをpull（WindowsホストOllama標準構成と矛盾） | REQ-03.1-05 | approved |
+| PROB-03.1-05 | execution-steps.md が $AGENT_PATH/agents/ を前提とした Haiku fallback を記述 | REQ-03.1-03 | approved |
 
-| Fable項目 | 問題 | 要求候補 | 仕様候補 | 実装項目候補 | テスト観点 | 状態 |
-|---|---|---|---|---|---|---|
-| 01 | MAGI エージェント定義の参照不整合。MAGI、ローカルLLM、Codex の実体が、参照パス、モデル割当、ドキュメント、setup で同期していない。開発フローのレビューゲートが期待通り動くかに直結する。 | MAGIペルソナ定義の正を agents か references のどちらかに固定する<br>スキル要求モデル、setup pullモデル、モデル表を一致させる<br>グローバルスキルが任意cwdから動作することを要求する<br>Codex実装・監査・設計レビュー層が利用可能であることを要求する | agents参照撤去または復元の方針<br>モデル割当の単一情報源または突合CI<br>補助スクリプトの絶対/環境変数ベース解決規約<br>codex-companion のバージョン固定パス排除<br>実装変更時のドキュメント同時更新ルール | agents/ には MAGI 系では leliel.md のみ存在する<br>各personaの SKILL.md に agents/<persona>.md 参照が残る<br>実スキル側モデルと setup/800 のpull対象が一致しない<br>magi-fast / magi-hard に bash scripts/... の相対参照が残る<br>codegen はCodex委譲だが setup/850 はCodex CLI確認のみ | リポジトリ外gitプロジェクトで /magi-fast / /magi-hard が完走するか<br>bash scripts/、固定codexパス、存在しないagents参照をCIで検出するか<br>スキル側モデルとsetup側モデルを突合できるか<br>Codex CLI未導入時の扱いを検出できるか | 未確定 / 要整理 |
-| 02 | setup/800-ollama-models.sh とスキルのモデル割当不整合。MAGI、ローカルLLM、Codex の実体が、参照パス、モデル割当、ドキュメント、setup で同期していない。開発フローのレビューゲートが期待通り動くかに直結する。 | MAGIペルソナ定義の正を agents か references のどちらかに固定する<br>スキル要求モデル、setup pullモデル、モデル表を一致させる<br>グローバルスキルが任意cwdから動作することを要求する<br>Codex実装・監査・設計レビュー層が利用可能であることを要求する | agents参照撤去または復元の方針<br>モデル割当の単一情報源または突合CI<br>補助スクリプトの絶対/環境変数ベース解決規約<br>codex-companion のバージョン固定パス排除<br>実装変更時のドキュメント同時更新ルール | agents/ には MAGI 系では leliel.md のみ存在する<br>各personaの SKILL.md に agents/<persona>.md 参照が残る<br>実スキル側モデルと setup/800 のpull対象が一致しない<br>magi-fast / magi-hard に bash scripts/... の相対参照が残る<br>codegen はCodex委譲だが setup/850 はCodex CLI確認のみ | リポジトリ外gitプロジェクトで /magi-fast / /magi-hard が完走するか<br>bash scripts/、固定codexパス、存在しないagents参照をCIで検出するか<br>スキル側モデルとsetup側モデルを突合できるか<br>Codex CLI未導入時の扱いを検出できるか | 未確定 / 要整理 |
-| 03 | SKILLS.md / DESIGN.md / README.md のドキュメント陳腐化。MAGI、ローカルLLM、Codex の実体が、参照パス、モデル割当、ドキュメント、setup で同期していない。開発フローのレビューゲートが期待通り動くかに直結する。 | MAGIペルソナ定義の正を agents か references のどちらかに固定する<br>スキル要求モデル、setup pullモデル、モデル表を一致させる<br>グローバルスキルが任意cwdから動作することを要求する<br>Codex実装・監査・設計レビュー層が利用可能であることを要求する | agents参照撤去または復元の方針<br>モデル割当の単一情報源または突合CI<br>補助スクリプトの絶対/環境変数ベース解決規約<br>codex-companion のバージョン固定パス排除<br>実装変更時のドキュメント同時更新ルール | agents/ には MAGI 系では leliel.md のみ存在する<br>各personaの SKILL.md に agents/<persona>.md 参照が残る<br>実スキル側モデルと setup/800 のpull対象が一致しない<br>magi-fast / magi-hard に bash scripts/... の相対参照が残る<br>codegen はCodex委譲だが setup/850 はCodex CLI確認のみ | リポジトリ外gitプロジェクトで /magi-fast / /magi-hard が完走するか<br>bash scripts/、固定codexパス、存在しないagents参照をCIで検出するか<br>スキル側モデルとsetup側モデルを突合できるか<br>Codex CLI未導入時の扱いを検出できるか | 未確定 / 要整理 |
-| 06 | スキル内スクリプト参照のパス解決不統一。MAGI、ローカルLLM、Codex の実体が、参照パス、モデル割当、ドキュメント、setup で同期していない。開発フローのレビューゲートが期待通り動くかに直結する。 | MAGIペルソナ定義の正を agents か references のどちらかに固定する<br>スキル要求モデル、setup pullモデル、モデル表を一致させる<br>グローバルスキルが任意cwdから動作することを要求する<br>Codex実装・監査・設計レビュー層が利用可能であることを要求する | agents参照撤去または復元の方針<br>モデル割当の単一情報源または突合CI<br>補助スクリプトの絶対/環境変数ベース解決規約<br>codex-companion のバージョン固定パス排除<br>実装変更時のドキュメント同時更新ルール | agents/ には MAGI 系では leliel.md のみ存在する<br>各personaの SKILL.md に agents/<persona>.md 参照が残る<br>実スキル側モデルと setup/800 のpull対象が一致しない<br>magi-fast / magi-hard に bash scripts/... の相対参照が残る<br>codegen はCodex委譲だが setup/850 はCodex CLI確認のみ | リポジトリ外gitプロジェクトで /magi-fast / /magi-hard が完走するか<br>bash scripts/、固定codexパス、存在しないagents参照をCIで検出するか<br>スキル側モデルとsetup側モデルを突合できるか<br>Codex CLI未導入時の扱いを検出できるか | 未確定 / 要整理 |
-| 08 | Codex CLI の自動インストール不足。MAGI、ローカルLLM、Codex の実体が、参照パス、モデル割当、ドキュメント、setup で同期していない。開発フローのレビューゲートが期待通り動くかに直結する。 | MAGIペルソナ定義の正を agents か references のどちらかに固定する<br>スキル要求モデル、setup pullモデル、モデル表を一致させる<br>グローバルスキルが任意cwdから動作することを要求する<br>Codex実装・監査・設計レビュー層が利用可能であることを要求する | agents参照撤去または復元の方針<br>モデル割当の単一情報源または突合CI<br>補助スクリプトの絶対/環境変数ベース解決規約<br>codex-companion のバージョン固定パス排除<br>実装変更時のドキュメント同時更新ルール | agents/ には MAGI 系では leliel.md のみ存在する<br>各personaの SKILL.md に agents/<persona>.md 参照が残る<br>実スキル側モデルと setup/800 のpull対象が一致しない<br>magi-fast / magi-hard に bash scripts/... の相対参照が残る<br>codegen はCodex委譲だが setup/850 はCodex CLI確認のみ | リポジトリ外gitプロジェクトで /magi-fast / /magi-hard が完走するか<br>bash scripts/、固定codexパス、存在しないagents参照をCIで検出するか<br>スキル側モデルとsetup側モデルを突合できるか<br>Codex CLI未導入時の扱いを検出できるか | 未確定 / 要整理 |
+## 要求一覧
+
+| REQ ID | 要求概要 | Fable | ステータス |
+|---|---|---|---|
+| REQ-03.1-01 | 全ペルソナ SKILL.md から agents/xxx.md 参照を削除 | 01 | approved |
+| REQ-03.1-02 | agents/leliel.md を削除。LELIEL の Haiku fallback はスキル内で直接呼ぶ | 01 | approved |
+| REQ-03.1-03 | execution-steps.md の $AGENT_PATH/agents/ 参照を削除・更新 | 01 | approved |
+| REQ-03.1-04 | magi-fast/hard スクリプト参照を $HOME/.claude/scripts/ 絶対パスに修正 | 06 | approved |
+| REQ-03.1-05 | setup/800-ollama-models.sh を削除または無効化 | 02 | approved |
+| REQ-03.1-06 | SKILL.md の OLLAMA_MODEL 記載を文書として維持（Windows host で必要なモデルの記録） | 02 | approved |
+| REQ-03.1-07 | Codex CLI は導入確認のみ維持。動作確認済みバージョンを README に記載 | 08 | approved |
+
+## 依存・横断関係
+
+- core-01 REQ-01-02（WindowsホストOllama標準）→ approved ✅（REQ-03.1-05 の根拠）
+- core-02 REQ-02-02（内容物ホワイトリスト）→ agents/ 配備設計と連動
+- core-03.3: OLLAMA_HOST 疎通確認・Codex CLI 自動インストール
+- core-03.4: SKILLS.md/DESIGN.md ドキュメント陳腐化
 
 ## 注意
 
-状態はすべて暫定。要求・仕様・実装計画・テスト設計の各段階で更新する。
+要求・仕様・実装計画・テスト設計の各段階で更新する。

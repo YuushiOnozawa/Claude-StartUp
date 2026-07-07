@@ -1,4 +1,18 @@
-# Traceability Map: Core 07
+# Traceability Map: Core 01 — 対応環境スコープ・優先度
+
+> 旧番号: Core 07。requirements approved: 2026-07-07
+
+## Step 3 — 要求（approved 2026-07-07）
+
+| REQ ID | 要求 | 対応 Fable | ステータス |
+|---|---|---|---|
+| REQ-01-01 | サポート対象環境は WSL2（Linux）のみ。Windowsネイティブは対象外 | 14 | approved |
+| REQ-01-02 | WSL2 から WindowsホストOllama（OLLAMA_HOST）を標準構成とする | 09 | approved |
+| REQ-01-03 | pCloud がファイルの最終的な集約場所（セッションログ・knowledge 等） | 12 | approved |
+| REQ-01-04 | pCloud への移送は一括処理。各 WSL コンテナはまずローカル保存 | 12 | approved |
+| REQ-01-05 | pCloud 同期方法（rclone 認証・マウント確認）は別途検討 | 12 | 別途検討 |
+| REQ-01-06 | knowledge-rag DB 扱い（ローカル vs pCloud 同期）は別途検討 | 12 | 別途検討 |
+| REQ-01-07 | Windowsネイティブ非対応を README / verify で明示 | 14 | approved |
 
 ## 重複・横断関係
 

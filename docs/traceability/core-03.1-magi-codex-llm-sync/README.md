@@ -38,6 +38,16 @@ high
 - #203 の方針を完遂して references に一本化するか agents を復元するか
 - METATRON の devstral を継続するか
 - Codex CLI / plugin の確認済みバージョンをどこまで固定するか
+- **agents/leliel.md の削除**（core-02 Step 3 で発覚・2026-07-07 確定）: CASPER 以外の 5 体は同一構造（deepseek-r1:8b）を維持する方針。leliel.md は haiku 固定で設計不整合のため削除する
+
+## 外部先行変更（2026-07-07）
+
+core-02（live-deploy-drift）の Step 3 作業中に以下の設計不整合を発見:
+
+- **発見内容**: `agents/leliel.md` が `model: haiku` で定義されており、他の MAGI 体（Ollama-first）と設計が異なる。magi-hard は `/leliel` スキル経由で呼ぶため agent 定義は実際には使われていないが、直接 `Agent(subagent_type="leliel")` 呼び出しが可能な状態になっており PR #203 の削除理由（スキルフローのバイパス防止）と矛盾する
+- **方針**: `agents/leliel.md` を削除し、CASPER 以外の 5 体は deepseek-r1:8b で統一する（2026-07-07 確定）
+- **依存**: core-02 の deploy.sh 実装前に完了が必要（deploy.sh が agents/ を配備対象とするため）
+- **派生元**: core-02 requirements.md（2026-07-07）
 
 ## 重複・横断関係
 
@@ -50,7 +60,7 @@ Fable 02 は core-03.3、03 は core-03.4、08 は core-03.3 と重複する。
 
 | Document | Status | Notes |
 |---|---|---|
-| requirements.md | draft | 人間確認前 |
+| requirements.md | approved | 人間確認・承認済み（2026-07-07） |
 | specification.md | draft | requirements 確定後に更新 |
 | implementation-plan.md | draft | specification 確定後に更新 |
 | test-plan.md | draft | specification 確定後に更新 |

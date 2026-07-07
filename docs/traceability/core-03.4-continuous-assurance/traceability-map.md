@@ -1,19 +1,36 @@
-# Traceability Map: Core 06
+# Traceability Map: Core 03.4 — ドキュメント・CI・verify による継続保証
 
-## 重複・横断関係
+> requirements approved: 2026-07-07
 
-Fable 03 は core-03.1、07 は core-02、10/12 は core-03.3、12 は core-01 と重複する。
+## Step 3 — 問題 → 要求
 
-## 対応表
+| PROB ID | 問題 | 対応 REQ | ステータス |
+|---|---|---|---|
+| PROB-03.4-01 | README.md / DESIGN.md / SKILLS.md が実装と乖離。実装変更時にドキュメント更新が強制されない | REQ-03.4-01 | approved |
+| PROB-03.4-02 | .gitignore に .codex/・CLAUDE.local.md 等が未追加（未追跡ファイル滞留） | REQ-03.4-02 | approved |
+| PROB-03.4-03 | PR マージ後に worktree ブランチ・作業ファイルが残存する | REQ-03.4-03 | approved |
+| PROB-03.4-04 | GitHub Actions CI がなく shellcheck・smoke test が自動化されていない | REQ-03.4-04 | approved |
+| PROB-03.4-05 | CI から setup/900-verify.sh を自動実行する仕組みがない（CI 環境の制約から対象外） | — | 対象外（REQ-03.3-03 と境界確認済み） |
 
-| Fable項目 | 問題 | 要求候補 | 仕様候補 | 実装項目候補 | テスト観点 | 状態 |
-|---|---|---|---|---|---|---|
-| 03 | ドキュメント陳腐化。実装とドキュメントのズレ、CI不在、verify不在、手動ステップ導線不足、未追跡ファイル滞留があり、整合性を継続的に保証する仕組みが不足している。 | 整合性保証を人間レビューだけに依存しない<br>setup後verifyとPR時CIを分ける<br>READMEからワンライナー、手動ステップ、verifyへ辿れる<br>ドキュメントと実装の不一致を検出・更新する | CIの bash -n、shellcheck、既存テスト、モデル突合、hooks参照、禁止パスgrep<br>verifyの到達性、インストール状態、モデル存在、hooks配備、キュー滞留<br>README/SKILLS/DESIGN更新対象と同時更新ルール<br>手動ステップと環境変数一覧の集約 | .github/ は存在しない<br>templates/security/github-workflows/security-scan.yml は配布用テンプレート<br>scripts/test-*.sh はあるが自動実行CIがない<br>setup.sh に --verify はなく setup/900-verify.sh もない<br>git状態では audit ディレクトリも未追跡 | 02/05/06型の不整合をCIでfailできるか<br>01/02/04/05型の環境不整合をverifyで検出できるか<br>既存 test-*.sh をCIで実行できるか<br>READMEから導線を辿れるか | 未確定 / 要整理 |
-| 07 | リポジトリ衛生。実装とドキュメントのズレ、CI不在、verify不在、手動ステップ導線不足、未追跡ファイル滞留があり、整合性を継続的に保証する仕組みが不足している。 | 整合性保証を人間レビューだけに依存しない<br>setup後verifyとPR時CIを分ける<br>READMEからワンライナー、手動ステップ、verifyへ辿れる<br>ドキュメントと実装の不一致を検出・更新する | CIの bash -n、shellcheck、既存テスト、モデル突合、hooks参照、禁止パスgrep<br>verifyの到達性、インストール状態、モデル存在、hooks配備、キュー滞留<br>README/SKILLS/DESIGN更新対象と同時更新ルール<br>手動ステップと環境変数一覧の集約 | .github/ は存在しない<br>templates/security/github-workflows/security-scan.yml は配布用テンプレート<br>scripts/test-*.sh はあるが自動実行CIがない<br>setup.sh に --verify はなく setup/900-verify.sh もない<br>git状態では audit ディレクトリも未追跡 | 02/05/06型の不整合をCIでfailできるか<br>01/02/04/05型の環境不整合をverifyで検出できるか<br>既存 test-*.sh をCIで実行できるか<br>READMEから導線を辿れるか | 未確定 / 要整理 |
-| 10 | セットアップ統合検証 doctor / verify の追加。実装とドキュメントのズレ、CI不在、verify不在、手動ステップ導線不足、未追跡ファイル滞留があり、整合性を継続的に保証する仕組みが不足している。 | 整合性保証を人間レビューだけに依存しない<br>setup後verifyとPR時CIを分ける<br>READMEからワンライナー、手動ステップ、verifyへ辿れる<br>ドキュメントと実装の不一致を検出・更新する | CIの bash -n、shellcheck、既存テスト、モデル突合、hooks参照、禁止パスgrep<br>verifyの到達性、インストール状態、モデル存在、hooks配備、キュー滞留<br>README/SKILLS/DESIGN更新対象と同時更新ルール<br>手動ステップと環境変数一覧の集約 | .github/ は存在しない<br>templates/security/github-workflows/security-scan.yml は配布用テンプレート<br>scripts/test-*.sh はあるが自動実行CIがない<br>setup.sh に --verify はなく setup/900-verify.sh もない<br>git状態では audit ディレクトリも未追跡 | 02/05/06型の不整合をCIでfailできるか<br>01/02/04/05型の環境不整合をverifyで検出できるか<br>既存 test-*.sh をCIで実行できるか<br>READMEから導線を辿れるか | 未確定 / 要整理 |
-| 11 | CI パイプラインの追加。実装とドキュメントのズレ、CI不在、verify不在、手動ステップ導線不足、未追跡ファイル滞留があり、整合性を継続的に保証する仕組みが不足している。 | 整合性保証を人間レビューだけに依存しない<br>setup後verifyとPR時CIを分ける<br>READMEからワンライナー、手動ステップ、verifyへ辿れる<br>ドキュメントと実装の不一致を検出・更新する | CIの bash -n、shellcheck、既存テスト、モデル突合、hooks参照、禁止パスgrep<br>verifyの到達性、インストール状態、モデル存在、hooks配備、キュー滞留<br>README/SKILLS/DESIGN更新対象と同時更新ルール<br>手動ステップと環境変数一覧の集約 | .github/ は存在しない<br>templates/security/github-workflows/security-scan.yml は配布用テンプレート<br>scripts/test-*.sh はあるが自動実行CIがない<br>setup.sh に --verify はなく setup/900-verify.sh もない<br>git状態では audit ディレクトリも未追跡 | 02/05/06型の不整合をCIでfailできるか<br>01/02/04/05型の環境不整合をverifyで検出できるか<br>既存 test-*.sh をCIで実行できるか<br>READMEから導線を辿れるか | 未確定 / 要整理 |
-| 12 | セットアップ後の手動ステップ・チェックリスト整備。実装とドキュメントのズレ、CI不在、verify不在、手動ステップ導線不足、未追跡ファイル滞留があり、整合性を継続的に保証する仕組みが不足している。 | 整合性保証を人間レビューだけに依存しない<br>setup後verifyとPR時CIを分ける<br>READMEからワンライナー、手動ステップ、verifyへ辿れる<br>ドキュメントと実装の不一致を検出・更新する | CIの bash -n、shellcheck、既存テスト、モデル突合、hooks参照、禁止パスgrep<br>verifyの到達性、インストール状態、モデル存在、hooks配備、キュー滞留<br>README/SKILLS/DESIGN更新対象と同時更新ルール<br>手動ステップと環境変数一覧の集約 | .github/ は存在しない<br>templates/security/github-workflows/security-scan.yml は配布用テンプレート<br>scripts/test-*.sh はあるが自動実行CIがない<br>setup.sh に --verify はなく setup/900-verify.sh もない<br>git状態では audit ディレクトリも未追跡 | 02/05/06型の不整合をCIでfailできるか<br>01/02/04/05型の環境不整合をverifyで検出できるか<br>既存 test-*.sh をCIで実行できるか<br>READMEから導線を辿れるか | 未確定 / 要整理 |
+## 要求一覧
+
+| REQ ID | 要求概要 | Fable | ステータス |
+|---|---|---|---|
+| REQ-03.4-01 | 実装変更 PR に対応ドキュメント更新を要求（PR テンプレートのチェックリスト方式） | 03 | approved |
+| REQ-03.4-02 | .gitignore に .codex/・CLAUDE.local.md・docs/audit-2026-07-05/・scripts/index-investigations.sh を追加 | 07 | approved |
+| REQ-03.4-03 | /finished-pr スキルに worktree ブランチ削除・作業ファイル削除の cleanup ステップを追加 | 07 | approved |
+| REQ-03.4-04 | GitHub Actions CI 新設。shellcheck(-S error) + smoke test を自動実行。CI 内では verify スキップ | 11 | approved |
+
+## 依存・横断関係
+
+- core-03.3 REQ-03.3-03（setup/900-verify.sh 新設）→ approved ✅（CI では verify スキップの根拠）
+- core-03.3 REQ-03.3-04（README 手動ステップ記載）→ approved ✅（verify の README 導線は 03.3 担当）
+- core-02 REQ-02-04（還流スキル化）→ /finished-pr は還流フローの一部
+- Fable 10（verify 追加）→ core-03.3 が primary（REQ-03.3-03）。core-03.4 は CI での verify 実行を明示的に対象外とする
+- Fable 12（手動ステップ）→ core-03.3 が primary（REQ-03.3-04）。core-03.4 は PR テンプレートのドキュメント更新チェックリストを担当
 
 ## 注意
 
-状態はすべて暫定。要求・仕様・実装計画・テスト設計の各段階で更新する。
+要求・仕様・実装計画・テスト設計の各段階で更新する。
+PROB-03.4-05（CI での verify 実行）は OLLAMA_HOST 依存の制約から対象外とした。
+verify は新規環境セットアップ時の手動実行として REQ-03.3-03 が担当する。
