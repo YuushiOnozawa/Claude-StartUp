@@ -29,6 +29,15 @@
 - Fable 05 → core-03.3（error-detector の setup verify 組み込み）と重複
 - Fable 13 → core-04（知識ストア疎結合化の詳細設計）と重複
 
+## Step 4 — 要求 → 仕様（approved 2026-07-07）
+
+| REQ ID | 対応 SPEC | ステータス |
+|---|---|---|
+| REQ-03.2-01 | SPEC-03.2-01（setup/410 の SessionEnd 登録削除 + SessionStart 移行） | approved |
+| REQ-03.2-02 | SPEC-03.2-02（setup/410 log path を hooks/logs/ に統一） | approved |
+| REQ-03.2-03 | SPEC-03.2-03（knowledge-distill.sh の記録層を pCloud 非依存化・配送層分離） | approved |
+| REQ-03.2-04 | SPEC-03.2-04（hooks/error-detector.sh リポジトリ追加 + setup/413 新設） | approved |
+
 ## 注意
 
 要求・仕様・実装計画・テスト設計の各段階で更新する。
