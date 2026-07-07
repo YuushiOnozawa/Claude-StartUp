@@ -31,6 +31,18 @@
 - core-03.3: OLLAMA_HOST 疎通確認・Codex CLI 自動インストール
 - core-03.4: SKILLS.md/DESIGN.md ドキュメント陳腐化
 
+## Step 4 — 要求 → 仕様（approved 2026-07-07）
+
+| REQ ID | 対応 SPEC | ステータス |
+|---|---|---|
+| REQ-03.1-01 | SPEC-03.1-01（全ペルソナ SKILL.md から `エージェント定義` 行削除） | approved |
+| REQ-03.1-02 | SPEC-03.1-02（agents/leliel.md を git rm）, SPEC-03.1-03（Haiku fallback を agents/ 非依存に更新） | approved |
+| REQ-03.1-03 | SPEC-03.1-03（execution-steps.md の $AGENT_PATH/agents/ 参照除去） | approved |
+| REQ-03.1-04 | SPEC-03.1-04（スクリプト相対パスを $HOME/.claude/scripts/ 絶対パスに修正、5箇所） | approved |
+| REQ-03.1-05 | SPEC-03.1-05（setup/800-ollama-models.sh を git rm） | approved |
+| REQ-03.1-06 | SPEC-03.1-06（追加実装なし。SKILL.md の OLLAMA_MODEL 行は維持） | approved |
+| REQ-03.1-07 | SPEC-03.1-07（追加実装なし。850-codex.sh は現状維持。core-03.3 に委任） | approved |
+
 ## 注意
 
 要求・仕様・実装計画・テスト設計の各段階で更新する。
