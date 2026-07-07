@@ -26,6 +26,19 @@
 | REQ-02-07 | 配備ツール（rsync ホワイトリスト方式等）は任意の利便機能 | 15 | approved |
 | REQ-02-08 | 還流検知は手動スキルとして提供。利用側（hooks/フロー）への影響なし | 15 | approved |
 
+## Step 4 — 要求 → 仕様（approved 2026-07-07）
+
+| REQ ID | 対応 SPEC | ステータス |
+|---|---|---|
+| REQ-02-01 | SPEC-02-01（de-git 実行仕様） | approved |
+| REQ-02-02 | SPEC-02-02（ホワイトリスト定義ファイル） | approved |
+| REQ-02-03 | SPEC-02-03（還流検知スクリプト `/sync-check`） | approved |
+| REQ-02-04 | SPEC-02-04（還流手順の文書化とスキル化） | approved |
+| REQ-02-05 | SPEC-02-05（settings.json とローカルデータの除外保証） | approved |
+| REQ-02-06 | SPEC-02-05（ローカルデータの除外保証） | approved |
+| REQ-02-07 | SPEC-02-06（配備ツール: 本 core では実装しない） | approved |
+| REQ-02-08 | SPEC-02-07（手動スキルのみの保証） | approved |
+
 ## 移管記録
 
 - Fable 07 由来の worktree 残骸・.gitignore 整合 → **core-03.4** へ移管（2026-07-07）

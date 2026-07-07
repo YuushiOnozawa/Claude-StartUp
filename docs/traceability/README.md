@@ -1,6 +1,6 @@
 # トレーサビリティ全体ボード
 
-最終更新: 2026-07-07（全 core requirements approved 完了）
+最終更新: 2026-07-07（全 core requirements approved 完了 / core-02 specification approved）
 
 分類元: [docs/planning/fable-traceability-classification.md](../planning/fable-traceability-classification.md)
 運用手順: `/traceability-flow`（各 Step のスキル一覧と進行判定）
@@ -8,7 +8,7 @@
 | 核問題 | 分類 | confidence | req | spec | impl-plan | 実装 | design-review | test | audit |
 |---|---|---|---|---|---|---|---|---|---|
 | [core-01-environment-scope](core-01-environment-scope/README.md) — 対応環境スコープ・優先度の未確定（旧 core-07） | 要確認 | medium | **approved** | draft | draft | todo | todo | draft | todo |
-| [core-02-live-deploy-drift](core-02-live-deploy-drift/README.md) — 実働環境で生まれた開発内容の還流経路が未定義（旧 core-05、旧名「本番とリポジトリの正の分裂」） | 必須 | high | **approved** | draft | draft | todo | todo | draft | todo |
+| [core-02-live-deploy-drift](core-02-live-deploy-drift/README.md) — 実働環境で生まれた開発内容の還流経路が未定義（旧 core-05、旧名「本番とリポジトリの正の分裂」） | 必須 | high | **approved** | **approved** | draft | todo | todo | draft | todo |
 | [core-03.1-magi-codex-llm-sync](core-03.1-magi-codex-llm-sync/README.md) — MAGI/Codex/ローカルLLM の実体・参照・割当ズレ（旧 core-02） | 必須 | high | **approved** | draft | draft | todo | todo | draft | todo |
 | [core-03.2-knowledge-distill-store](core-03.2-knowledge-distill-store/README.md) — hooks/蒸留/知識ストアの二重化・欠落・密結合（旧 core-03） | 必須 | high | **approved** | draft | draft | todo | todo | draft | todo |
 | [core-03.3-setup-readiness](core-03.3-setup-readiness/README.md) — ワンライナー展開後の実行可能状態保証（旧 core-01） | 必須 | high | **approved** | draft | draft | todo | todo | draft | todo |
