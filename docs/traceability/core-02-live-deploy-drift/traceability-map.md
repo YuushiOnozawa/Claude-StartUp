@@ -50,6 +50,18 @@
 - core-03.3: setup 完遂保証 → 独立した失敗モード（統合しない）
 - core-03.4: worktree 残骸・.gitignore 整合の移管先
 
+## Step 5 — 仕様 → 実装項目（approved 2026-07-07）
+
+| SPEC ID | 対応 IMPL | ステータス |
+|---|---|---|
+| SPEC-02-01（de-git 実行仕様） | IMPL-02-05（README に de-git 手順を記載） | approved |
+| SPEC-02-02（ホワイトリスト定義ファイル） | IMPL-02-01（scripts/sync-whitelist.conf 新設） | approved |
+| SPEC-02-03（還流検知スクリプト /sync-check） | IMPL-02-02（sync-known-deletions.conf 新設）, IMPL-02-03（sync-check.sh 新設）, IMPL-02-04（SKILL.md 新設） | approved |
+| SPEC-02-04（還流手順の文書化） | IMPL-02-05（README.md 還流手順セクション追加） | approved |
+| SPEC-02-05（settings.json 除外保証） | IMPL-02-01 で担保（追加実装なし） | approved |
+| SPEC-02-06（配備ツール実装指針） | 本 core では実装しない | approved |
+| SPEC-02-07（手動スキルのみ保証） | settings.json を変更しないことで担保（追加実装なし） | approved |
+
 ## 注意
 
 要求・仕様・実装計画・テスト設計の各段階で更新する。

@@ -59,7 +59,7 @@ high
 |---|---|---|
 | requirements.md | approved | 人間確認・承認済み（2026-07-07） |
 | specification.md | approved | 人間確認・承認済み（2026-07-07） |
-| implementation-plan.md | draft | specification 確定後に更新 |
+| implementation-plan.md | approved | 人間確認・承認済み（2026-07-07） |
 | test-plan.md | draft | specification 確定後に更新 |
 | design-review.md | todo | Step 7 で作成 |
 | traceability-map.md | draft | 各工程で更新 |
