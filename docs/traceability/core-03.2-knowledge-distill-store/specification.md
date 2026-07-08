@@ -1,6 +1,6 @@
 # Specification: Core 03.2 — hooks / knowledge-distill / 知識ストアの二重化・欠落・密結合
 
-> ステータス: approved（2026-07-07 人間確認済み）
+> ステータス: approved（2026-07-08 SPEC-03.2-05 追補・人間承認済み）
 > 対応 requirements: approved（2026-07-07）
 
 ## 現状確認（2026-07-07）
@@ -152,9 +152,8 @@ LOCAL_STAGING_DIR="$HOME/.local/share/knowledge-rag/sessions"
 | drain 条件（L23: `mountpoint -q "$HOME/pcloud"` で drain を囲む） | pCloud mount 条件を除去する。`pending` は常時 drain、`ollama` は Ollama 起動時のみ drain |
 | `OUTPUT_DIR` の定義 | `$HOME/pcloud/obsidian/sessions` → `$HOME/.local/share/knowledge-rag/sessions` |
 | `mkdir -p "$OUTPUT_DIR"` | LOCAL_STAGING_DIR に対して実行（pCloud 依存なし） |
-| pCloud 配送処理（追加） | 記録・knowledge-rag 登録完了後: pCloud がマウントされていれば `$OUTPUT_FILE` → `$HOME/pcloud/obsidian/sessions/$(basename "$OUTPUT_FILE")` へコピー。未マウットなら info ログのみ |
-| pCloud copy 失敗時 | warn ログを出力し exit 0（記録層の成功を維持） |
-| `pcloud` キューへの push | 削除する（pCloud 配送は記録完了後のオプション処理になるため） |
+| pCloud 配送処理 | **なし**（2026-07-08 確定）。ローカル保存完了で `knowledge-distill.sh` の責務は終わる。pCloud への転送は `scripts/pcloud-sync.sh`（core-01 impl で新設）が一括担当する。FUSE 直書き禁止（SPEC-01-03 不変条件優先） |
+| `pcloud` キューへの push | 削除する（pcloud-sync.sh に委任するため不要） |
 
 ### `pcloud` キューの移行方針
 
@@ -182,8 +181,8 @@ UserPromptSubmit 経由の drain の pCloud 条件解除は後続課題とし、
 - `~/.local/share/knowledge-rag/sessions/${DATE}-${TRANSCRIPT_BASE}-${PROJECT}.md` に蒸留済みファイルが保存される
 - `~/.local/share/knowledge-rag/sessions/${DATE}-${TRANSCRIPT_BASE}-${PROJECT}-raw.md`（raw log）が保存される
 - knowledge-rag へ登録される（LLM バイナリが利用可能な場合）
-- pCloud マウント時: 蒸留済みファイルが `~/pcloud/obsidian/sessions/` にもコピーされる
-- pCloud 未マウント時: `pcloud` キューへの push なしで exit 0
+- pCloud への転送は `scripts/pcloud-sync.sh`（core-01 impl）が担当する。`knowledge-distill.sh` はローカル保存のみで完結する
+- pCloud 未マウット・マウット問わず `pcloud` キューへの push なしで exit 0
 - `pending`・`ollama` キューの drain は pCloud マウント状態によらず実行される
 
 ### 検証方法
@@ -217,8 +216,7 @@ ls ~/.claude/hooks/queue/knowledge-distill/pcloud/ 2>/dev/null | wc -l
 | LOCAL_STAGING_DIR にファイルが作成されない（知識あり・Ollama OK の場合） | fail |
 | pCloud 未マウントでも `~/pcloud/` 配下に書き込もうとする | fail |
 | `pending`・`ollama` drain が pCloud 未マウント時に実行されない | fail |
-| pCloud マウント済みで配送 copy に失敗した（記録層は成功） | warn |
-| pCloud 未マウット時の pCloud 配送スキップ | info（ログ出力のみ） |
+| pCloud 転送 | pcloud-sync.sh（core-01 impl）が担当。knowledge-distill.sh は判定しない |
 
 ### 境界条件
 
@@ -294,6 +292,65 @@ end
 
 ---
 
+## SPEC-03.2-05: lessons-learned パイプラインをローカルファイル保存に変更する
+
+> REQ-03.2-03 対応（sessions と同一設計に統一）
+> 追補: 2026-07-08（core-04 scope 整理により追加）
+
+### 背景
+
+現行実装 `hooks/lessons-learned-distill.sh` は `~/pcloud/obsidian/lessons-learned/` へ rclone FUSE 直書きしている（レガシー挙動）。
+SPEC-03.2-03 で確立した「記録層 = ローカル / 配送層 = pcloud-sync.sh」原則に沿って lessons-learned も統一する。
+
+また、`CLAUDE.md` は「`mcp__knowledge-rag__add_document` を直接呼ぶ」運用を定義しているが、
+これも同一フローに統一する（knowledge-rag 登録は記録完了後の後処理として継続）。
+
+### 振る舞い
+
+#### ローカルステージングパス
+
+```
+LESSONS_LOCAL_DIR="$HOME/.local/share/knowledge-rag/lessons-learned"
+```
+
+sessions の LOCAL_STAGING_DIR と同じ `~/.local/share/knowledge-rag/` 配下に揃える。
+
+#### `hooks/lessons-learned-distill.sh` の変更
+
+| 変更箇所 | 変更内容 |
+|---|---|
+| `~/pcloud/obsidian/lessons-learned/` への書き込み | `$HOME/.local/share/knowledge-rag/lessons-learned/` への書き込みに変更 |
+| pCloud FUSE マウント確認ブロック | 削除（ローカル書き込みは常時実行） |
+| knowledge-rag 登録 | 記録完了後に継続（変更なし） |
+| pCloud 配送処理 | **なし**（2026-07-08 確定）。ローカル保存完了で責務終了。pCloud 転送は `scripts/pcloud-sync.sh`（core-01 impl）に委任 |
+
+#### `CLAUDE.md` の `mcp__knowledge-rag__add_document` 直接呼び出しの廃止
+
+実装フェーズで `CLAUDE.md` の `lessons-learned` 登録手順を以下に変更する:
+- 変更前: `mcp__knowledge-rag__add_document` を直接呼ぶ
+- 変更後: `filepath: lessons-learned/YYYY-MM-DD-HHMMSS-<要約>.md` でファイルを `$HOME/.local/share/knowledge-rag/lessons-learned/` に保存し、knowledge-rag 登録は `lessons-learned-distill.sh` が担う
+
+### 事後条件
+
+- `~/.local/share/knowledge-rag/lessons-learned/` にファイルが保存される
+- pCloud 未マウントでも `lessons-learned-distill.sh` が exit 0 で完了する
+- `~/pcloud/obsidian/lessons-learned/` への直接書き込みが発生しない
+
+### fail / warn / info
+
+| 状態 | 判定 |
+|---|---|
+| pCloud 未マウントで `lessons-learned-distill.sh` が exit 0 以外で終了する | fail |
+| LESSONS_LOCAL_DIR にファイルが作成されない | fail |
+| pCloud 転送 | pcloud-sync.sh（core-01 impl）が担当。lessons-learned-distill.sh は判定しない |
+
+### 境界条件
+
+- `hooks/lessons-learned-distill.sh` の変更のみ。呼び出し元（setup 登録）は変更しない
+- `CLAUDE.md` の変更は実装 PR に含める（`~/.claude/CLAUDE.md` の変更対象であり、デプロイ確認手順を impl-plan に記載する）
+
+---
+
 ## 自動化対象と手動確認対象
 
 | 操作 | 区分 | SPEC |
@@ -312,6 +369,11 @@ end
 | rclone 未起動環境での smoke test | 手動 | SPEC-03.2-03 検証 |
 | 既存 pcloud キューアイテムの移行確認 | 手動 | SPEC-03.2-03 境界条件 |
 | `knowledge-auto-promote.sh` の LOCAL_STAGING_DIR パスでの動作確認 | 手動 | SPEC-03.2-03 境界条件 |
+| `hooks/lessons-learned-distill.sh` の OUTPUT_DIR をローカルに変更 | 自動（実装 PR） | SPEC-03.2-05 |
+| `hooks/lessons-learned-distill.sh` の pCloud マウント確認ブロック削除 | 自動（実装 PR） | SPEC-03.2-05 |
+| pCloud 配送処理の追加（rclone copy + warn） | 自動（実装 PR） | SPEC-03.2-05 |
+| `CLAUDE.md` の lessons-learned 登録手順変更（直接呼び出し → ローカル保存） | 自動（実装 PR） | SPEC-03.2-05 |
+| pCloud 未マウント環境での lessons-learned smoke test | 手動 | SPEC-03.2-05 事後条件 |
 
 ---
 
@@ -321,3 +383,4 @@ end
 |---|---|---|
 | 1 | PostToolUse 登録で settings.json スキーマが `matcher` を許容するか。可能なら `matcher: "Bash"` を使う | impl-plan 着手前に確認 |
 | 2 | `session-end-queue.sh` の SessionEnd 登録が現在どの setup スクリプトで行われているか | impl-plan 着手前に確認 |
+| 3 | `pcloud-sync.sh` の実行タイミング（cadence）。sessions / lessons-learned / store/distilled/ の転送遅延が knowledge-rag 検索反映に影響する。定期実行（cron）か手動実行かを確定する | 実装前に確定（core-01 または core-03.2 で決定） |
