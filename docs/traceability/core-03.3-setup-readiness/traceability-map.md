@@ -31,6 +31,25 @@
 - Fable 05 → core-03.2 が配備担当（REQ-03.2-04）。core-03.3 は verify 組み込み担当
 - core-03.4（CI・verify 継続保証）→ verify の自動実行は core-03.4 が担当
 
+## Step 4 — 要求 → 仕様
+
+| REQ ID | 対応 SPEC | 備考 |
+|---|---|---|
+| REQ-03.3-01 | SPEC-03.3-01, SPEC-03.3-02 | Codex CLI 自動インストール / 認証は手動ステップへ |
+| REQ-03.3-02 | SPEC-03.3-03 | 401-ollama.sh WSL2内インストール削除・OLLAMA_HOST 疎通確認 |
+| REQ-03.3-03 | SPEC-03.3-04 | 900-verify.sh 新設・チェック項目・fail/warn/info 判定 |
+| REQ-03.3-04 | SPEC-03.3-05 | README 手動ステップ一覧・verify 実行案内 |
+
+## Step 5 — 仕様 → 実装項目（approved 2026-07-08）
+
+| SPEC ID | 対応 IMPL | PR | ステータス |
+|---|---|---|---|
+| SPEC-03.3-01（850-codex.sh 自動インストール） | IMPL-03.3-02 | PR-B | approved |
+| SPEC-03.3-02（認証は手動ステップとして README に明示） | IMPL-03.3-04 | PR-C | approved |
+| SPEC-03.3-03（401-ollama.sh OLLAMA_HOST疎通確認化） | IMPL-03.3-01 | PR-A | approved |
+| SPEC-03.3-04（900-verify.sh 新設） | IMPL-03.3-03 | PR-C | approved |
+| SPEC-03.3-05（README ワンライナー後手動ステップ追記） | IMPL-03.3-04 | PR-C | approved |
+
 ## 注意
 
 要求・仕様・実装計画・テスト設計の各段階で更新する。

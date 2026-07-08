@@ -27,7 +27,26 @@
 - Fable 13 → core-03.2 が記録層・配送層分離の primary。core-04 は Obsidian inbox ワークフローの primary
 - Fable 16, 17 → core-04 が primary
 
+## Step 4 — 要求 → 仕様
+
+| REQ ID | 対応 SPEC | 備考 |
+|---|---|---|
+| REQ-04-01 | SPEC-04-01 | /inbox スキル実装仕様。v1 手動実行のみ |
+| REQ-04-02 | SPEC-04-02 | 経験カード形式定義。日英両方出力。index-en 運用方針は UND-04-02（A/B 評価後） |
+| REQ-04-03 | SPEC-04-03 | store/vault/_inbox-ledger.md 責務定義。transcript 切り捨て廃止 |
+| REQ-04-04 | SPEC-04-04 | auto-recall 設計仕様。実装は実装条件ゲート通過後 |
+
+## Step 5 — 仕様 → 実装項目（approved 2026-07-08）
+
+| SPEC ID | 対応 IMPL | PR | ステータス |
+|---|---|---|---|
+| SPEC-04-01（/inbox スキル実装） | IMPL-04-01 | PR-A | approved |
+| SPEC-04-02（経験カード形式定義） | IMPL-04-03 | PR-B | approved |
+| SPEC-04-03（store/vault 責務定義） | IMPL-04-02 | PR-A（IMPL-04-01 と同 PR） | approved |
+| SPEC-04-04（auto-recall 設計） | IMPL-04-04（留保） | 将来 PR（実装ゲート通過後） | 留保 |
+
 ## 注意
 
 要求・仕様・実装計画・テスト設計の各段階で更新する。
 auto-recall（REQ-04-04）は spec での設計を先行させ、実装は蒸留カード品質評価後に判断する。
+SPEC-04-04 の IMPL は実装条件ゲート（蒸留カード 10件以上・/inbox 5回完了・auto-recall-go.md 作成）通過後に着手。

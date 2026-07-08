@@ -48,8 +48,8 @@ Fable 09/12 は core-03.3、12 は core-03.4 と重複する。
 | Document | Status | Notes |
 |---|---|---|
 | requirements.md | approved | 人間確認・承認済み（2026-07-07） |
-| specification.md | draft | requirements 確定後に更新 |
-| implementation-plan.md | draft | specification 確定後に更新 |
+| specification.md | approved | SPEC-01-03 追補（不変条件・経験カード追加）。人間承認済み（2026-07-08） |
+| implementation-plan.md | approved | PR-A/PR-B(core-03.3 PR-C統合)/PR-C 分割・Codex レビュー対応済み。人間承認済み（2026-07-08） |
 | test-plan.md | draft | specification 確定後に更新 |
 | design-review.md | todo | Step 7 で作成 |
 | traceability-map.md | draft | 各工程で更新 |

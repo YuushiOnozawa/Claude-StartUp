@@ -60,8 +60,8 @@ Fable 05 は core-03.3、13 は core-04 と重複する。
 | Document | Status | Notes |
 |---|---|---|
 | requirements.md | approved | 人間確認・承認済み（2026-07-07） |
-| specification.md | approved | 人間確認・承認済み（2026-07-07） |
-| implementation-plan.md | draft | specification 確定後に更新 |
+| specification.md | approved | SPEC-03.2-05（lessons-learned ローカル化）追補。人間承認済み（2026-07-08） |
+| implementation-plan.md | approved | PR-A/B/C/D 分割・Codex レビュー対応済み。人間承認済み（2026-07-08） |
 | test-plan.md | draft | specification 確定後に更新 |
 | design-review.md | todo | Step 7 で作成 |
 | traceability-map.md | draft | 各工程で更新 |

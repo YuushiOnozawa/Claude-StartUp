@@ -29,6 +29,24 @@
 - Fable 10（verify 追加）→ core-03.3 が primary（REQ-03.3-03）。core-03.4 は CI での verify 実行を明示的に対象外とする
 - Fable 12（手動ステップ）→ core-03.3 が primary（REQ-03.3-04）。core-03.4 は PR テンプレートのドキュメント更新チェックリストを担当
 
+## Step 4 — 要求 → 仕様
+
+| REQ ID | 対応 SPEC | 備考 |
+|---|---|---|
+| REQ-03.4-01 | SPEC-03.4-02 | PR テンプレート（.github/pull_request_template.md）でドキュメント更新チェックリスト |
+| REQ-03.4-02 | SPEC-03.4-01 | .gitignore に 4エントリ追加（.codex/・CLAUDE.local.md・docs/audit-*/・scripts/index-investigations.sh） |
+| REQ-03.4-03 | SPEC-03.4-03 | /finished-pr に作業ファイル削除フェーズ（Phase 6.5: WORKFILES）追加 |
+| REQ-03.4-04 | SPEC-03.4-04 | GitHub Actions CI 新設（shellcheck -S error + smoke test）。verify スキップ |
+
+## Step 5 — 仕様 → 実装項目（approved 2026-07-08）
+
+| SPEC ID | 対応 IMPL | PR | ステータス |
+|---|---|---|---|
+| SPEC-03.4-01（.gitignore 4エントリ追加） | IMPL-03.4-01 | PR-A | approved |
+| SPEC-03.4-02（PR テンプレート新設） | IMPL-03.4-02 | PR-B1 | approved |
+| SPEC-03.4-03（finished-pr Phase 6.5 追加） | IMPL-03.4-04 | PR-C | approved |
+| SPEC-03.4-04（GitHub Actions CI 新設） | IMPL-03.4-03 | PR-B2 | approved |
+
 ## 注意
 
 要求・仕様・実装計画・テスト設計の各段階で更新する。
