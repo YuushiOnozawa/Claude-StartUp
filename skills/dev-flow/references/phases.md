@@ -120,31 +120,44 @@ Present a fix proposal for each HIGH finding. The user decides whether to adopt.
 Execute `/commit`.
 
 ## Phase 7: PR Creation
-
 1. Push to remote:
+   ```bash
+   git -C "$WORKTREE_PATH" push -u origin <branch>
+   ```
+2. PR body を Codex で生成（artifact モード）:
+   `skills/flow-common/references/codex-task-runner.md` を Read し、以下の変数をセットしてランナー手順（ステップ 1〜5）に従う。
+   - `TASK_TMPDIR=$(mktemp -d)`
+   - `CODEX_TASK_MODE=artifact`
+   - `WORKTREE_PATH=$WORKTREE_PATH`（worktree チェックアウトパス）
 
-```bash
-git push -u origin <branch>
-```
+   **ステップ 4 の prompt 内容**（`$TASK_TMPDIR/task-prompt.txt` に書き込む）:
+   > ⚠ prompt 書き込み時は `$WORKTREE_PATH` / `$TASK_TMPDIR` を実パスに展開して埋め込むこと（quoted heredoc は変数を展開しないため）。
+   ```
+   <実際の WORKTREE_PATH> で git diff main...HEAD を読み、以下の形式で PR body を生成して
+   <実際の TASK_TMPDIR>/pr-body.md に書き出してください。
 
-2. Create PR (generate title and body from changes):
+   出力形式:
+   ## 概要
+   （変更の概要 1〜3 行）
 
-```bash
-PR_URL=$(cat <<'EOF' | gh pr create --title "<type>(<scope>): <日本語タイトル>" --body-file -
-## 概要
-[変更内容の 1〜3 行サマリー]
+   ## 変更点
+   （変更ファイルと内容の箇条書き）
 
-## 変更点
-- ...
+   ## テスト
+   （動作確認方法）
 
-## テスト
-- [ ] ...
+   🤖 Generated with [Claude Code](https://claude.com/claude-code)
+   ```
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-EOF
-)
-```
+3. 結果判定:
+   - **`CODEX_TASK_SKIPPED` 時**（フォールバック）: `rm -rf "$TASK_TMPDIR"` して Claude が直接 PR body を生成し、`--body-file -` でパイプ渡し
+   - **成功時**（`$TASK_TMPDIR/pr-body.md` が存在）:
+     ```bash
+     PR_URL=$(gh pr create --title "<type>(<scope>): <日本語タイトル>" \
+       --body-file "$TASK_TMPDIR/pr-body.md")
+     rm -rf "$TASK_TMPDIR"
+     ```
 
-3. Present `$PR_URL` to the user.
+4. `$PR_URL` をユーザーに提示する。
 
 > Worktree の掃除は merge 完了後に `/worktree done <branch>` を実行してください。
