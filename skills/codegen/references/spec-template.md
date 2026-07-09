@@ -16,20 +16,18 @@ Draft the task description in this structure before calling Codex:
 
 ## GENERATE Phase: Commands
 
-### Codex availability check
+`skills/flow-common/references/codex-task-runner.md` を Read し、以下の変数をセットしてランナー手順（ステップ 1〜5）に従う。
 
-```bash
-node "${HOME}/.claude/plugins/cache/openai-codex/codex/1.0.5/scripts/codex-companion.mjs" status 2>/dev/null
-```
+- `TASK_TMPDIR=$(mktemp -d)`
+- `CODEX_TASK_MODE=repo-write`
+- `WORKTREE_PATH=$WORKTREE_PATH`（worktree チェックアウトパス。dev-flow Phase 4 から呼ぶ場合は必ず設定すること）
 
-### If Codex available — pass task description via heredoc (writes files directly via --write)
+**ステップ 4 の prompt 内容**（`$TASK_TMPDIR/task-prompt.txt` に書き込む）:
+> ⚠ prompt 書き込み時は `$WORKTREE_PATH` / `$TASK_TMPDIR` を実パスに展開して埋め込むこと（quoted heredoc は変数を展開しないため）。
 
-```bash
-node "${HOME}/.claude/plugins/cache/openai-codex/codex/1.0.5/scripts/codex-companion.mjs" task "$(cat <<'TASK_EOF'
-<expand the task description drafted in SPEC phase here>
-TASK_EOF
-)" --write
-```
+SPEC フェーズで作成したタスク記述をそのまま書き込む。
+
+**`CODEX_TASK_SKIPPED` 時（フォールバック）:** 以下の Haiku フォールバック手順を実行する。
 
 ### If Codex unavailable — Haiku fallback
 

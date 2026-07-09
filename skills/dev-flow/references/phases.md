@@ -84,7 +84,7 @@ Proceed to Phase 4 in the **same session**.
 > **Worktree context**: All git commands in Phase 4–7 use `git -C $WORKTREE_PATH`.
 > File read/write operations use `$WORKTREE_PATH/` as the base path.
 > Example: `git -C $WORKTREE_PATH status`, `git -C $WORKTREE_PATH diff`
-> When executing `/commit` or `/magi-fast`, apply this `-C $WORKTREE_PATH` override to all git commands within those skills.
+> When executing `/commit`, `/magi-fast`, or `/codegen`, apply this `-C $WORKTREE_PATH` override to all git commands within those skills.
 
 ### Step 0: Write tests first (TDD)
 
