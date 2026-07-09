@@ -115,6 +115,8 @@ Execute `/magi-fast`.
 
 Present a fix proposal for each HIGH finding. The user decides whether to adopt. After fixes, re-run `/magi-fast`. Repeat until HIGH = 0.
 
+HIGH 指摘の修正は `/codegen` で実装すること。/codegen が利用できない場合のみ直接修正する。
+
 ## Phase 6: COMMIT
 
 Execute `/commit`.
