@@ -120,6 +120,7 @@ Present a fix proposal for each HIGH finding. The user decides whether to adopt.
 Execute `/commit`.
 
 ## Phase 7: PR Creation
+
 1. Push to remote:
    ```bash
    git -C "$WORKTREE_PATH" push -u origin <branch>
@@ -149,8 +150,8 @@ Execute `/commit`.
    🤖 Generated with [Claude Code](https://claude.com/claude-code)
    ```
 
-3. 結果判定:
-   - **`CODEX_TASK_SKIPPED` 時**（フォールバック）: `rm -rf "$TASK_TMPDIR"` して Claude が直接 PR body を生成し、`--body-file -` でパイプ渡し
+3. 結果判定（`gh pr create` の成否にかかわらず最後に必ず `rm -rf "$TASK_TMPDIR"` を実行する）:
+   - **`CODEX_TASK_SKIPPED` 時**、または **`$TASK_TMPDIR/pr-body.md` が存在しない時**（フォールバック）: `rm -rf "$TASK_TMPDIR"` して Claude が直接 PR body を生成（ステップ 2 の出力形式に従う）し、`--body-file -` でパイプ渡し
    - **成功時**（`$TASK_TMPDIR/pr-body.md` が存在）:
      ```bash
      PR_URL=$(gh pr create --title "<type>(<scope>): <日本語タイトル>" \
