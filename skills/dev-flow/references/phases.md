@@ -126,11 +126,22 @@ Proceed to Phase 4 in the **same session**.
 > When executing `/commit`, `/magi-fast`, or `/codegen`, apply this `-C $WORKTREE_PATH` override to all git commands within those skills.
 
 ### Step 0: Write tests first (TDD)
+Execute `/codegen tdd` with the following inputs:
+- Target test file path(s) derived from `$PLAN`
+- Test scenarios from `$PLAN` **Test scenarios** section
+- `$WORKTREE_PATH` as cwd for the companion call
 
-Based on `$PLAN` **Test scenarios**, create test files before implementation.
+After generation:
+- Run the test suite and confirm tests fail (Red)
+- Valid Red = target tests fail due to missing implementation (not syntax errors or environment issues)
+- If syntax errors or environment issues appear, fix them before proceeding
 
-- Confirm tests fail (Red) before starting implementation
-- If tests cannot be written, record the reason in a code comment or commit message and skip
+**CODEX_TASK_SKIPPED 時:**
+- Codex が利用できない場合は、`$PLAN` Test scenarios に基づきテストファイルを手動で作成する
+- Red 確認は同様に実施する。テスト作成を完全スキップして Step 1 へ進まないこと
+
+**テスト作成が不可能な場合:**
+- 理由をコメントまたはコミットメッセージに記録してスキップ
 
 ### Step 1: Implement
 
