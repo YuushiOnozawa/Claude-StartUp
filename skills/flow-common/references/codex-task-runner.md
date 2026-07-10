@@ -2,7 +2,7 @@
 dev-flow / epic-flow の各フェーズから Codex を呼び出すための共通ランナー手順。
 参照元: `skills/flow-common/references/design-review.md` と同じ参照手順ファイル構造に従う。
 
-> **【設計差分】** 本ファイルは汎用ランナー（`$CODEX_TASK_MODE` による 3 モード切替、SKIPPED プレフィックスは `CODEX_TASK_SKIPPED`）。`design-review.md`（`CODEX_REVIEW_SKIPPED`）/ `codex-audit.md`（`AUDIT_SKIPPED`）は個別用途の先行実装であり、`design-review.md` は Step 5（A-2）で本ランナー参照に移行予定。
+> **【設計差分】** 本ファイルは汎用ランナー（`$CODEX_TASK_MODE` による 3 モード切替、SKIPPED プレフィックスは `CODEX_TASK_SKIPPED`）。`design-review.md`（旧: `CODEX_REVIEW_SKIPPED`）/ `codex-audit.md`（`AUDIT_SKIPPED`）は個別用途の先行実装であり、`design-review.md` は Step 5（A-2）で本ランナー参照への移行が完了した（SKIPPED プレフィックスは `CODEX_TASK_SKIPPED` に統一済み）。
 
 > ⚠ この手順はタスク実行専用。ファイル読み取りは Codex に委ねる。repo 由来の情報はパスヒントのみ渡し、ファイル内容を prompt に直接貼らないこと。
 
