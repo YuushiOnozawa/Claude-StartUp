@@ -72,6 +72,16 @@ SPEC 時は以下の形式で task desc を作成する:
 
 上記 SPEC Phase で作成した task desc（テストのみ生成・実装禁止の Constraints 含む）を書き込む。
 
-**`CODEX_TASK_SKIPPED` 時（フォールバック）:** `CODEX_TASK_SKIPPED: Codex unavailable` を出力し、フォールバック判断を呼び出し元（dev-flow）に委ねる。
+**`CODEX_TASK_SKIPPED` 時（フォールバック）:** 以下の Haiku フォールバック手順を実行する。
+
+### `CODEX_TASK_SKIPPED` 時 — Haiku fallback（tdd）
+
+Pass the tdd task desc to `Agent(subagent_type="general-purpose", model="haiku")` with instruction to output test code only (no implementation code).
+Constraints を明示すること: 「テストファイルのみ生成。プロダクション実装コード・fixture・helper は生成不可。既存の実装ファイルを変更しない。」
+Before applying, verify syntax:
+- Python: `python -m py_compile <file>`
+- JS/TS: `node --check <file>` or `tsc --noEmit`
+
+Apply with the Edit tool.
 
 実行後は成功・`CODEX_TASK_SKIPPED` のどちらでも `rm -rf "$TASK_TMPDIR"` を実行する。
