@@ -18,4 +18,8 @@ Falls back to Haiku when Codex is unavailable.
 | 3 | GENERATE | Run Codex via `codex-companion.mjs` — writes files directly (or Haiku fallback) |
 | 4 | REPORT | State which path was used (Codex / Haiku fallback) |
 
+## Mode: tdd (`/codegen tdd`)
+テストファイル先行生成（Red 確認まで）。実装コード・fixture・helper は生成しない。
+詳細は `references/spec-template.md` の「TDD Mode」セクションを参照。
+
 For spec format and generate commands, see `references/spec-template.md`.
