@@ -66,7 +66,7 @@ SPEC 時は以下の形式で task desc を作成する:
 `skills/flow-common/references/codex-task-runner.md` を Read し、以下の変数をセットしてランナー手順（ステップ 1〜5）に従う。
 - `TASK_TMPDIR=$(mktemp -d)`
 - `CODEX_TASK_MODE=repo-write`
-- `WORKTREE_PATH=$WORKTREE_PATH`（dev-flow Phase 4 から呼ぶ場合は必ず設定すること）
+- `WORKTREE_PATH=${WORKTREE_PATH:-$(git rev-parse --show-toplevel)}`（worktree チェックアウトパス。dev-flow Phase 4 から呼ぶ場合は必ず設定すること。worktree 未使用時は自動的にリポジトリルートを使用）
 
 **ステップ 4 の prompt 内容**（`$TASK_TMPDIR/task-prompt.txt` に書き込む）:
 
