@@ -51,7 +51,7 @@ PROMPT_EOF2
 
 **結果判定**（runner 呼び出し直後。成功・フォールバック両経路で必ず `rm -rf "$PLAN_TMPDIR"` を実行する）:
 - runner の stdout に `CODEX_TASK_SKIPPED` が含まれる（`grep -q "CODEX_TASK_SKIPPED"`）場合、または `$PLAN_TMPDIR/plan.md` が存在しない場合（フォールバック）:
-  `rm -rf "$PLAN_TMPDIR"` → Claude が直接設計プランを作成 → `$PLAN` に保持 → `PLAN_AUTHOR=claude`
+  `rm -rf "$PLAN_TMPDIR"` → Claude が直接設計プランを作成（**ステップ 4 prompt 内の 7 項目構成に従う**） → `$PLAN` に保持 → `PLAN_AUTHOR=claude`
 - 成功時（`$PLAN_TMPDIR/plan.md` が存在）:
   `PLAN=$(cat "$PLAN_TMPDIR/plan.md")` → `rm -rf "$PLAN_TMPDIR"` → `PLAN_AUTHOR=codex` → Claude が 1〜2 行の short summary を生成して提示
 
@@ -73,7 +73,7 @@ Hold `$DESIGN_REVIEW_RESULT` and `$DESIGN_REVIEW_SOURCE`. Proceed to Phase 2.
 **`PLAN_AUTHOR=claude`（または未設定）の場合:** 下記の現行フォーマットで提示する。
 
 **`PLAN_AUTHOR=codex` の場合:** 以下の 3 点セットで提示する。
-- question: "[要件の 1〜2 行サマリー]\n\n### 1. Codex 生成プラン\n$PLAN\n\n### 2. 設計レビュー（$DESIGN_REVIEW_SOURCE）\n$DESIGN_REVIEW_RESULT\n\n### 3. Claude 整合チェック（3観点のみ、3〜5 行）\n（以下の3観点のみ確認して付記。全文再生成禁止）\n- 重大な要件漏れ\n- 危険な実装順序\n- 未確定事項"
+- question: "[要件の 1〜2 行サマリー]\n\n### 1. Codex 生成プラン\n$PLAN\n\n### 2. 設計レビュー（$DESIGN_REVIEW_SOURCE）\n$DESIGN_REVIEW_RESULT\n\n### 3. Claude 整合チェック\n[重大な要件漏れ・危険な実装順序・未確定事項の3観点のみを 3〜5 行で記載。全文再生成禁止]"
 - options: ["承認（実装開始）", "修正（修正内容を続けて入力）", "中断"]
 
 **On 修正（`PLAN_AUTHOR=codex` の場合）:** Claude が `$PLAN` にユーザーの修正指示を直接適用する（差分改訂。`$PLAN` の全文再生成・Codex 再委譲は禁止）。`PLAN_AUTHOR` は変更しない（`=codex` を維持）。design-review を再実行し（Phase 1.5 を繰り返す）、Phase 2 に戻る。

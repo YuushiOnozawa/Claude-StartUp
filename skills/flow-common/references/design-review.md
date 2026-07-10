@@ -110,7 +110,7 @@ EOF
 ````
 
 ## ステップ 3: Codex 呼び出し
-runner のステップ 5 を実行する。stdout に `CODEX_TASK_SKIPPED` が含まれる場合（`grep -q "CODEX_TASK_SKIPPED"`）または non-zero exit の場合は、次のメッセージを出力してステップ 5 へ進む。
+runner のステップ 5 を実行する。stdout に `CODEX_TASK_SKIPPED` が含まれる場合（`grep -q "CODEX_TASK_SKIPPED"`）または non-zero exit の場合は、次のメッセージを出力して**本ファイルのステップ 5（フォールバック）**へ進む。
 
 ```bash
 echo "CODEX_TASK_SKIPPED: Codex 呼び出しに失敗しました"
@@ -125,7 +125,7 @@ DESIGN_REVIEW_SOURCE=Codex
 ```
 
 ## ステップ 5: CODEX_TASK_SKIPPED フォールバック
-このステップは、ステップ 1 またはステップ 3 から `CODEX_TASK_SKIPPED` として進んだ場合のみ実行する。
+このステップは、**PLAN_AUTHOR チェック（自己レビュー回避）**、またはステップ 1・ステップ 3 から `CODEX_TASK_SKIPPED` として進んだ場合のみ実行する。
 
 - repo 内 `skills/balthasar/SKILL.md` を優先して Read し、手順に従う
 - repo 内にない場合は `~/.claude/skills/balthasar/SKILL.md` を Read し、手順に従う
