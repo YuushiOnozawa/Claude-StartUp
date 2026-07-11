@@ -40,10 +40,13 @@ CLAUDE_RULES=$(cat ~/.claude/CLAUDE.md 2>/dev/null; cat "$ROOT/CLAUDE.md" 2>/dev
 ## ステップ 2: Ollama 可否チェックと起動
 
 ```bash
-_magi_base_url=$(bash -c 'source ~/.claude/hooks/lib/ollama.sh && ollama_base_url' 2>/dev/null)
-curl -sf --max-time 5 "${_magi_base_url:-http://localhost:11434}/api/tags" 2>/dev/null \
-  | jq -r '.models[].name' 2>/dev/null | grep -qxF "$OLLAMA_MODEL"
+bash scripts/ollama-check.sh "$OLLAMA_MODEL" 2>/dev/null \
+  || bash ~/.claude/scripts/ollama-check.sh "$OLLAMA_MODEL"
 ```
+exit 0 なら「Ollama が使える場合」へ進む。
+非0の場合は無断でフォールバックせず、「Ollama が使えない場合（Haiku fallback）」の手順に従って
+まず `AskUserQuestion` でユーザーに確認する。
+Ollama は Windows 側で動作しており、WSL 内の `ollama` CLI や `pgrep` では確認できない点に注意する。
 
 ### Ollama が使える場合
 

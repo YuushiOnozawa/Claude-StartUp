@@ -20,13 +20,13 @@ fi
 # Fast/Hard 共用（7B、コード特化）
 _om_shared=(
   "qwen2.5-coder:7b"   # MELCHIOR用
-  "llama3.1:8b"        # CASPER用
+  "llama3.1:8b"        # CASPER・LELIEL用（Issue #282: LELIEL は deepseek-r1:8b から変更）
 )
 
 # Hard 専用（高品質・重め）
 _om_hard=(
   "phi4:latest"        # BALTHASAR用
-  "devstral:latest"    # METATRON用
+  "granite3.3:8b"      # METATRON用（Issue #282: devstral 14GB は VRAM オーバーのため変更）
   "qwen3:8b"           # generate-obsidian-index 等で使用
   "lfm2.5:8b"          # SANDALPHON用 (構造化出力安定・低幻覚率) https://ollama.com/library/lfm2.5
 )
