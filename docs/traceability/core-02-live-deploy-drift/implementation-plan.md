@@ -18,13 +18,13 @@
 
 ## 実装項目一覧
 
-| IMPL ID | 内容 | 対応 SPEC | 変更ファイル | 実行方法 |
-|---|---|---|---|---|
-| IMPL-02-01 | `scripts/sync-whitelist.conf` 新設（ホワイトリスト定義） | SPEC-02-02, SPEC-02-05 | `scripts/sync-whitelist.conf`（新規） | `/codegen` + `/commit` |
-| IMPL-02-02 | `scripts/sync-known-deletions.conf` 新設（既知削除予定リスト） | SPEC-02-03 | `scripts/sync-known-deletions.conf`（新規） | `/codegen` + `/commit` |
-| IMPL-02-03 | `scripts/sync-check.sh` 新設（還流検知スクリプト本体） | SPEC-02-03 | `scripts/sync-check.sh`（新規） | `/dev-flow` |
-| IMPL-02-04 | `skills/sync-check/SKILL.md` 新設（スキルラッパー） | SPEC-02-03, SPEC-02-07 | `skills/sync-check/SKILL.md`（新規） | `/codegen` + `/commit` |
-| IMPL-02-05 | `README.md` に「還流手順」セクション追加（de-git 手順含む） | SPEC-02-04, SPEC-02-01 | `README.md` | `/codegen` + `/commit` |
+| IMPL ID | 内容 | 対応 SPEC | 変更ファイル | 実行方法 | ステータス | 実装参照 |
+|---|---|---|---|---|---|---|
+| IMPL-02-01 | `scripts/sync-whitelist.conf` 新設（ホワイトリスト定義） | SPEC-02-02, SPEC-02-05 | `scripts/sync-whitelist.conf`（新規） | `/codegen` + `/commit` | ✅ done | commit 6955706 |
+| IMPL-02-02 | `scripts/sync-known-deletions.conf` 新設（既知削除予定リスト） | SPEC-02-03 | `scripts/sync-known-deletions.conf`（新規） | `/codegen` + `/commit` | ✅ done | commit 6955706 |
+| IMPL-02-03 | `scripts/sync-check.sh` 新設（還流検知スクリプト本体） | SPEC-02-03 | `scripts/sync-check.sh`（新規） | `/dev-flow` | ✅ done | commit e82ba74 |
+| IMPL-02-04 | `skills/sync-check/SKILL.md` 新設（スキルラッパー） | SPEC-02-03, SPEC-02-07 | `skills/sync-check/SKILL.md`（新規） | `/codegen` + `/commit` | ✅ done | commit e82ba74 |
+| IMPL-02-05 | `README.md` に「還流手順」セクション追加（de-git 手順含む） | SPEC-02-04, SPEC-02-01 | `README.md` | `/codegen` + `/commit` | ✅ done | PR #280 |
 
 ### 実装しない SPEC
 
@@ -37,6 +37,8 @@
 ---
 
 ## PR 分割
+
+> **統合記録（2026-07-11 ユーザー承認）**: PR-A / PR-B / PR-C は同一ブランチ（`docs/traceability-pre-renumber`）内で依存が充足されているため、PR #280 に統合してマージする。
 
 ### PR-A: 設定ファイル新設（IMPL-02-01, IMPL-02-02）
 
