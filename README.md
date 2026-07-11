@@ -103,7 +103,7 @@ git -C ~/.claude status 2>&1 | grep "not a git repository"
 ### 還流 PR の作成
 
 1. `main` から作業ブランチを作成
-2. 実働環境のファイルを配布原本にコピー（`cp ~/.claude/skills/foo/ skills/foo/`）
+2. 実働環境のファイルを配布原本にコピー（`cp -r ~/.claude/skills/foo/ skills/foo/`）
 3. PR を作成して merge
 
 ### 還流実施タイミング

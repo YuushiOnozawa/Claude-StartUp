@@ -54,13 +54,24 @@
 
 | SPEC ID | 対応 IMPL | ステータス | 実装参照 |
 |---|---|---|---|
-| SPEC-02-01（de-git 実行仕様） | IMPL-02-05（README に de-git 手順を記載） | 🔲 todo | — |
+| SPEC-02-01（de-git 実行仕様） | IMPL-02-05（README に de-git 手順を記載） | ✅ implemented | PR #280 |
 | SPEC-02-02（ホワイトリスト定義ファイル） | IMPL-02-01（scripts/sync-whitelist.conf 新設） | ✅ implemented | commit 6955706 |
 | SPEC-02-03（還流検知スクリプト /sync-check） | IMPL-02-02（sync-known-deletions.conf 新設）, IMPL-02-03（sync-check.sh 新設）, IMPL-02-04（SKILL.md 新設） | ✅ implemented | commit 6955706, e82ba74 |
 | SPEC-02-04（還流手順の文書化） | IMPL-02-05（README.md 還流手順セクション追加） | ✅ implemented | PR #280 |
 | SPEC-02-05（settings.json 除外保証） | IMPL-02-01 で担保（追加実装なし） | ✅ implemented | commit 6955706 |
 | SPEC-02-06（配備ツール実装指針） | 本 core では実装しない | ✅ n/a | — |
 | SPEC-02-07（手動スキルのみ保証） | settings.json を変更しないことで担保（追加実装なし） | ✅ n/a | — |
+
+## Step 9 Audit 引き継ぎ（既知 Low）
+
+PR #280 レビュー（MAGI-HARD 2026-07-11）で確認された既知の制約。audit（Step 9）で対応要否を判断する。
+
+| # | 内容 | 方向 |
+|---|---|---|
+| 1 | `sync-check.sh` は include パターン3形式（`/dir/***`・`/dir/*.sh`・`/単一パス`）のみ対応。未知パターンは**無警告スキップ**（偽陰性方向） | warn 化を audit で検討 |
+| 2 | exclude 行（`-` プレフィックス）は `sync-check.sh` の検知ロジックで非評価（rsync セマンティクスと非対称） | 現状は whitelist 設計で担保済み。audit で再確認 |
+| 3 | `known_deletions` 判定は「新規」側のみ（実働・repo 両側に存在して差分がある場合は「要還流（変更）」になる） | 仕様想定内。audit でドキュメント化 |
+| 4 | `compare_recursive` で `diff` がエラーを返したファイルは分類から漏れうる（stderr に出力はされる） | 安全方向（偽陽性）ではないため audit で warn 追加を検討 |
 
 ## 注意
 
