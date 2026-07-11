@@ -12,6 +12,8 @@ Obsidianの `from X.md` に溜まった未調査URLをWeb調査し、investigati
 - **入力**: `$HOME/pcloud/obsidian/from X.md`
 - **出力先**: `$HOME/pcloud/obsidian/investigations/`
 
+> NOTE: 出力先の FUSE 直書きは core-01 SPEC-01-03 で改修予定のレガシー動作（不変条件: pCloud への書き込みは pcloud-sync.sh のみ）
+
 ## ステップ
 
 ### 1. 未調査項目の抽出
