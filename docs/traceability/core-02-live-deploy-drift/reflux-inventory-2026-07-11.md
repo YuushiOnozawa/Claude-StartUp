@@ -93,3 +93,81 @@ exit 1（要還流あり）
 - 「還流する」は判断の記録であり、実際の還流 PR は今後の運用作業として実施する
 - live 側の削除候補（事故コピー・実験 hook）の実削除は今回対象外。実施は還流運用の中で
 - `ollama-run.sh` の置き場所（`scripts/` vs `skills/` vs 別途）は還流 PR 作成時に確定する
+
+---
+
+## 判断変更（2026-07-12）
+
+PR-R1 着手時に出自確認を行った結果、以下4件の判断を「還流する→還流しない」に変更する。
+
+| 対象 | 変更後判断 | 理由 |
+|---|---|---|
+| `commands/Claude.md` | **還流しない** | agmsg 導入物（外部プロジェクト）。本リポジトリの管理対象外 |
+| `commands/dev.md` | **還流しない** | agmsg 導入物（外部プロジェクト）。本リポジトリの管理対象外 |
+| `skills/skill-creator/SKILL.md` | **還流しない** | Anthropic 公式プラグイン導入物。本リポジトリで管理すべき自作物ではない |
+| `skills/code-review/SKILL.md` | **還流しない** | MAGI スキル群に置換済みの不要スタブ。還流より live 側削除が適切 |
+
+### live 側削除候補への追加
+
+以下を live 側削除候補に追加する（還流・実施記録 PR 内で実施）:
+
+- `~/.claude/skills/code-review/` — MAGI 置換済みスタブ（agmsg・skill-creator は live では現役のため削除しない）
+
+### 教訓
+
+今後の棚卸しでは、還流判断を行う前に **出自（自作 / 導入物 / 公式プラグイン）を確認**する。
+導入物・公式プラグインの導入物は本リポジトリで管理する必要がないため、還流対象から除外する。
+
+### PR-R2 追加判断（2026-07-12）
+
+| 対象 | 変更後判断 | 理由 |
+|---|---|---|
+| `skills/ollama-run.sh` | **還流しない（スキップ）** | `scripts/ollama-run.sh` として repo 既存（同一内容の重複コピー）。hooks は `../scripts/ollama-run.sh` を参照しており `scripts/` が正規の場所 |
+
+### PR-R3 全件スキップ（2026-07-12）
+
+当初「lean-ctx セット」として還流予定だった以下4件を全件スキップに変更する。
+
+| 対象 | 変更後判断 | 理由 |
+|---|---|---|
+| `skills/lean-ctx/SKILL.md` | **還流しない** | `lean-ctx onboard`（`npm install -g lean-ctx-bin` 後に実行）が生成する外部ツール生成物 |
+| `hooks/lean-ctx-redirect.sh` | **還流しない** | 同上 |
+| `hooks/lean-ctx-rewrite.sh` | **還流しない** | 同上 |
+| `rules/lean-ctx.md` | **還流しない** | 同上 |
+
+新規環境では `lean-ctx onboard` を実行すれば全て再現される。本リポジトリで管理する必要なし。
+
+> 注意: `lean-ctx onboard` は `npm install -g lean-ctx-bin` が済んでいる前提。ワンライナー setup がこれを含まない限り新環境では再現できない。lean-ctx CLI のインストール（`npm install -g lean-ctx-bin`）+ `lean-ctx onboard` 実行を setup / 手動チェックリストに含めるかは **core-03.3 で検討する**。
+
+---
+
+## 実施記録（2026-07-12）
+
+### 還流 PR
+
+| PR | 内容 | 状態 |
+|---|---|---|
+| #285 | PR-R1: `skills/investigate/SKILL.md`（$HOME化済み）+ PR-R2: MAGI output-format.md ×5 + `scripts/magi-split-diff.sh` + PR-R4: `hooks/error-detector.sh` + `hooks/lessons-learned-stop.sh`（レガシー注記付き）+ core-02 README test-plan 修正 + 本記録 | マージ待ち |
+
+### live 側クリーンアップ
+
+| 対象 | 状態 |
+|---|---|
+| `~/.claude/skills/codegen/codegen/`（事故コピー） | 削除済み（本 PR 前に実施） |
+| `~/.claude/skills/codegen/references/references/`（事故コピー） | 削除済み（本 PR 前に実施） |
+| `~/.claude/hooks/test-sessionstart-compact.sh`（実験物） | 削除済み（本 PR 前に実施） |
+| `~/.claude/skills/code-review/`（MAGI 置換済みスタブ） | 削除済み（本 PR 前に実施） |
+
+### 配備漏れ解消
+
+| 対象 | 状態 |
+|---|---|
+| `skills/magi-hard/SKILL.md` → live | 上書きコピー済み |
+| `skills/pr-review-respond/SKILL.md` → live | 上書きコピー済み |
+| `CLAUDE.md` 新セクション → live 手動マージ | 実施済み |
+
+### 最終 sync-check 結果（PR #285 マージ後）
+
+```
+（マージ後に bash scripts/sync-check.sh を実行して記載）
+```
