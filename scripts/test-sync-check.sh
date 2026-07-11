@@ -6,6 +6,7 @@ set -euo pipefail
 SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/sync-check.sh"
 PASS=0
 FAIL=0
+SKIP=0
 FIXTURE_DIRS=()
 
 cleanup_fixtures() {
@@ -176,7 +177,12 @@ missing_known_deletions() {
   [ "$status" -eq 0 ]
 }
 
-run_test "shellcheck -S error が通る" shellcheck_pass
+if command -v shellcheck >/dev/null 2>&1; then
+  run_test "shellcheck -S error が通る" shellcheck_pass
+else
+  echo "SKIP: shellcheck -S error が通る (shellcheck not installed)"
+  ((SKIP++)) || true
+fi
 run_test "bash -n が通る" bash_syntax
 run_test "実働環境のみにあるファイルを新規として検出" new_only_live
 run_test "両側で異なるファイルを変更として検出" changed_both
@@ -188,7 +194,7 @@ run_test "実働環境パスがない場合は exit 2" missing_live_path
 run_test "known-deletions がなくても正常終了" missing_known_deletions
 
 echo ""
-echo "Results: ${PASS} PASS / ${FAIL} FAIL"
+echo "Results: ${PASS} PASS / ${FAIL} FAIL / ${SKIP} SKIP"
 
 if [ "$FAIL" -gt 0 ]; then
   exit 1

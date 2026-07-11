@@ -7,25 +7,22 @@ description: 実働環境（~/.claude/）と配布原本（~/srcs/Claude-StartUp
 
 実働環境で追加・変更されたスキル等が配布原本に還流されていないものを検知する。
 
-⚠ 実行前に `~/.claude/scripts/sync-check.sh` が存在することを確認してください
-（初回のみ: `cp ~/srcs/Claude-StartUp/scripts/sync-check.sh ~/.claude/scripts/`）
-
 ## 基本実行
 
 ```bash
-~/.claude/scripts/sync-check.sh
+~/srcs/Claude-StartUp/scripts/sync-check.sh
 ```
 
 ## verbose モード（同一ファイルも表示）
 
 ```bash
-~/.claude/scripts/sync-check.sh --verbose
+~/srcs/Claude-StartUp/scripts/sync-check.sh --verbose
 ```
 
 ## 比較先の上書き
 
 ```bash
-~/.claude/scripts/sync-check.sh [実働環境パス] [配布原本パス]
+~/srcs/Claude-StartUp/scripts/sync-check.sh [実働環境パス] [配布原本パス]
 ```
 
 ## 出力カテゴリと対処
