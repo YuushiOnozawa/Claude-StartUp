@@ -60,7 +60,7 @@ high
 | requirements.md | approved | 人間確認・承認済み（2026-07-07） |
 | specification.md | approved | 人間確認・承認済み（2026-07-07） |
 | implementation-plan.md | approved | 人間確認・承認済み（2026-07-07） |
-| test-plan.md | draft | specification 確定後に更新 |
+| test-plan.md | approved | Step 8 完了（2026-07-11）。9 PASS / 0 FAIL / 1 SKIP。PENDING 項目は Step 9 audit で記録 |
 | design-review.md | approved | Step 7 完了（2026-07-11）。Codex レビュー・人間確認済み |
 | traceability-map.md | draft | 各工程で更新 |
 | traceability-audit.md | todo | Step 9 で作成 |
