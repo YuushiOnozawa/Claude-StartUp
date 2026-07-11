@@ -18,35 +18,34 @@
 ## sync-check 実行結果
 
 ```
-=== 要還流（新規）: 実働環境にのみ存在 ===（21件）
-  skills/code-review/
-  skills/investigate/
-  skills/skill-creator/
-  skills/ollama-run.sh
-  skills/lean-ctx/
+=== 要還流（新規）: 実働環境にのみ存在 ===
   commands/Claude.md
   commands/dev.md
-  scripts/magi-split-diff.sh
-  balthasar/references/output-format.md
-  casper/references/output-format.md
-  melchior/references/output-format.md
-  metatron/references/output-format.md
-  sandalphon/references/output-format.md
+  hooks/error-detector.sh
   hooks/lean-ctx-redirect.sh
   hooks/lean-ctx-rewrite.sh
-  hooks/error-detector.sh
   hooks/lessons-learned-stop.sh
   hooks/test-sessionstart-compact.sh
   rules/lean-ctx.md
-  dotfiles/ccstatusline-settings.json
+  scripts/magi-split-diff.sh
+  skills/balthasar/references/output-format.md
+  skills/casper/references/output-format.md
+  skills/code-review/
   skills/codegen/codegen/
   skills/codegen/references/references/
+  skills/investigate/
+  skills/lean-ctx/
+  skills/melchior/references/output-format.md
+  skills/metatron/references/output-format.md
+  skills/ollama-run.sh
+  skills/sandalphon/references/output-format.md
+  skills/skill-creator/
 
-=== 要還流（変更）: 両側に存在するが差分あり ===（4件）
+=== 要還流（変更）: 両側に存在するが差分あり ===
   CLAUDE.md
+  dotfiles/ccstatusline-settings.json
   skills/magi-hard/SKILL.md
   skills/pr-review-respond/SKILL.md
-  skills/pr-review/SKILL.md
 
 === 削除予定（既知）: 還流しない ===
   agents/leliel.md  [core-03.1 REQ-03.1-02 で削除予定]
@@ -61,10 +60,9 @@ exit 1（要還流あり）
 | 対象 | 判断 | 理由・注記 |
 |---|---|---|
 | `CLAUDE.md`（変更） | **還流しない** | repo 側が新。repo→live 再配備が正方向。live 固有の @RTK.md／lean-ctx マーカーは lean-ctx 還流時に再検討 |
-| `dotfiles/ccstatusline-settings.json`（新規） | **保留** | core-03.2 で判断（蒸留進捗表示が蒸留パイプライン改修と密結合） |
+| `dotfiles/ccstatusline-settings.json`（変更） | **保留** | core-03.2 で判断（蒸留進捗表示が蒸留パイプライン改修と密結合） |
 | `skills/magi-hard/SKILL.md`（変更） | **還流しない** | 配備漏れ。repo→live 更新で解消 |
 | `skills/pr-review-respond/SKILL.md`（変更） | **還流しない** | 配備漏れ。repo→live 更新で解消 |
-| `skills/pr-review/SKILL.md`（変更） | **還流しない** | 配備漏れ。repo→live 更新で解消 |
 | `skills/code-review/`（新規） | **還流する** | — |
 | `skills/investigate/`（新規） | **還流する** | — |
 | `skills/skill-creator/`（新規） | **還流する** | — |
@@ -72,11 +70,11 @@ exit 1（要還流あり）
 | `commands/Claude.md`（新規） | **還流する** | — |
 | `commands/dev.md`（新規） | **還流する** | — |
 | `scripts/magi-split-diff.sh`（新規） | **還流する** | — |
-| `balthasar/references/output-format.md`（新規） | **還流する** | — |
-| `casper/references/output-format.md`（新規） | **還流する** | — |
-| `melchior/references/output-format.md`（新規） | **還流する** | — |
-| `metatron/references/output-format.md`（新規） | **還流する** | — |
-| `sandalphon/references/output-format.md`（新規） | **還流する** | — |
+| `skills/balthasar/references/output-format.md`（新規） | **還流する** | — |
+| `skills/casper/references/output-format.md`（新規） | **還流する** | — |
+| `skills/melchior/references/output-format.md`（新規） | **還流する** | — |
+| `skills/metatron/references/output-format.md`（新規） | **還流する** | — |
+| `skills/sandalphon/references/output-format.md`（新規） | **還流する** | — |
 | `skills/lean-ctx/`（新規） | **還流する** | lean-ctx 一式をセットで1PR |
 | `hooks/lean-ctx-redirect.sh`（新規） | **還流する** | lean-ctx セット |
 | `hooks/lean-ctx-rewrite.sh`（新規） | **還流する** | lean-ctx セット |
@@ -86,6 +84,8 @@ exit 1（要還流あり）
 | `hooks/test-sessionstart-compact.sh`（新規） | **還流しない** | ローカル実験物。live 側削除候補 |
 | `skills/codegen/codegen/`（新規） | **還流しない** | 入れ子の事故コピー。live 側削除候補 |
 | `skills/codegen/references/references/`（新規） | **還流しない** | 入れ子の事故コピー。live 側削除候補 |
+
+> **注記**: `requirements` の MM ファイルに挙がっていた `skills/pr-review/SKILL.md` は、2026-07-11 実測で両側同一（差分なし）のため取捨判断不要（受け入れ条件の対象としては充足済み扱い）
 
 ---
 
