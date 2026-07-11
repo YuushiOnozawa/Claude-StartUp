@@ -10,7 +10,7 @@
 |---|---|---|---|---|---|---|
 | SPEC-02-01（de-git） | 2 | 0 | 0 | 0 | 2 | **PASS**（2026-07-11 de-git 実施確認済み） |
 | SPEC-02-02（whitelist） | 3 | 1 | 2 | 0 | 0 | **PASS** |
-| SPEC-02-03（sync-check.sh） | 11 | 10 | 1 | 1 | 0 | **10 PASS / 0 FAIL / 0 SKIP** |
+| SPEC-02-03（sync-check.sh） | 11 | 10 | 1 | 1 | 0 | **11 PASS / 0 FAIL / 0 SKIP**（TEST-02-03-11 実環境 verify 含む） |
 | SPEC-02-04（手順文書化） | 2 | 1 | 1 | 0 | 0 | **PASS** |
 | SPEC-02-05（除外保証） | 0 | — | — | — | — | SPEC-02-02/03 で担保 |
 | SPEC-02-06（配備ツール） | 0 | — | — | — | — | 未実装（対象外） |
@@ -83,7 +83,7 @@ Results: 10 PASS / 0 FAIL / 0 SKIP
 | TEST-02-03-08 | `sync-whitelist.conf` 不存在 → exit 2 で中断 | 自動テスト（異常系） | **PASS** |
 | TEST-02-03-09 | 実働環境パス不存在 → exit 2 で中断 | 自動テスト（異常系） | **PASS** |
 | TEST-02-03-10 | `sync-known-deletions.conf` 不存在でも正常終了（warning 出力） | 自動テスト | **PASS** |
-| TEST-02-03-11 | 実環境（`~/.claude/` vs `~/srcs/Claude-StartUp/`）で実行し、還流漏れスキルが出力される | verify（手動） | **未実施**（手動実行で確認推奨） |
+| TEST-02-03-11 | 実環境（`~/.claude/` vs `~/srcs/Claude-StartUp/`）で実行し、還流漏れスキルが出力される | verify（手動） | **PASS**（2026-07-11 実環境で実行。新規21件・変更4件を検知し exit 1。記録: reflux-inventory-2026-07-11.md） |
 
 ---
 
@@ -134,7 +134,7 @@ grep -r "sync-check" ~/.claude/settings.json && echo "FAIL" || echo "PASS"
 |---|---|---|---|
 | SPEC-02-01 | TEST-02-01-01/02 | de-git 実施の確認 | ✅ **PASS**（2026-07-11 ユーザーが手動実施・確認済み） |
 | SPEC-02-03 | TEST-02-03-01 | shellcheck -S error | ✅ **PASS**（2026-07-11 shellcheck インストール後に再実行済み） |
-| SPEC-02-03 | TEST-02-03-11 | 実環境での実行確認 | 任意の verify（残）|
+| SPEC-02-03 | TEST-02-03-11 | 実環境での実行確認 | ✅ **PASS**（2026-07-11 実環境実行済み。reflux-inventory-2026-07-11.md 参照） |
 | SPEC-02-04 | TEST-02-04-02 | README 内容の正確性確認 | 任意の手動確認（残）|
 
 ---

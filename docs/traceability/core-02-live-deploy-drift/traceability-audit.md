@@ -54,7 +54,7 @@
 
 | ID | 重大度 | 内容 | Codex 判定 | 最終分類 |
 |---|---|---|---|---|
-| A-001 | MEDIUM | 受入条件「初回の還流棚卸し + MM ファイル（CLAUDE.md, skills/pr-review/SKILL.md）取捨判断の記録」に対応する SPEC/IMPL/TEST が存在しない | valid | **対象外**（運用作業として手動実施済み扱い。受入条件に注記追加） |
+| A-001 | MEDIUM | 受入条件「初回の還流棚卸し + MM ファイル（CLAUDE.md, skills/pr-review/SKILL.md）取捨判断の記録」に対応する SPEC/IMPL/TEST が存在しない | valid | **解消**（2026-07-11 初回棚卸し実施・取捨判断記録済み。reflux-inventory-2026-07-11.md 参照） |
 | A-002 | LOW | sync-check.sh は whitelist の include パターンを 3 形式のみ処理し、未知パターンは無警告スキップ（偽陰性） | valid | **保留**（whitelist.conf 変更時の注意事項として記録） |
 | A-003 | LOW | compare_recursive で diff がエラーを返したとき、exit 0 になり得る（偽陰性） | valid | **保留**（運用で対処。将来改善候補として記録） |
 | A-004 | LOW | known-deletions 判定は add_new_item（新規）のみ適用。変更カテゴリへの適用範囲が仕様に未明記 | valid | **保留**（仕様想定内。SPEC-02-03 への補足追記で対処済み） |
@@ -132,8 +132,8 @@
 |---|---|---|
 | SPEC は REQ を実現しているか | REQ-02-01〜08 と SPEC-02-01〜07 の対応を確認 | ✅ 全件対応 |
 | TEST は SPEC を検証しているか | test-sync-check.sh の fixture テストが SPEC-02-03 の振る舞いを網羅 | ✅（境界条件・異常系含む） |
-| SPEC-02-01（de-git）は REQ-02-01 を実現するか | README に手順を記載し、ユーザーが手動実行する形で REQ を充足 | ✅（ただし実施は PENDING） |
-| PROB-02-03（MM ファイル突合）は解消されているか | 還流検知（SPEC-02-03）でツールは整備されたが、実際の突合・記録は A-001 として未実施 | ⚠ 要確認 |
+| SPEC-02-01（de-git）は REQ-02-01 を実現するか | README に手順を記載し、ユーザーが手動実行する形で REQ を充足 | ✅（2026-07-11 de-git 実施・確認済み） |
+| PROB-02-03（MM ファイル突合）は解消されているか | 還流検知（SPEC-02-03）でツールは整備された。実際の突合・取捨判断記録も 2026-07-11 に実施済み | ✅（初回棚卸し実施・取捨判断記録済み 2026-07-11。reflux-inventory-2026-07-11.md 参照） |
 
 ---
 
@@ -146,7 +146,7 @@
 | 全 SPEC に対応 TEST または理由あり | ✅ |
 | Orphan IMPL/TEST なし | ✅ |
 | IMPL 実在確認済み | ✅ |
-| verified 可否 | ✅ **verified**（A-001 は対象外として明記。A-002〜04 は保留記録済み） |
+| verified 可否 | ✅ **verified**（A-001 は 2026-07-11 初回棚卸し実施で解消。A-002〜04 は保留記録済み） |
 
 ---
 
