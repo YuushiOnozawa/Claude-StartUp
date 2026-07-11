@@ -47,11 +47,10 @@
   skills/magi-hard/SKILL.md
   skills/pr-review-respond/SKILL.md
 
-=== 削除予定（既知）: 還流しない ===
-  agents/leliel.md  [core-03.1 REQ-03.1-02 で削除予定]
-
 exit 1（要還流あり）
 ```
+
+> agents/leliel.md は現時点で両側同一のため出力に現れない（削除予定分類は core-03.1 で repo 側から削除され live のみに残った時点で発動する）
 
 ---
 
