@@ -1,8 +1,9 @@
 # 認証情報
 .credentials.json
 
-# Claude Code 内部状態
-.claude/
+# Claude Code 内部状態（agents 定義は共有するため追跡する）
+.claude/*
+!.claude/agents/
 cache/
 file-history/
 history.jsonl
