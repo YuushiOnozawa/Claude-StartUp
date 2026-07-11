@@ -57,7 +57,7 @@
 | SPEC-02-01（de-git 実行仕様） | IMPL-02-05（README に de-git 手順を記載） | 🔲 todo | — |
 | SPEC-02-02（ホワイトリスト定義ファイル） | IMPL-02-01（scripts/sync-whitelist.conf 新設） | ✅ implemented | commit 6955706 |
 | SPEC-02-03（還流検知スクリプト /sync-check） | IMPL-02-02（sync-known-deletions.conf 新設）, IMPL-02-03（sync-check.sh 新設）, IMPL-02-04（SKILL.md 新設） | ✅ implemented | commit 6955706, e82ba74 |
-| SPEC-02-04（還流手順の文書化） | IMPL-02-05（README.md 還流手順セクション追加） | 🔲 todo | — |
+| SPEC-02-04（還流手順の文書化） | IMPL-02-05（README.md 還流手順セクション追加） | ✅ implemented | PR #280 |
 | SPEC-02-05（settings.json 除外保証） | IMPL-02-01 で担保（追加実装なし） | ✅ implemented | commit 6955706 |
 | SPEC-02-06（配備ツール実装指針） | 本 core では実装しない | ✅ n/a | — |
 | SPEC-02-07（手動スキルのみ保証） | settings.json を変更しないことで担保（追加実装なし） | ✅ n/a | — |
