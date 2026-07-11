@@ -40,9 +40,9 @@
 
 | SPEC | 結果 |
 |---|---|
-| SPEC-02-01 | PENDING（手動確認未実施） |
+| SPEC-02-01 | **PASS**（2026-07-11 de-git 実施・確認済み） |
 | SPEC-02-02 | PASS（TEST-02-02-01〜03） |
-| SPEC-02-03 | 9 PASS / 0 FAIL / 1 SKIP（shellcheck 未インストール） |
+| SPEC-02-03 | **10 PASS / 0 FAIL / 0 SKIP**（2026-07-11 shellcheck 再実行済み） |
 | SPEC-02-04 | PASS（TEST-02-04-01）+ 手動確認要（TEST-02-04-02） |
 | SPEC-02-05 | TEST-02-02-03, TEST-02-03-07 で担保 PASS |
 | SPEC-02-06 | n/a（実装しない） |

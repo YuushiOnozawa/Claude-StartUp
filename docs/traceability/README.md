@@ -1,6 +1,6 @@
 # トレーサビリティ全体ボード
 
-最終更新: 2026-07-08（全 core specification approved / 全 core impl-plan approved）
+最終更新: 2026-07-11（core-02 design-review/test/audit 完了・verified）
 
 分類元: [docs/planning/fable-traceability-classification.md](../planning/fable-traceability-classification.md)
 運用手順: `/traceability-flow`（各 Step のスキル一覧と進行判定）
@@ -14,6 +14,14 @@
 | [core-03.3-setup-readiness](core-03.3-setup-readiness/README.md) — ワンライナー展開後の実行可能状態保証（旧 core-01） | 必須 | high | **approved** | **approved** | **approved** | todo | todo | draft | todo |
 | [core-03.4-continuous-assurance](core-03.4-continuous-assurance/README.md) — ドキュメント・CI・verify の継続保証不足（旧 core-06） | 必須 | high | **approved** | **approved** | **approved** | todo | todo | draft | todo |
 | [core-04-second-brain-recall](core-04-second-brain-recall/README.md) — 第二の脳・横断想起の運用仕様化（番号変更なし） | 将来拡張 | medium | **approved** | **approved** | **approved** | todo | todo | draft | todo |
+
+## 次のアクション候補
+
+- core-03.1: impl-plan approved → 実装（Step 5/6）開始可能
+- core-03.2: impl-plan approved → 実装（Step 5/6）開始可能
+- core-03.3: impl-plan approved → 実装（Step 5/6）開始可能
+- core-03.4: impl-plan approved → 実装（Step 5/6）開始可能
+- core-02: ✅ verified 完了。還流ツールが他 core の実装着地先として利用可能
 
 ## 実行順（2026-07-06 決定 / 2026-07-07 追記）
 
