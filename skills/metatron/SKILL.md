@@ -6,13 +6,13 @@ argument-hint: "<ファイルパス または差分>"
 # METATRON スキル
 
 MAGI METATRON（セキュリティの番人）の観点でコードをレビューする。
-Ollama `devstral:latest` が利用可能な場合はそちらを使い、なければ Haiku にフォールバックする。
+Ollama `granite3.3:8b` が利用可能な場合はそちらを使い、なければ Haiku にフォールバックする。
 
 ## ペルソナ固有設定
 
 | 項目 | 値 |
 |-----|---|
-| OLLAMA_MODEL | `devstral:latest` |
+| OLLAMA_MODEL | `granite3.3:8b` |
 | PERSONA_NAME | `METATRON` |
 | エージェント定義 | `agents/metatron.md`（repo 内）または `/home/<user>/.claude/agents/metatron.md` |
 
