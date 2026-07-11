@@ -60,7 +60,7 @@ high
 | requirements.md | approved | 人間確認・承認済み（2026-07-07） |
 | specification.md | approved | 人間確認・承認済み（2026-07-07） |
 | implementation-plan.md | approved | 人間確認・承認済み（2026-07-07） |
-| test-plan.md | draft | specification 確定後に更新 |
-| design-review.md | todo | Step 7 で作成 |
+| test-plan.md | approved | Step 8 完了（2026-07-11）。10 PASS / 0 FAIL / 0 SKIP（shellcheck インストール後に再実行済み） |
+| design-review.md | approved | Step 7 完了（2026-07-11）。Codex レビュー・人間確認済み |
 | traceability-map.md | draft | 各工程で更新 |
-| traceability-audit.md | todo | Step 9 で作成 |
+| traceability-audit.md | verified | Step 9 完了（2026-07-11）。Codex 二次確認・人間確認済み。要対応ゼロで verified |
