@@ -43,7 +43,9 @@ CLAUDE_RULES=$(cat ~/.claude/CLAUDE.md 2>/dev/null; cat "$ROOT/CLAUDE.md" 2>/dev
 bash scripts/ollama-check.sh "$OLLAMA_MODEL" 2>/dev/null \
   || bash ~/.claude/scripts/ollama-check.sh "$OLLAMA_MODEL"
 ```
-exit 0 なら「Ollama が使える場合」へ、非0なら Haiku fallback へ進む。
+exit 0 なら「Ollama が使える場合」へ進む。
+非0の場合は無断でフォールバックせず、「Ollama が使えない場合（Haiku fallback）」の手順に従って
+まず `AskUserQuestion` でユーザーに確認する。
 Ollama は Windows 側で動作しており、WSL 内の `ollama` CLI や `pgrep` では確認できない点に注意する。
 
 ### Ollama が使える場合
