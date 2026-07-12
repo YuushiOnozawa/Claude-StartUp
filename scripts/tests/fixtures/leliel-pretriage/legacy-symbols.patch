@@ -1,0 +1,7 @@
+diff --git a/lib/a.js b/lib/a.js
+index 1111111..2222222 100644
+--- a/lib/a.js
++++ b/lib/a.js
+@@ -1 +1 @@
+-const oldValue = 1
++const changedValue = 2
