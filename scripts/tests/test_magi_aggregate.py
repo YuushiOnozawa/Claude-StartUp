@@ -69,7 +69,20 @@ class MagiAggregateCliTests(unittest.TestCase):
         for name in ("results", "status", "plan"):
             (root / name).mkdir()
         mel = root / "results/melchior.md"
-        mel.write_text(mel_text or (FIXTURES / "parse-ok/melchior.md").read_text(), encoding="utf-8")
+        mel.write_text(mel_text or """=== CHUNK: src/a.py (1) ===
+## Review
+### [HIGH] src/a.py:12 — null を検査する
+説明。
+
+### [HIGH] src/a.py:12 — null を検査する
+説明。
+
+### [LOW] src/a.py:20 — ログを追加する
+詳細。
+## Assessment
+確認済み。
+<!-- MAGI_COMPLETE persona=melchior chunk=0001 -->
+""", encoding="utf-8")
         bal = root / "results/balthasar.md"
         bal.write_text(bal_text or """=== CHUNK: src/a.py (1) ===
 ## Review
@@ -364,7 +377,20 @@ No findings
         self.assertEqual(plan["summary"]["audit_counts"]["invalid_edge"], 5)
 
     def test_high_medium_duplicate_uses_high(self):
-        run = self.make_run(mel_text=(FIXTURES / "parse-ok/melchior.md").read_text().replace("[HIGH] src/a.py:12", "[MEDIUM] src/a.py:12"))
+        run = self.make_run(mel_text="""=== CHUNK: src/a.py (1) ===
+## Review
+### [HIGH] src/a.py:12 — null を検査する
+説明。
+
+### [HIGH] src/a.py:12 — null を検査する
+説明。
+
+### [LOW] src/a.py:20 — ログを追加する
+詳細。
+## Assessment
+確認済み。
+<!-- MAGI_COMPLETE persona=melchior chunk=0001 -->
+""".replace("[HIGH] src/a.py:12", "[MEDIUM] src/a.py:12"))
         parsed, canonical = self.parse(run)
         self.assertEqual(parsed.returncode, 0, parsed.stderr)
         merged, output = self.merge(canonical, run, audit=self.audit_fixture(run, canonical, "audit-high-medium"))
