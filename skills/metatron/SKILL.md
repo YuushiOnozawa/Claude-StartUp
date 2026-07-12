@@ -14,7 +14,6 @@ Ollama `granite3.3:8b` が利用可能な場合はそちらを使い、なけれ
 |-----|---|
 | OLLAMA_MODEL | `granite3.3:8b` |
 | PERSONA_NAME | `METATRON` |
-| エージェント定義 | `agents/metatron.md`（repo 内）または `/home/<user>/.claude/agents/metatron.md` |
 
 ## 参照ファイル
 
