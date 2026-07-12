@@ -1,0 +1,1 @@
+{"schema_version":"audit-annotations/v1","canonical_sha256":"REPLACED_BY_TEST","annotations":[{"id":"MEL-001","verdict":"needs_human","duplicate_of":"BAL-001","reason_ja":"human review required"},{"id":"BAL-001","verdict":"valid","reason_ja":"representative"}]}
