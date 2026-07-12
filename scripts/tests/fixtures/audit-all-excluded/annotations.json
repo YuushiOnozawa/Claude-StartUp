@@ -1,0 +1,1 @@
+{"schema_version":"audit-annotations/v1","canonical_sha256":"REPLACED_BY_TEST","annotations":[{"id":"MEL-001","verdict":"false_positive","reason_ja":"誤検知"},{"id":"MEL-002","verdict":"false_positive","reason_ja":"誤検知"},{"id":"BAL-001","verdict":"false_positive","reason_ja":"誤検知"}]}
