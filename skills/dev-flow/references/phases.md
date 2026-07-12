@@ -159,11 +159,13 @@ Proceed to Phase 5.
 
 Execute `/magi-fast`.
 
-### If HIGH = 0 → proceed to Phase 6
+### If `COMMIT_GATE=true` → proceed to Phase 6
 
-### If HIGH ≥ 1 → fix
+`/magi-fast` が出力した commit gate を正本とする。進行条件は raw HIGH が 0、全 persona の `parse_status=ok`、かつ `needs_human` がないこと。Codex の `false_positive` 注記や duplicate 統合は raw gate を緩和しない。
 
-Present a fix proposal for each HIGH finding. The user decides whether to adopt. After fixes, re-run `/magi-fast`. Repeat until HIGH = 0.
+### If `COMMIT_GATE=false` → review/fix or resolve incompleteness
+
+HIGH があれば各 HIGH の修正案を提示し、ユーザーが採用を決める。`partial`/`failed` を含むレビュー不完全、または `needs_human` がある場合は LGTM や commit へ進めない。Ollama fallback の承認、実行環境・artifact の問題解消、または人手判断を行った後に `/magi-fast` を再実行する。
 
 HIGH 指摘の修正は `/codegen` で実装すること。/codegen が利用できない場合のみ直接修正する。
 
