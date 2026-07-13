@@ -1,0 +1,8 @@
+diff --git a/src/api.py b/src/api.py
+index 1111111..2222222 100644
+--- a/src/api.py
++++ b/src/api.py
+@@ -1,2 +1,2 @@
+-def create_user(name):
++def create_user(name, role: str) -> dict:
+     return {}

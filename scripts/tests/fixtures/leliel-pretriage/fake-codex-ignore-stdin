@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+import time
+
+# Intentionally never reads stdin: a >64 KiB prompt must still be timeout-bound.
+time.sleep(60)
