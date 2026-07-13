@@ -60,3 +60,6 @@ for SYMBOL in $SYMBOLS; do
 done
 
 printf '%s' "$OUTPUT"
+
+# E2E 検証用の一時変更（magi-hard v2 パイプライン確認、レビュー後クローズ）
+MAGI_E2E_TEST_MARKER=1
