@@ -1,13 +1,13 @@
 ---
 name: magi-hard
-description: MAGI 6体（melchior→balthasar→casper→metatron→sandalphon→leliel）でPRレビューを行う。決定的集約と review-plan.json 生成を行う（GitHubへの投稿は行わない）。Trigger: "/magi-hard", "magi-hard", "ハードレビュー", "PRをMAGIにレビューさせて"
+description: MAGI 6体（melchior→balthasar→casper→metatron→sandalphon→leliel）でPRレビューを行う。決定的集約と review-plan.json 生成を行い、poster が review-plan.json から冪等投稿する。Trigger: "/magi-hard", "magi-hard", "ハードレビュー", "PRをMAGIにレビューさせて"
 ---
 
 # MAGI-HARD スキル
 
 MAGI の6体（MELCHIOR→BALTHASAR→CASPER→METATRON→SANDALPHON→LELIEL）を順次実行し、PR の全差分を深くレビューする。persona の raw 出力は terminal に再表示せず、`magi-aggregate.py` が生成する `review-plan.json` と canonical summary だけを表示の正本にする。
 
-F6 は sink mode、2段階 aggregate、Codex annotation を使用し、GitHub へのサマリ・インラインコメント投稿を行わない。投稿は F7 の poster が `review-plan.json` から行う。false positive は finding を削除せず raw gate を緩和しない。レビュー不完全、raw HIGH/MEDIUM、または `needs_human` が残る場合は LGTM を許可しない。
+F6 は sink mode、2段階 aggregate、Codex annotation を使用する。投稿は poster が `review-plan.json` から冪等に行う。false positive は finding を削除せず raw gate を緩和しない。レビュー不完全、raw HIGH/MEDIUM、または `needs_human` が残る場合は LGTM を許可しない。
 
 ## 前提
 
@@ -26,7 +26,8 @@ AGGREGATE="$REPO_ROOT/scripts/magi-aggregate.py"
 FILTER="$REPO_ROOT/scripts/magi-diff-filter.sh"
 SPLITTER="$REPO_ROOT/scripts/magi-split-hunk.sh"
 PRETRIAGE="$REPO_ROOT/scripts/magi-leliel-pretriage.py"
-[ -f "$AGGREGATE" ] && [ -f "$FILTER" ] && [ -f "$SPLITTER" ] && [ -f "$PRETRIAGE" ] || {
+POSTER="$REPO_ROOT/scripts/magi-hard-poster.py"
+[ -f "$AGGREGATE" ] && [ -f "$FILTER" ] && [ -f "$SPLITTER" ] && [ -f "$PRETRIAGE" ] && [ -f "$POSTER" ] || {
   echo 'MAGI-HARD: required MAGI scripts are unavailable'
   exit 1
 }
@@ -282,8 +283,6 @@ python3 "$AGGREGATE" merge --findings "$CANONICAL" --run-policy "$RUN_DIR/run-po
 MERGE_EXIT=$?; [ "$MERGE_EXIT" -eq 0 ] || aggregate_failure_handler merge "$MERGE_EXIT"
 ```
 
-F6 では GitHub 投稿を行わない。F7 の poster がこの `review-plan.json` を正本として投稿する。
-
 terminal サマリには run ID/run dir、`workflow=hard`、PR 番号、HEAD SHA、0埋めの `raw_counts`、persona 別 `parse_status`、`needs_human` 件数、hard policy で excluded となった false positive の件数と ID（`excluded_findings` は削除しない）、`diff/excluded-files.txt` の除外ファイル、pre-triage の added/required 件数または skip 理由または部品エラー、`ANNOTATION_STATUS/REASON` を表示する。raw persona body は表示しない。
 
 ```bash
@@ -316,6 +315,82 @@ fi
 ```
 
 それ以外は「HIGH/MEDIUM が残る」「レビュー不完全」「needs_human」の理由別に表示し、LGTM は出さない。false positive 除外、annotation unavailable、UNKNOWN を含む除外は gate を緩和しない。
+
+## ステップ 8: post-plan build と冪等投稿
+
+merge 成功時だけ実行する。aggregate 失敗 handler 経由では実行しない。
+
+### 8-1. build
+
+```bash
+python3 "$POSTER" build --review-plan "$RUN_DIR/review-plan.json" --output "$RUN_DIR/plan/post-plan.json"
+BUILD_EXIT=$?
+if [ "$BUILD_EXIT" -ne 0 ]; then
+  echo "MAGI-HARD: post-plan build に失敗したため投稿しません (exit=$BUILD_EXIT)"
+  echo 'MAGI-HARD: REVIEW_GATE の判定表示を維持します'
+  exit 0
+fi
+```
+
+exit 非 0 の場合は投稿を行わず、理由を表示して終了する。REVIEW_GATE の判定表示は維持する。
+
+### 8-2. 翻訳
+
+`post-plan.json` の `entries[]` から、次で `translation_status=="pending"` の ID を列挙する。
+
+```bash
+PENDING_IDS=$(jq -r '.entries[] | select(.translation_status == "pending") | .id' "$RUN_DIR/plan/post-plan.json")
+if [ -n "$PENDING_IDS" ]; then
+  # Claude が該当 entry の title_ja/body_ja だけを翻訳した JSON を作成する。
+  # 形式は {"id":{"title_ja":"...","body_ja":"..."}} とし、marker や HTML コメントを含めない。
+  # 意味の追加・削除・改変は禁止し、翻訳のみとする。
+  : # $RUN_DIR/plan/translations.json に保存する
+  python3 "$POSTER" build --review-plan "$RUN_DIR/review-plan.json" \
+    --output "$RUN_DIR/plan/post-plan.json" --translations "$RUN_DIR/plan/translations.json"
+fi
+```
+
+再 build 後も pending が残る場合はそのまま進む。poster が要人判断（未翻訳）として投稿する。
+
+### 8-3. dry-run 確認
+
+次の dry-run を実行し、summary、entries 件数、severity 内訳を表示する。
+
+```bash
+python3 "$POSTER" post --post-plan "$RUN_DIR/plan/post-plan.json" --pr "$PR_NUM" \
+  --repo "$OWNER/$REPO" --results "$RUN_DIR/plan/post-results.jsonl" --dry-run \
+  > "$RUN_DIR/plan/post-dry-run.json"
+DRY_RUN_EXIT=$?
+[ "$DRY_RUN_EXIT" -eq 0 ] || { echo "MAGI-HARD: dry-run に失敗しました (exit=$DRY_RUN_EXIT)"; exit 0; }
+jq '{summary: .summary_body, entries: (.entries | length), severity: (.entries | group_by(.severity) | map({severity: .[0].severity, count: length}))}' \
+  "$RUN_DIR/plan/post-dry-run.json"
+```
+
+表示後、AskUserQuestion で「投稿する」または「dry-run のみで終了」を確認する。省略・代理承認は禁止する。
+
+質問: dry-run の内容で GitHub へ投稿しますか？
+選択肢: 「投稿する」「dry-run のみで終了」
+
+### 8-4. 投稿
+
+「投稿する」の承認時だけ、`--dry-run` なしで実行する。
+
+```bash
+python3 "$POSTER" post --post-plan "$RUN_DIR/plan/post-plan.json" --pr "$PR_NUM" \
+  --repo "$OWNER/$REPO" --results "$RUN_DIR/plan/post-results.jsonl"
+POST_EXIT=$?
+if [ "$POST_EXIT" -eq 3 ]; then
+  echo 'MAGI-HARD: HEAD が更新されたため再レビューしてください'
+  exit 0
+elif [ "$POST_EXIT" -ne 0 ]; then
+  echo "MAGI-HARD: 投稿に失敗しました (exit=$POST_EXIT)"
+  exit 0
+fi
+jq -s 'def count_action($action): map(select(.action == $action)) | length; {posted: count_action("posted"), skipped_existing: count_action("skipped_existing"), fallback_issue_comment: count_action("fallback_issue_comment"), failed: count_action("failed")}' \
+  "$RUN_DIR/plan/post-results.jsonl"
+```
+
+exit 0 時は `post-results.jsonl` を jq で集計し、`posted`、`skipped_existing`、`fallback_issue_comment`、`failed` の件数をサマリに追記表示する。
 
 ## aggregate 失敗時の Claude 再 parse opt-in
 
