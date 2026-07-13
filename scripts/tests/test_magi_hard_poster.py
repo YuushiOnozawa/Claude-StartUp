@@ -14,8 +14,10 @@ HEAD_SHA = "a" * 40
 
 
 def make_plan(**changes):
-    anchor = {"path": "src/example.py", "line": 12, "side": "RIGHT",
-              "start_line": None, "start_side": None, "head_sha": HEAD_SHA}
+    anchor = {"path": "src/example.py", "line": 12, "side": None,
+              "start_line": None, "start_side": None, "head_sha": None}
+    pr_anchor = {"path": None, "line": None, "side": None,
+                 "start_line": None, "start_side": None, "head_sha": None}
     plan = {
         "schema_version": "review-plan/v1",
         "canonical_sha256": "b" * 64,
@@ -39,6 +41,10 @@ def make_plan(**changes):
              "title": "日本語の finding", "body": "値を確認してください。", "anchor": {**anchor, "line": 20},
              "verdicts": [{"id": "BAL-001", "verdict": "needs_human", "reason_ja": "確認が必要"}],
              "display_state": "needs_human", "needs_human": True},
+            {"id": "CAS-002", "representative_id": "CAS-002", "source_ids": ["CAS-002"],
+             "personas": ["casper"], "severity": "LOW", "source_severities": [{"id": "CAS-002", "severity": "LOW"}],
+             "title": "PR 全体の finding", "body": "PR 全体を確認してください。", "anchor": pr_anchor,
+             "verdicts": [], "display_state": "postable", "needs_human": False},
         ],
         "excluded_findings": [{"id": "CAS-001", "persona": "casper", "title": "除外 finding",
                                "reason_ja": "誤検知", "raw_sha256": "d" * 64,
@@ -151,6 +157,55 @@ if "--method" in args and "PATCH" in args:
             self.assertIn("翻訳本文", entries["MEL-001"]["body_ja"])
             self.assertIn("⚠ 要人判断", entries["BAL-001"]["body_ja"])
             self.assertEqual(entries["BAL-001"]["translation_status"], "native")
+
+    def test_build_turns_null_anchor_into_pr_scope_entry(self):
+        with tempfile.TemporaryDirectory() as name:
+            result, output = self.build(Path(name))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            entries = {item["id"]: item for item in json.loads(output.read_text())["entries"]}
+            self.assertEqual(entries["CAS-002"]["scope"], "pr")
+            self.assertIsNone(entries["CAS-002"]["anchor"])
+
+    def test_aggregate_merge_output_round_trips_through_build(self):
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            null_anchor = {"path": None, "line": None, "side": None,
+                           "start_line": None, "start_side": None, "head_sha": None}
+            canonical = {
+                "schema_version": "canonical-findings/v1",
+                "manifest": {"schema_version": "persona-manifest/v1", "personas": [
+                    {"ordinal": 1, "key": "casper", "name": "CASPER", "id_prefix": "CAS"}]},
+                "personas": [{"key": "casper", "parse_status": "failed",
+                               "execution_status": "failed", "diagnostics": []}],
+                "findings": [{"id": "CAS-001", "persona": "casper", "severity": "UNKNOWN", "scope": "pr",
+                              "title": "構造化されていない出力", "body": "出力を確認してください。",
+                              "raw": {"sha256": "d" * 64, "bytes": 0, "excerpt_escaped": "", "truncated": False},
+                              "source": {"result_path": "results/casper.md", "result_sha256": "d" * 64,
+                                         "chunk_ordinals": []}, "anchor": null_anchor,
+                              "fallback": {"kind": "unstructured_output", "reason_ja": "出力を確認してください。"}}],
+                "summary": {"raw_counts": {"UNKNOWN": 1}, "parse_status_counts": {"failed": 1},
+                            "review_incomplete": True},
+            }
+            policy = {"schema_version": "magi-run-policy/v1", "workflow": "hard", "gate_basis": "raw",
+                      "gate_severity": "HIGH", "false_positive_policy": "annotate",
+                      "needs_human_policy": "label", "renderer": "github", "locale": "ja",
+                      "anchor_policy": "pr", "head_sha": HEAD_SHA, "audit_enabled": True,
+                      "dedupe_enabled": True, "audit_severities": ["HIGH", "MEDIUM"],
+                      "completion_policy": {"require_marker": True, "zero_findings_requires_no_findings": True},
+                      "diff_source": {"kind": "head"}}
+            canonical_path, policy_path = root / "canonical.json", root / "policy.json"
+            merged_path = root / "review.json"
+            self.write_json(canonical_path, canonical)
+            self.write_json(policy_path, policy)
+            merged = subprocess.run([sys.executable, str(ROOT / "scripts" / "magi-aggregate.py"), "merge",
+                                     "--findings", str(canonical_path), "--run-policy", str(policy_path),
+                                     "--output", str(merged_path)], text=True, capture_output=True)
+            self.assertEqual(merged.returncode, 0, merged.stderr)
+            built, output = self.build(root, json.loads(merged_path.read_text(encoding="utf-8")))
+            self.assertEqual(built.returncode, 0, built.stderr)
+            entry = json.loads(output.read_text(encoding="utf-8"))["entries"][0]
+            self.assertEqual(entry["scope"], "pr")
+            self.assertIsNone(entry["anchor"])
 
     def test_build_pending_is_labeled_and_native_text_is_detected(self):
         with tempfile.TemporaryDirectory() as name:
