@@ -214,7 +214,7 @@ if sink:
   expected_marker := "<!-- MAGI_COMPLETE persona=" + PERSONA + " chunk=" + chunk_id + " -->"
 
   Append to the prompt:
-    "出力の最終非空行を、次の文字列と完全一致させてください:"
+    "【必須】レビュー本文の完了後、最後の行として次の文字列を一字一句そのまま単独行で出力してください。これが無い出力は不完全として破棄されます:"
     expected_marker
 else:
   expected_marker := null
@@ -300,10 +300,13 @@ BOUNDARY_INSTRUCTION :=
   "sink mode の completion 判定対象は、モデル自身が生成した raw 出力の"
   "最終非空行だけである。"
 
+MARKER_INSTRUCTION（sink のみ）: 出力の最後に、prompt で指定された completion marker を単独の行としてそのまま出力すること。これは出力完全性の必須要件であり、marker のない出力は不完全として破棄される。marker の後には何も出力しない。
+
 system.txt := task-instruction.md
             + review-criteria.md
             + output-format.md
             + BOUNDARY_INSTRUCTION
+            + (MARKER_INSTRUCTION if sink; nothing if legacy)
 
 prompt_for(chunk) := task-base.md
                      + persona key and concrete chunk_id
