@@ -225,6 +225,23 @@ def parse_response(text):
     except (json.JSONDecodeError, TypeError): return None
 
 
+def fetch_comments(gh, endpoint):
+    rc, out, err = gh_call(gh, ["api", endpoint, "--method", "GET", "-F", "per_page=100",
+                                "--paginate", "--jq", ".[]"])
+    if rc:
+        raise RuntimeError("comment listing failed for %s: %s" % (endpoint, err.strip() or "gh exited with status %d" % rc))
+    comments = []
+    for line in out.splitlines():
+        try:
+            comment = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("comment listing returned invalid JSON for %s" % endpoint) from exc
+        if not isinstance(comment, dict):
+            raise RuntimeError("comment listing returned a non-object for %s" % endpoint)
+        comments.append(comment)
+    return comments
+
+
 def post(args):
     plan = load_json(args.post_plan)
     need(plan.get("schema_version") == "post-plan/v1" and SHA1.fullmatch(plan.get("head_sha", "")), "invalid post plan")
@@ -239,11 +256,7 @@ def post(args):
         raise SystemExit(3)
     comments = []
     for endpoint in ("issues/%s/comments" % args.pr, "pulls/%s/comments" % args.pr):
-        rc, out, _ = gh_call(gh, ["api", "%s/%s" % (repo_path, endpoint), "--method", "GET",
-                                  "--paginate", "--slurp", "-F", "per_page=100"])
-        if rc: continue
-        value = parse_response(out)
-        if isinstance(value, list): comments.extend(value if not (value and isinstance(value[0], list)) else sum(value, []))
+        comments.extend(fetch_comments(gh, "%s/%s" % (repo_path, endpoint)))
     markers = {entry["marker"] for entry in plan["entries"] if any(entry["marker"] in str(c.get("body", "")) for c in comments if isinstance(c, dict))}
     summary_marker = "<!-- magi-summary: @%s -->" % plan["head_sha"]
     failures = []

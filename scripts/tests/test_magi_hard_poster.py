@@ -99,13 +99,18 @@ record = os.environ["FAKE_GH_RECORD"]
 with open(record, "a", encoding="utf-8") as f:
     f.write(json.dumps(sys.argv[1:], ensure_ascii=False) + "\\n")
 args = sys.argv[1:]
+if "--slurp" in args:
+    print("unknown flag: --slurp", file=sys.stderr); raise SystemExit(1)
 if "--jq" in args and "repos/OWNER/REPO/pulls/7" in args:
     print(os.environ.get("FAKE_GH_HEAD", "''' + HEAD_SHA + '''")); raise SystemExit(0)
-if "--method" in args and "GET" in args and os.environ.get("FAKE_GH_MODE") == "existing" and "repos/OWNER/REPO/issues/7/comments" in args:
-    print(json.dumps([{"id": 88, "body": "old <!-- magi-finding: MEL-001@''' + HEAD_SHA + ''' -->"},
-                      {"id": 99, "body": "old <!-- magi-summary: @''' + HEAD_SHA + ''' -->"}]))
-elif "--method" in args and "GET" in args and ("repos/OWNER/REPO/issues/7/comments" in args or "repos/OWNER/REPO/pulls/7/comments" in args):
-    print("[]")
+if "--method" in args and "GET" in args and os.environ.get("FAKE_GH_MODE") == "listing-failure":
+    raise SystemExit(1)
+if "--method" in args and "GET" in args and "--jq" in args and os.environ.get("FAKE_GH_MODE") == "existing" and "repos/OWNER/REPO/issues/7/comments" in args:
+    for comment in [{"id": 88, "body": "old <!-- magi-finding: MEL-001@''' + HEAD_SHA + ''' -->"},
+                    {"id": 99, "body": "old <!-- magi-summary: @''' + HEAD_SHA + ''' -->"}]:
+        print(json.dumps(comment))
+elif "--method" in args and "GET" in args and "--jq" in args and ("repos/OWNER/REPO/issues/7/comments" in args or "repos/OWNER/REPO/pulls/7/comments" in args):
+    pass
 if "--method" in args and "POST" in args and os.environ.get("FAKE_GH_MODE") == "fallback" and "repos/OWNER/REPO/pulls/7/comments" in args:
     print("unprocessable", file=sys.stderr); raise SystemExit(1)
 if "--method" in args and "POST" in args:
@@ -270,6 +275,14 @@ if "--method" in args and "PATCH" in args:
                           [{"id": item["id"], "action": item["action"]} for item in lines])
             self.assertTrue(any("repos/OWNER/REPO/issues/comments/99" in call for call in calls) is False)
             self.assertFalse(any("MEL-001" in call and "--method" in call for call in calls))
+
+    def test_post_listing_failure_stops_before_any_post(self):
+        with tempfile.TemporaryDirectory() as name:
+            result, calls, lines = self.post(Path(name), mode="listing-failure")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("comment listing failed", result.stderr)
+            self.assertEqual(lines, [])
+            self.assertFalse(any("POST" in call for call in calls))
 
     def test_post_falls_back_on_422_and_patches_failure_summary(self):
         with tempfile.TemporaryDirectory() as name:
