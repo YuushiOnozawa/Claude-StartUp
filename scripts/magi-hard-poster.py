@@ -120,11 +120,17 @@ def validate_plan(plan):
         need(item.get("display_state") in {"postable", "needs_human"}, "item is not postable")
         need(item.get("needs_human") is (item["display_state"] == "needs_human"), "invalid needs_human state")
         anchor = item.get("anchor")
-        if anchor is not None:
-            need(isinstance(anchor, dict) and isinstance(anchor.get("path"), str)
-                 and isinstance(anchor.get("line"), int) and anchor["line"] > 0
-                 and anchor.get("side") in {"LEFT", "RIGHT"}
-                 and anchor.get("head_sha") == policy["head_sha"], "invalid review anchor")
+        need(isinstance(anchor, dict)
+             and set(anchor) == {"path", "line", "side", "start_line", "start_side", "head_sha"},
+             "invalid review anchor")
+        if isinstance(anchor.get("path"), str):
+            need(isinstance(anchor.get("line"), int) and not isinstance(anchor["line"], bool)
+                 and anchor["line"] > 0
+                 and all(anchor[field] is None for field in ("side", "start_line", "start_side", "head_sha")),
+                 "invalid inline review anchor")
+        else:
+            need(anchor.get("path") is None and all(value is None for value in anchor.values()),
+                 "invalid PR review anchor")
         need(not any(v.get("verdict") == "false_positive" for v in item.get("verdicts", [])
                      if isinstance(v, dict)), "annotated false positive is not postable")
     for item in plan.get("excluded_findings", []):
@@ -166,9 +172,9 @@ def build(args):
             body = warning + "\n\n" + body
             if status == "pending":
                 body += "\n\nEnglish body"
-        scope = "inline" if item["anchor"] else "pr"
+        scope = "inline" if isinstance(item["anchor"].get("path"), str) else "pr"
         anchor = {"path": item["anchor"]["path"], "line": item["anchor"]["line"],
-                  "side": item["anchor"]["side"], "commit_id": sha} if scope == "inline" else None
+                  "side": "RIGHT", "commit_id": sha} if scope == "inline" else None
         entries.append({"id": item["id"], "marker": marker, "severity": item.get("severity"),
                         "personas": item.get("personas", []), "source_ids": item.get("source_ids", []),
                         "title_ja": title, "body_ja": body.rstrip() + "\n\n" + marker,
