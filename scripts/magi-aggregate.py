@@ -37,6 +37,7 @@ NO_FINDINGS = re.compile(r"\bno findings\b", re.IGNORECASE)
 KEY = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 PREFIX = re.compile(r"^[A-Z][A-Z0-9]{1,7}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+GIT_SHA1 = re.compile(r"^[0-9a-f]{40}$")
 STATUS_FIELDS = frozenset((
     "schema_version", "run_id", "diff_hash", "persona", "persona_name", "model", "backend",
     "execution_status", "started_at", "finished_at", "duration_ms", "input", "result",
@@ -558,7 +559,7 @@ def validate_policy(value):
     diff = value.get("diff_source")
     require(isinstance(diff, dict) and diff.get("kind") in {"staged", "head", "file"}, "invalid diff_source")
     if value["anchor_policy"] == "pr":
-        require(isinstance(value.get("head_sha"), str) and SHA256.fullmatch(value["head_sha"]), "invalid policy head_sha")
+        require(isinstance(value.get("head_sha"), str) and GIT_SHA1.fullmatch(value["head_sha"]), "invalid policy head_sha")
     else:
         require(value.get("head_sha") is None, "head_sha must be null without pr anchors")
     return value
