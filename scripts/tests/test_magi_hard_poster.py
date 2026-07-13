@@ -226,7 +226,8 @@ if "--method" in args and "PATCH" in args:
             self.assertEqual(entries["MEL-001"]["translation_status"], "pending")
             self.assertEqual(entries["BAL-001"]["translation_status"], "pending")
             self.assertIn("⚠ 要人判断（未翻訳）", entries["MEL-001"]["body_ja"])
-            self.assertIn("English body", entries["MEL-001"]["body_ja"])
+            self.assertIn("> ⚠ 翻訳に失敗したため原文を掲載しています。内容を人が確認してください。",
+                          entries["MEL-001"]["body_ja"])
 
     def test_build_rejects_bad_translations_and_false_positive(self):
         cases = [
@@ -255,8 +256,7 @@ if "--method" in args and "PATCH" in args:
             self.assertEqual(result.returncode, 0, result.stderr)
             summary = json.loads(output.read_text())["summary_body"]
             self.assertIn("<details>", summary)
-            for value in ("CAS-001", "誤検知", "d" * 64):
-                self.assertIn(value, summary)
+            self.assertIn("- CAS-001 [casper] 除外 finding: 誤検知 (raw:%s)" % ("d" * 64), summary)
 
     def test_post_head_drift_stops_all_api_posts(self):
         with tempfile.TemporaryDirectory() as name:
