@@ -1,4 +1,5 @@
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -13,6 +14,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "magi-aggregate.py"
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
+SPEC = importlib.util.spec_from_file_location("magi_aggregate", SCRIPT)
+MAGI_AGGREGATE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MAGI_AGGREGATE)
 
 
 def status_for(persona, result, chunks=1, execution_status="complete"):
@@ -345,6 +349,88 @@ No findings
         five, six = json.loads(first_output.read_text()), json.loads(second_output.read_text())
         self.assertEqual([(item["id"], item["persona"]) for item in five["findings"] if item["persona"] in {"melchior", "balthasar"}],
                          [(item["id"], item["persona"]) for item in six["findings"] if item["persona"] in {"melchior", "balthasar"}])
+
+    def test_five_personas_keep_finding_ids_when_leliel_is_added(self):
+        run = self.make_run()
+        personas = (
+            ("casper", "CASPER", "CAS", "## Compliance Status"),
+            ("metatron", "METATRON", "MET", "## Security Assessment"),
+            ("sandalphon", "SANDALPHON", "SAN", "## Deployment Assessment"),
+        )
+        for persona, name, prefix, assessment in personas:
+            result = run / "results" / (persona + ".md")
+            result.write_text(
+                f"=== CHUNK: src/{persona}.py (1) ===\n"
+                "## Review\n"
+                f"### [HIGH] src/{persona}.py:1 — {persona} finding\n"
+                "本文。\n"
+                f"{assessment}\n確認済み。\n"
+                f"<!-- MAGI_COMPLETE persona={persona} chunk=0001 -->\n",
+                encoding="utf-8",
+            )
+            self.write_status(run, persona, result)
+
+        manifest = {
+            "schema_version": "persona-manifest/v1",
+            "personas": [
+                {"ordinal": ordinal, "key": key, "name": name, "id_prefix": prefix}
+                for ordinal, (key, name, prefix) in enumerate((
+                    ("melchior", "MELCHIOR", "MEL"),
+                    ("balthasar", "BALTHASAR", "BAL"),
+                    ("casper", "CASPER", "CAS"),
+                    ("metatron", "METATRON", "MET"),
+                    ("sandalphon", "SANDALPHON", "SAN"),
+                ), 1)
+            ],
+        }
+        manifest_path = run / "manifest-five-in-test.json"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        first, first_output = self.parse(run, manifest_path)
+
+        leliel = run / "results/leliel.md"
+        leliel.write_text(
+            "=== CHUNK: src/leliel.py (1) ===\n"
+            "## Review\n"
+            "### [LOW] src/leliel.py:1 — leliel finding\n"
+            "本文。\n"
+            "## Impact Assessment\n確認済み。\n"
+            "<!-- MAGI_COMPLETE persona=leliel chunk=0001 -->\n",
+            encoding="utf-8",
+        )
+        self.write_status(run, "leliel", leliel)
+        manifest["personas"].append({"ordinal": 6, "key": "leliel", "name": "LELIEL", "id_prefix": "LEL"})
+        manifest_six_path = run / "manifest-six-in-test.json"
+        manifest_six_path.write_text(json.dumps(manifest), encoding="utf-8")
+        second, second_output = self.parse(run, manifest_six_path, "six-in-test.json")
+
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(second.returncode, 0, second.stderr)
+        five = json.loads(first_output.read_text())
+        six = json.loads(second_output.read_text())
+        first_ids = {item["id"] for item in five["findings"]}
+        second_ids = {item["id"] for item in six["findings"] if item["persona"] != "leliel"}
+        self.assertEqual(first_ids, second_ids)
+
+    def test_validate_policy_accepts_git_head_sha_for_hard_github_pr(self):
+        policy = json.loads((FIXTURES / "common/policy.json").read_text())
+        policy.update({"workflow": "hard", "renderer": "github", "anchor_policy": "pr",
+                       "false_positive_policy": "exclude", "head_sha": "a" * 40,
+                       "diff_source": {"kind": "file"}})
+        self.assertIs(MAGI_AGGREGATE.validate_policy(policy), policy)
+
+    def test_validate_policy_rejects_non_git_head_shas(self):
+        policy = json.loads((FIXTURES / "common/policy.json").read_text())
+        policy.update({"workflow": "hard", "renderer": "github", "anchor_policy": "pr",
+                       "false_positive_policy": "exclude", "diff_source": {"kind": "file"}})
+        for value in ("a" * 64, "a" * 39, "a" * 41, "A" + "a" * 39, "g" * 40):
+            with self.subTest(head_sha=value):
+                policy["head_sha"] = value
+                with self.assertRaises(MAGI_AGGREGATE.SchemaError):
+                    MAGI_AGGREGATE.validate_policy(policy)
+
+    def test_validate_policy_accepts_none_anchor_with_null_head_sha(self):
+        policy = json.loads((FIXTURES / "common/policy.json").read_text())
+        self.assertIs(MAGI_AGGREGATE.validate_policy(policy), policy)
 
     def test_invalid_annotations_fail_open_per_entry(self):
         run = self.make_run()
