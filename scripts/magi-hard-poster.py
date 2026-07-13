@@ -17,6 +17,7 @@ SHA1 = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 JAPANESE = re.compile(r"[\u3040-\u30ff]")
 MARKER = re.compile(r"^<!-- magi-finding: [A-Za-z0-9][A-Za-z0-9._-]*@[0-9a-f]{40} -->$")
+PENDING_WARNING = "> ⚠ 翻訳に失敗したため原文を掲載しています。内容を人が確認してください。"
 
 
 class InputError(Exception):
@@ -169,9 +170,10 @@ def build(args):
             print("warning: %s is pending translation" % item["id"], file=sys.stderr)
         if warning:
             title = warning + " — " + title
-            body = warning + "\n\n" + body
             if status == "pending":
-                body += "\n\nEnglish body"
+                body = warning + "\n\n" + PENDING_WARNING + "\n\n" + body
+            else:
+                body = warning + "\n\n" + body
         scope = "inline" if isinstance(item["anchor"].get("path"), str) else "pr"
         anchor = {"path": item["anchor"]["path"], "line": item["anchor"]["line"],
                   "side": "RIGHT", "commit_id": sha} if scope == "inline" else None
@@ -184,7 +186,9 @@ def build(args):
     excluded = plan.get("excluded_findings", [])
     details = ""
     if excluded:
-        rows = "\n".join("- %s: %s (%s)" % (x.get("id", ""), x.get("reason_ja", ""), x.get("raw_sha256", "")) for x in excluded)
+        rows = "\n".join("- %s [%s] %s: %s (raw:%s)" % (
+            x.get("id", ""), x.get("persona", ""), x.get("title", ""),
+            x.get("reason_ja", ""), x.get("raw_sha256", "")) for x in excluded)
         details = "\n<details><summary>除外された finding</summary>\n\n%s\n</details>" % rows
     needs = [x["id"] for x in entries if x["needs_human"]]
     summary_body = ("<!-- magi-summary: @%s -->\n" % sha + "## MAGI hard review\n"
@@ -194,13 +198,13 @@ def build(args):
     atomic_write(args.output, canonical(output))
 
 
-def gh_call(gh, argv, timeout=30):
+def gh_call(gh, argv, limit=MAX_RESPONSE, timeout=30):
     try:
         result = subprocess.run([gh] + argv, capture_output=True, timeout=timeout)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise RuntimeError("gh invocation failed") from exc
     raw = result.stdout
-    if len(raw) > MAX_RESPONSE:
+    if len(raw) > limit:
         raise RuntimeError("gh response too large")
     try:
         decoded = raw.decode("utf-8", "strict")
@@ -225,6 +229,23 @@ def parse_response(text):
     except (json.JSONDecodeError, TypeError): return None
 
 
+def fetch_comments(gh, endpoint):
+    rc, out, err = gh_call(gh, ["api", endpoint, "--method", "GET", "-F", "per_page=100",
+                                "--paginate", "--jq", ".[]"], limit=MAX_INPUT, timeout=120)
+    if rc:
+        raise RuntimeError("comment listing failed for %s: %s" % (endpoint, err.strip() or "gh exited with status %d" % rc))
+    comments = []
+    for line in out.splitlines():
+        try:
+            comment = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("comment listing returned invalid JSON for %s" % endpoint) from exc
+        if not isinstance(comment, dict):
+            raise RuntimeError("comment listing returned a non-object for %s" % endpoint)
+        comments.append(comment)
+    return comments
+
+
 def post(args):
     plan = load_json(args.post_plan)
     need(plan.get("schema_version") == "post-plan/v1" and SHA1.fullmatch(plan.get("head_sha", "")), "invalid post plan")
@@ -239,11 +260,7 @@ def post(args):
         raise SystemExit(3)
     comments = []
     for endpoint in ("issues/%s/comments" % args.pr, "pulls/%s/comments" % args.pr):
-        rc, out, _ = gh_call(gh, ["api", "%s/%s" % (repo_path, endpoint), "--method", "GET",
-                                  "--paginate", "--slurp", "-F", "per_page=100"])
-        if rc: continue
-        value = parse_response(out)
-        if isinstance(value, list): comments.extend(value if not (value and isinstance(value[0], list)) else sum(value, []))
+        comments.extend(fetch_comments(gh, "%s/%s" % (repo_path, endpoint)))
     markers = {entry["marker"] for entry in plan["entries"] if any(entry["marker"] in str(c.get("body", "")) for c in comments if isinstance(c, dict))}
     summary_marker = "<!-- magi-summary: @%s -->" % plan["head_sha"]
     failures = []
