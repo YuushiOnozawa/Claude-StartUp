@@ -62,10 +62,10 @@
 | IMPL-03.1-01 | PR #289（2495b82）— 外部先行変更（core README「外部先行変更（2026-07-14 記録）」参照） | implemented |
 | IMPL-03.1-02 | PR #289（同上） | implemented |
 | IMPL-03.1-03 | PR #289（同上） | implemented |
-| IMPL-03.1-04 | PR-B2（未実装。#289 により対象 5→3 箇所。SPEC-03.1-04 2026-07-14 改訂） | todo |
-| IMPL-03.1-05 | PR-C（未実装） | todo |
+| IMPL-03.1-04 | PR #308（c199422。3箇所を絶対パス化。Codex 敵対的レビュー Approve。2026-07-14 マージ） | implemented |
+| IMPL-03.1-05 | PR #307（d2822c5。800-ollama-models.sh 削除 + 401 コメント除去。2026-07-14 マージ） | implemented |
 | IMPL-03.1-06 | 2026-07-14 検証済み: CASPER 以外の5体に OLLAMA_MODEL 残存。CASPER は PR #198 で Haiku 標準化済みのため行なしが正 | verified |
-| IMPL-03.1-07 | PR-C 検証で確認 | todo |
+| IMPL-03.1-07 | PR #307 で検証済み（`git diff setup/850-codex.sh` 差分なし） | verified |
 
 ## 注意
 
