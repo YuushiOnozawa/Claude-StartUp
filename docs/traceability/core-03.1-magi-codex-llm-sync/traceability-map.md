@@ -38,7 +38,7 @@
 | REQ-03.1-01 | SPEC-03.1-01（全ペルソナ SKILL.md から `エージェント定義` 行削除） | approved |
 | REQ-03.1-02 | SPEC-03.1-02（agents/leliel.md を git rm）, SPEC-03.1-03（Haiku fallback を agents/ 非依存に更新） | approved |
 | REQ-03.1-03 | SPEC-03.1-03（execution-steps.md の $AGENT_PATH/agents/ 参照除去） | approved |
-| REQ-03.1-04 | SPEC-03.1-04（スクリプト相対パスを $HOME/.claude/scripts/ 絶対パスに修正、5箇所） | approved |
+| REQ-03.1-04 | SPEC-03.1-04（スクリプト相対パスを $HOME/.claude/scripts/ 絶対パスに修正、3箇所。2026-07-14 改訂） | approved |
 | REQ-03.1-05 | SPEC-03.1-05（setup/800-ollama-models.sh を git rm） | approved |
 | REQ-03.1-06 | SPEC-03.1-06（追加実装なし。SKILL.md の OLLAMA_MODEL 行は維持） | approved |
 | REQ-03.1-07 | SPEC-03.1-07（追加実装なし。850-codex.sh は現状維持。core-03.3 に委任） | approved |
@@ -50,10 +50,22 @@
 | SPEC-03.1-01（全ペルソナ SKILL.md エージェント定義行削除） | IMPL-03.1-01（PR-A） | draft |
 | SPEC-03.1-02（agents/leliel.md を git rm） | IMPL-03.1-02（PR-A。IMPL-03.1-01 と同時） | draft |
 | SPEC-03.1-03（execution-steps.md の agents/ 参照除去・Haiku fallback 更新） | IMPL-03.1-03（PR-B1） | draft |
-| SPEC-03.1-04（スクリプト相対パスを絶対パスに修正、5箇所） | IMPL-03.1-04（PR-B2。PR-B1 と別 PR） | draft |
+| SPEC-03.1-04（スクリプト相対パスを絶対パスに修正、3箇所。2026-07-14 改訂） | IMPL-03.1-04（PR-B2。PR-B1 と別 PR） | draft |
 | SPEC-03.1-05（setup/800-ollama-models.sh 削除） | IMPL-03.1-05（PR-C） | draft |
 | SPEC-03.1-06（OLLAMA_MODEL 行維持） | IMPL-03.1-06（非変更検証。PR-A で確認） | draft |
 | SPEC-03.1-07（850-codex.sh 現状維持） | IMPL-03.1-07（非変更検証。PR-C で確認） | draft |
+
+## Step 6 — 実装項目 → 実装参照（2026-07-14 更新）
+
+| IMPL ID | 実装参照 | 状況 |
+|---|---|---|
+| IMPL-03.1-01 | PR #289（2495b82）— 外部先行変更（core README「外部先行変更（2026-07-14 記録）」参照） | implemented |
+| IMPL-03.1-02 | PR #289（同上） | implemented |
+| IMPL-03.1-03 | PR #289（同上） | implemented |
+| IMPL-03.1-04 | PR-B2（未実装。#289 により対象 5→3 箇所。SPEC-03.1-04 2026-07-14 改訂） | todo |
+| IMPL-03.1-05 | PR-C（未実装） | todo |
+| IMPL-03.1-06 | 2026-07-14 検証済み: CASPER 以外の5体に OLLAMA_MODEL 残存。CASPER は PR #198 で Haiku 標準化済みのため行なしが正 | verified |
+| IMPL-03.1-07 | PR-C 検証で確認 | todo |
 
 ## 注意
 
