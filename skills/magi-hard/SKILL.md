@@ -131,7 +131,7 @@ for persona in melchior balthasar casper metatron sandalphon; do
   PERSONA_NAME=$(printf '%s' "$persona" | tr '[:lower:]' '[:upper:]')
   IMPACT_ARG=()
   if [ "$persona" = balthasar ]; then
-    IMPACT_CONTEXT=$(bash scripts/magi-impact-context.sh "$(cat "$RUN_DIR/diff/input.filtered.patch")" 2>/dev/null || true)
+    IMPACT_CONTEXT=$(bash "$HOME/.claude/scripts/magi-impact-context.sh" "$(cat "$RUN_DIR/diff/input.filtered.patch")" 2>/dev/null || true)
     export MAGI_IMPACT_CONTEXT="$IMPACT_CONTEXT"
   fi
   MAGI_RUN_DIR="$RUN_DIR" MAGI_INPUT_FILE="$RUN_DIR/diff/input.filtered.patch" \
