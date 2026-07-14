@@ -10,7 +10,7 @@
 | `agents/leliel.md` | 存在する（削除対象） |
 | 6ペルソナ SKILL.md の `エージェント定義` 行 | 全件残存（削除対象） |
 | `execution-steps.md` の `$AGENT_PATH` 参照 | L8・L112-130 に残存（除去対象） |
-| スクリプト相対パス参照（5箇所） | 残存（絶対パスへ修正対象） |
+| スクリプト相対パス参照（旧5箇所。#289 後は3箇所） | 残存（絶対パスへ修正対象） |
 | `setup/800-ollama-models.sh` | 存在する（`setup.sh` から未参照。削除対象） |
 | `setup/850-codex.sh` | 存在する（変更なし。core-03.3 に委任） |
 
@@ -23,12 +23,28 @@
 | IMPL-03.1-01 | 6ペルソナ SKILL.md から `エージェント定義` 行を削除 | SPEC-03.1-01 | `skills/{balthasar,casper,leliel,melchior,metatron,sandalphon}/SKILL.md` | `/dev-flow` |
 | IMPL-03.1-02 | `agents/leliel.md` を `git rm` | SPEC-03.1-02 | `agents/leliel.md` | `/dev-flow`（PR-A で IMPL-03.1-01 と同時） |
 | IMPL-03.1-03 | `execution-steps.md` の `$AGENT_PATH`・`agents/` 参照除去・Haiku fallback 更新 | SPEC-03.1-03 | `skills/magi-common/references/execution-steps.md` | `/dev-flow` |
-| IMPL-03.1-04 | スクリプト相対パスを絶対パスに修正（5箇所） | SPEC-03.1-04 | `skills/magi-common/references/execution-steps.md`・`skills/magi-fast/SKILL.md`・`skills/magi-hard/SKILL.md` | `/dev-flow`（PR-B2。PR-B1 とは別 PR） |
+| IMPL-03.1-04 | スクリプト相対パスを絶対パスに修正（3箇所。2026-07-14 改訂） | SPEC-03.1-04 | `skills/magi-common/references/execution-steps.md`・`skills/magi-hard/SKILL.md` | `/dev-flow`（PR-B2。PR-B1 とは別 PR） |
 | IMPL-03.1-05 | `setup/800-ollama-models.sh` を `git rm`・`setup/401-ollama.sh` のコメント削除 | SPEC-03.1-05 | `setup/800-ollama-models.sh`・`setup/401-ollama.sh` | `/codegen` + `/commit` |
 | IMPL-03.1-06 | `OLLAMA_MODEL`・`PERSONA_NAME` 行が残っていることの確認（非変更検証） | SPEC-03.1-06 | なし（変更なし） | PR-A 検証で確認 |
 | IMPL-03.1-07 | `setup/850-codex.sh` が変更されていないことの確認（非変更検証） | SPEC-03.1-07 | なし（変更なし） | PR-C 検証で確認 |
 
 ---
+
+## 実装状況（2026-07-14 記録）
+
+| IMPL ID | 状況 | 実装参照 |
+|---|---|---|
+| IMPL-03.1-01 | ✅ 実装済み | PR #289（2495b82。外部先行変更: Epic MAGI-HARD トリアージ再設計の Feature 1 に同梱） |
+| IMPL-03.1-02 | ✅ 実装済み | PR #289（同上。`agents/leliel.md` 削除済み） |
+| IMPL-03.1-03 | ✅ 実装済み | PR #289（同上。agents/・$AGENT_PATH 参照 0 件、Haiku fallback は task-instruction.md 方式） |
+| IMPL-03.1-04 | 未実装 | PR-B2 として実施。#289 により対象は旧5箇所 → 現3箇所（SPEC-03.1-04 2026-07-14 改訂参照） |
+| IMPL-03.1-05 | 未実装 | PR-C として実施 |
+| IMPL-03.1-06 | ✅ 確認済み（2026-07-14） | CASPER 以外の5体に OLLAMA_MODEL 残存を確認。下記検証コマンドの「各ファイル 1 match」は誤りで、CASPER は仕様承認前の PR #198（Haiku 標準化）により OLLAMA_MODEL 行なしが正（SPEC-03.1-06「現状値を維持」と整合） |
+| IMPL-03.1-07 | PR-C 検証で確認 | — |
+
+> PR-A / PR-B1 は独立 PR としては実施しない（#289 が同内容を消化済みのため）。
+> 検証は 2026-07-14 に本セッションで実施: agents/ 参照 0 件・AGENT_PATH 0 件・
+> task-instruction/CLAUDE_RULES 残存・`agents/leliel.md` 不存在・`agents/code-reviewer.md` 存在を確認。
 
 ## PR 分割
 
@@ -109,31 +125,30 @@ grep -n "CLAUDE_RULES" skills/magi-common/references/execution-steps.md
 
 ### PR-B2: スクリプト相対パスを絶対パスに修正（IMPL-03.1-04）
 
-**作業内容**:
-- スクリプト相対パスを絶対パスに修正（5箇所）:
-  - `execution-steps.md` L26: `bash scripts/magi-diff-filter.sh` → `bash "$HOME/.claude/scripts/magi-diff-filter.sh"`
-  - `execution-steps.md` L31: `bash scripts/magi-split-hunk.sh 400` → `bash "$HOME/.claude/scripts/magi-split-hunk.sh" 400`
-  - `skills/magi-fast/SKILL.md` L36: `bash scripts/magi-diff-filter.sh` → `bash "$HOME/.claude/scripts/magi-diff-filter.sh"`
-  - `skills/magi-hard/SKILL.md` L34: `bash scripts/magi-diff-filter.sh` → `bash "$HOME/.claude/scripts/magi-diff-filter.sh"`
-  - `skills/magi-hard/SKILL.md` L42: `bash scripts/magi-impact-context.sh` → `bash "$HOME/.claude/scripts/magi-impact-context.sh"`
+**作業内容**（2026-07-14 改訂: #289 により旧5箇所 → 現3箇所。SPEC-03.1-04 改訂版参照）:
+- スクリプト相対パスを絶対パスに修正（3箇所）:
+  - `execution-steps.md` L153: `bash scripts/magi-diff-filter.sh` → `bash "$HOME/.claude/scripts/magi-diff-filter.sh"`
+  - `execution-steps.md` L186: `bash scripts/magi-split-hunk.sh 400` → `bash "$HOME/.claude/scripts/magi-split-hunk.sh" 400`
+  - `skills/magi-hard/SKILL.md` L134: `bash scripts/magi-impact-context.sh` → `bash "$HOME/.claude/scripts/magi-impact-context.sh"`
+- 対象外: `execution-steps.md` L268-269 の `ollama-check.sh`（repo 版優先 + 絶対パスフォールバックの二段構えで既に cwd 非依存）
 
 **実行方法**: `/dev-flow`（magi-fast/hard の中枢ファイルを変更するため）
 
 **依存関係**: PR-B1 が merge 済みであることを推奨（同一ファイル `execution-steps.md` への変更のため、コンフリクトを避けるため順序付け）
 
-**検証**:
+**検証**（2026-07-14 改訂）:
 ```bash
-# bash scripts/ 相対パスがないこと
+# bash scripts/ 相対パスがないこと（ollama-check のフォールバック一段目は対象外）
 grep -rn "bash scripts/" \
   skills/magi-fast/SKILL.md skills/magi-hard/SKILL.md \
-  skills/magi-common/references/execution-steps.md
+  skills/magi-common/references/execution-steps.md | grep -v "ollama-check"
 # → 0 matches
 
 # $HOME/.claude/scripts/ 形式になっていること
 grep -rn 'bash "\$HOME/.claude/scripts/' \
   skills/magi-fast/SKILL.md skills/magi-hard/SKILL.md \
   skills/magi-common/references/execution-steps.md
-# → 5 matches
+# → 3 matches
 ```
 
 手動検証（SPEC-03.1-04）:

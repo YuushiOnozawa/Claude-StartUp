@@ -150,7 +150,7 @@ INPUT_RAW_FILE="$MAGI_PERSONA_TMPDIR/input.raw"
 FILTERED_INPUT_CANDIDATE="$MAGI_PERSONA_TMPDIR/input.filtered.candidate"
 CHUNK_SECTIONS_FILE="$MAGI_PERSONA_TMPDIR/chunk-sections"
 
-bash scripts/magi-diff-filter.sh < "$INPUT_RAW_FILE" > "$FILTERED_INPUT_CANDIDATE"
+bash "$HOME/.claude/scripts/magi-diff-filter.sh" < "$INPUT_RAW_FILE" > "$FILTERED_INPUT_CANDIDATE"
 ```
 
 ```text
@@ -183,7 +183,7 @@ else:
 `diff-hash` 不一致、既存 filtered input の不一致・symlink・非 regular は設定エラーとして停止し、今回の persona は filtered input、result、status をその run dir に作成せず、モデルも呼ばない。同一 bytes/hash の regular non-symlink file は同じ run の persona 間で共有再利用する。これにより別 diff の run dir へ結果を格納せず、同一 `MAGI_RUN_DIR` を使う 6 persona が同じ filtered input を利用できる。上記の新規保存または共有再利用と同一性検証後にだけ split を行う。
 
 ```bash
-bash scripts/magi-split-hunk.sh 400 < "$FILTERED_INPUT_FILE" > "$CHUNK_SECTIONS_FILE"
+bash "$HOME/.claude/scripts/magi-split-hunk.sh" 400 < "$FILTERED_INPUT_FILE" > "$CHUNK_SECTIONS_FILE"
 ```
 
 sink mode の status の `input` は、`path: "diff/input.filtered.patch"`、その path のファイルの raw bytes、同じファイルの SHA-256 で固定する。取得元の raw file、filter 前の `$MAGI_INPUT_FILE`、候補ファイル、コマンド置換で再構成した文字列を path／bytes／hash のいずれにも混在させてはならない。legacy mode の入力 identity は `$FILTERED_INPUT_FILE` の raw bytes を対象とする。
