@@ -89,5 +89,5 @@ Fable 02 は core-03.3、03 は core-03.4、08 は core-03.3 と重複する。
 | 実装 | verified | 全 IMPL 完了（2026-07-14）+ 全テスト PASS（2026-07-16）。PR-A/B1 は #289 で先行消化、PR-B2 = #308、PR-C = #307 |
 | test-plan.md | approved | Step 8 完了（2026-07-16、同日人間承認）。全 23 項目 PASS（Step 7 保留の live/repo 同一性確認含む） |
 | design-review.md | approved | Step 7 完了（2026-07-16、Codex + BALTHASAR。同日人間承認）。HIGH 1 件は spec 改訂で解消。保留 1 件は Step 8 へ |
-| traceability-map.md | draft | 各工程で更新 |
-| traceability-audit.md | todo | Step 9 で作成 |
+| traceability-map.md | approved | 全工程分を記録済み（Step 9 監査 A-001 で Step 5 を verified に整合。2026-07-16） |
+| traceability-audit.md | approved | Step 9 完了（2026-07-16、Codex 二次確認 + 同日人間承認）。指摘 5 件全クローズ（修正 4 / 誤検知 1）。**core-03.1 verified** |
