@@ -12,7 +12,7 @@
 | TEST-03.1-02 | SPEC-03.1-02 | repo `agents/leliel.md` 不存在 / 対象外の `agents/code-reviewer.md` が誤削除されていない（境界条件）/ live `~/.claude/agents/leliel.md` 不存在（受け入れ条件「リポジトリ・実働環境とも」） | 自動（ls） | PASS（3項目） |
 | TEST-03.1-03 | SPEC-03.1-03 | execution-steps.md に `$AGENT_PATH`・`agents/` が 0 件（fail 基準）/ Haiku fallback に `task-instruction` あり / CASPER 用 `CLAUDE_RULES` あり | 自動（grep） | PASS（4項目） |
 | TEST-03.1-04 | SPEC-03.1-04 | `bash scripts/` 相対参照なし（ollama-check 二段フォールバック一段目は対象外の境界条件）/ `bash "$HOME/.claude/scripts/` 形式がちょうど 3 箇所 | 自動（grep） | PASS（2項目） |
-| TEST-03.1-05 | SPEC-03.1-04 | 別プロジェクト cwd からのスクリプト解決（差分出力または「差分なし」が返り、not found エラーが出ない） | 手動 | PASS（2026-07-14 実施済みの検証を流用。implementation-plan「実装状況」参照） |
+| TEST-03.1-05 | SPEC-03.1-04 | 別プロジェクト cwd からの完走（差分検出 → filter → split → **Ollama モデル実呼び出し**まで） | 手動 E2E | PASS（2026-07-14 スクリプト解決検証 + **2026-07-16 フル E2E**: 一時 git repo から qwen2.5-coder:7b 呼び出しまで完走、モデルが注入バグを正しく検出。監査 A-005 対応） |
 | TEST-03.1-06 | SPEC-03.1-05 | `setup/800-ollama-models.sh` 不存在 / `setup/401-ollama.sh` に言及なし（fail 基準）/ `setup/setup.sh` から参照なし（fail 基準） | 自動（ls + grep） | PASS（3項目） |
 | TEST-03.1-07 | SPEC-03.1-06 | LELIEL=`llama3.1:8b`・METATRON=`granite3.3:8b`（2026-07-16 改訂仕様の現状値） | 自動（grep） | PASS（2項目） |
 | TEST-03.1-08 | SPEC-03.1-07 | `setup/850-codex.sh` が作成コミット（#255 / f1f5aef）以降変更されていない | 自動（git log） | PASS（1項目） |
