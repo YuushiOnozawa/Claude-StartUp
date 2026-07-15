@@ -69,7 +69,8 @@ grep -rn "agents/" \
 # OLLAMA_MODEL・PERSONA_NAME 行が残っていること（IMPL-03.1-06）
 grep -c "OLLAMA_MODEL" skills/balthasar/SKILL.md skills/casper/SKILL.md \
   skills/leliel/SKILL.md skills/melchior/SKILL.md skills/metatron/SKILL.md skills/sandalphon/SKILL.md
-# → 各ファイル 1 match
+# → CASPER 以外の5ファイルは 1 match。CASPER は PR #198（Haiku 標準化・仕様承認前）により
+#   OLLAMA_MODEL 行なし = 0 match が正（SPEC-03.1-06「現状値を維持」と整合。2026-07-16 設計レビューで注記）
 
 # agents/leliel.md が存在しないこと
 ls agents/leliel.md 2>&1 | grep "No such file"

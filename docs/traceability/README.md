@@ -1,6 +1,6 @@
 # トレーサビリティ全体ボード
 
-最終更新: 2026-07-14（traceability-board-update: core-03.1 実装完了・implemented）
+最終更新: 2026-07-16（core-03.1 design-review approved・SPEC-03.1-06 改訂再承認）
 
 分類元: [docs/planning/fable-traceability-classification.md](../planning/fable-traceability-classification.md)
 運用手順: `/traceability-flow`（各 Step のスキル一覧と進行判定）
@@ -9,7 +9,7 @@
 |---|---|---|---|---|---|---|---|---|---|
 | [core-01-environment-scope](core-01-environment-scope/README.md) — 対応環境スコープ・優先度の未確定（旧 core-07） | 要確認 | medium | **approved** | **approved** | **approved** | todo | todo | draft | todo |
 | [core-02-live-deploy-drift](core-02-live-deploy-drift/README.md) — 実働環境で生まれた開発内容の還流経路が未定義（旧 core-05、旧名「本番とリポジトリの正の分裂」） | 必須 | high | **approved** | **approved** | **approved** | **implemented** | **approved** | **approved** | **verified** |
-| [core-03.1-magi-codex-llm-sync](core-03.1-magi-codex-llm-sync/README.md) — MAGI/Codex/ローカルLLM の実体・参照・割当ズレ（旧 core-02） | 必須 | high | **approved** | **approved** | **approved** | **implemented** | todo | draft | todo |
+| [core-03.1-magi-codex-llm-sync](core-03.1-magi-codex-llm-sync/README.md) — MAGI/Codex/ローカルLLM の実体・参照・割当ズレ（旧 core-02） | 必須 | high | **approved** | **approved** | **approved** | **implemented** | **approved** | draft | todo |
 | [core-03.2-knowledge-distill-store](core-03.2-knowledge-distill-store/README.md) — hooks/蒸留/知識ストアの二重化・欠落・密結合（旧 core-03） | 必須 | high | **approved** | **approved** | **approved** | todo | todo | draft | todo |
 | [core-03.3-setup-readiness](core-03.3-setup-readiness/README.md) — ワンライナー展開後の実行可能状態保証（旧 core-01） | 必須 | high | **approved** | **approved** | **approved** | todo | todo | draft | todo |
 | [core-03.4-continuous-assurance](core-03.4-continuous-assurance/README.md) — ドキュメント・CI・verify の継続保証不足（旧 core-06） | 必須 | high | **approved** | **approved** | **approved** | todo | todo | draft | todo |
@@ -17,7 +17,7 @@
 
 ## 次のアクション候補
 
-- core-03.1: ✅ 実装完了（2026-07-14。PR-A/B1 は #289 で先行消化、PR-B2 = #308、PR-C = #307）→ 次は design-review（Step 7）
+- core-03.1: ✅ design-review 完了（2026-07-16 approved。SPEC-03.1-06 の #282 ドリフト改訂も同日再承認）→ 次は test-plan（Step 8。live スクリプト同一性確認の保留 1 件を観点に含める）
 - core-03.2: impl-plan approved → 実装（Step 5/6）開始可能
 - core-03.3: impl-plan approved → 実装（Step 5/6）開始可能
 - core-03.4: impl-plan approved → 実装（Step 5/6）開始可能
