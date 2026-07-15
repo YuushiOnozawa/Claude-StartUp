@@ -73,6 +73,19 @@
 |---|---|---|---|
 | SPEC-03.1-01〜07 + IMPL-03.1-01〜07（実装後レビュー） | Codex（主）+ BALTHASAR（gemma4:e4b-it-qat） | 指摘 6 件 = 修正済み 2（SPEC-03.1-06 を #282 ドリフトで改訂・2026-07-16 再承認済み / implementation-plan PR-A 検証コマンドの CASPER 例外注記）/ 保留 1（live スクリプト同一性確認 → Step 8）/ 対象外 3（850-codex.sh plugin は要求範囲外・#289 互換は別 Epic で E2E 済み・Haiku fallback 根拠は既記載）。design-review は 2026-07-16 人間承認済み | design-review.md |
 
+## Step 8 — 仕様 → テスト（2026-07-16 実施。全 PASS）
+
+| SPEC ID | 対応 TEST | 区分 | 結果 |
+|---|---|---|---|
+| SPEC-03.1-01 | TEST-03.1-01 | 自動（grep） | PASS |
+| SPEC-03.1-02 | TEST-03.1-02（live 側含む） | 自動（ls） | PASS |
+| SPEC-03.1-03 | TEST-03.1-03 | 自動（grep） | PASS |
+| SPEC-03.1-04 | TEST-03.1-04（静的）+ TEST-03.1-05（別 cwd 手動。2026-07-14 実施分を流用） | 自動 + 手動 | PASS |
+| SPEC-03.1-05 | TEST-03.1-06 | 自動（ls + grep） | PASS |
+| SPEC-03.1-06 | TEST-03.1-07（改訂仕様の現状値で検証） | 自動（grep） | PASS |
+| SPEC-03.1-07 | TEST-03.1-08 | 自動（git log） | PASS |
+| （Step 7 保留） | TEST-03.1-09（live/repo スクリプト同一性 5 本） | 自動（cmp） | PASS |
+
 ## 注意
 
 要求・仕様・実装計画・テスト設計の各段階で更新する。
