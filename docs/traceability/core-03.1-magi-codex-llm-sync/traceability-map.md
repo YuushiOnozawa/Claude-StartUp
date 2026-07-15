@@ -67,6 +67,12 @@
 | IMPL-03.1-06 | 2026-07-14 検証済み: CASPER 以外の5体に OLLAMA_MODEL 残存。CASPER は PR #198 で Haiku 標準化済みのため行なしが正 | verified |
 | IMPL-03.1-07 | PR #307 で検証済み（`git diff setup/850-codex.sh` 差分なし） | verified |
 
+## Step 7 — 設計レビュー（2026-07-16 実施）
+
+| 対象 | レビュー実施者 | 結果 | 記録 |
+|---|---|---|---|
+| SPEC-03.1-01〜07 + IMPL-03.1-01〜07（実装後レビュー） | Codex（主）+ BALTHASAR（gemma4:e4b-it-qat） | 指摘 6 件 = 修正済み 2（SPEC-03.1-06 を #282 ドリフトで改訂・2026-07-16 再承認済み / implementation-plan PR-A 検証コマンドの CASPER 例外注記）/ 保留 1（live スクリプト同一性確認 → Step 8）/ 対象外 3（850-codex.sh plugin は要求範囲外・#289 互換は別 Epic で E2E 済み・Haiku fallback 根拠は既記載）。design-review は 2026-07-16 人間承認済み | design-review.md |
+
 ## 注意
 
 要求・仕様・実装計画・テスト設計の各段階で更新する。

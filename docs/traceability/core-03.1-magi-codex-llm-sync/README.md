@@ -60,6 +60,18 @@ MAGI-HARD トリアージ再設計 Epic の PR #289（feat(magi-sink-mode): MAGI
 - **補足**: implementation-plan.md の IMPL-03.1-06 検証コマンド（各ファイル OLLAMA_MODEL 1 match）は CASPER に関して仕様承認前の PR #198（CASPER Haiku 標準化）を反映しておらず誤り。SPEC-03.1-06 本文（「現状値を維持」）とは矛盾しない
 - **派生元**: docs/magi-hard-triage-redesign-2026-07-12.md / PR #289
 
+## 外部先行変更（2026-07-16 記録）
+
+Step 7 設計レビュー（Codex）で以下の未記録ドリフトを検出した:
+
+- **発見内容**: PR #282（fix: METATRON/LELIEL のモデルを VRAM 制約に適合、2026-07-12 マージ）が
+  LELIEL を `deepseek-r1:8b` → `llama3.1:8b`、METATRON を `devstral:latest` → `granite3.3:8b` に変更。
+  REQ/SPEC-03.1-06 が承認時（2026-07-07）に記載した具体モデル名と不一致になった
+- **方針**: モデル変更自体はユーザー決定済み（VRAM 制約適合・MAGI ローカルLLM移行決定）。
+  SPEC-03.1-06 を現状値に改訂し（2026-07-16）、spec を reviewing に戻して再承認を求める。
+  REQ-03.1-06 の本質（OLLAMA_MODEL 行の文書としての維持）は変わらない
+- **派生元**: PR #282 / Step 7 design-review.md（指摘 4）
+
 ## 重複・横断関係
 
 Fable 02 は core-03.3、03 は core-03.4、08 は core-03.3 と重複する。
@@ -72,10 +84,10 @@ Fable 02 は core-03.3、03 は core-03.4、08 は core-03.3 と重複する。
 | Document | Status | Notes |
 |---|---|---|
 | requirements.md | approved | 人間確認・承認済み（2026-07-07） |
-| specification.md | approved | 2026-07-07 承認。SPEC-03.1-04 を #289 後の現状に改訂し再承認（2026-07-14） |
+| specification.md | approved | 2026-07-07 承認。SPEC-03.1-04 改訂再承認（2026-07-14）、SPEC-03.1-06 改訂再承認（2026-07-16、#282 ドリフト取り込み） |
 | implementation-plan.md | approved | PR-A/B1/B2/C 分割・Codex レビュー対応済み。人間承認済み（2026-07-08） |
 | 実装 | implemented | 全 IMPL 完了（2026-07-14）。PR-A/B1 は #289 で先行消化、PR-B2 = #308、PR-C = #307 |
 | test-plan.md | draft | specification 確定後に更新 |
-| design-review.md | todo | Step 7 で作成 |
+| design-review.md | approved | Step 7 完了（2026-07-16、Codex + BALTHASAR。同日人間承認）。HIGH 1 件は spec 改訂で解消。保留 1 件は Step 8 へ |
 | traceability-map.md | draft | 各工程で更新 |
 | traceability-audit.md | todo | Step 9 で作成 |

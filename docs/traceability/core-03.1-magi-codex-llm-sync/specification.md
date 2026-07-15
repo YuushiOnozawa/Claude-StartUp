@@ -1,6 +1,7 @@
 # Specification: Core 03.1 — MAGI / Codex / ローカルLLM連携の実体・参照・割当ズレ
 
-> ステータス: approved（2026-07-07 人間確認済み）
+> ステータス: approved（SPEC-03.1-06 改訂を 2026-07-16 人間再承認済み）
+> 初回承認: 2026-07-07 / SPEC-03.1-04 改訂再承認: 2026-07-14 / SPEC-03.1-06 改訂再承認: 2026-07-16
 > 対応 requirements: approved（2026-07-07）
 
 ## 現状確認（2026-07-07）
@@ -210,9 +211,15 @@ cd ~/srcs/other-project && /magi-fast  # 「差分なし」ではなく正常動
 ## SPEC-03.1-06: SKILL.md の OLLAMA_MODEL 記載は維持する（追加実装なし）
 
 > REQ-03.1-06 対応
+> 2026-07-16 改訂（Step 7 設計レビューで発覚したドリフトの取り込み。同日人間再承認済み）
 
 - `OLLAMA_MODEL` 行は各 SKILL.md で現状値を維持する（「WindowsホストOllamaに必要なモデル」の文書として機能）
-- LELIEL: `deepseek-r1:8b`、METATRON: `devstral:latest`、他は現状のまま
+- **現状値（2026-07-16）**: LELIEL: `llama3.1:8b`、METATRON: `granite3.3:8b`、他は現状のまま
+
+> **外部先行変更による改訂**: 仕様承認（2026-07-07）時点の記載は LELIEL: `deepseek-r1:8b`、
+> METATRON: `devstral:latest` だったが、PR #282（fix: METATRON/LELIEL のモデルを VRAM 制約に
+> 適合させる、2026-07-12 マージ）が両者を変更した。本仕様の本質は「OLLAMA_MODEL 行を文書として
+> 維持する」ことであり、モデル名の具体値は現状（= ユーザー決定済みの VRAM 制約適合値）を正とする。
 
 ### 境界条件
 
