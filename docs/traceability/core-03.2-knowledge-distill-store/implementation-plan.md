@@ -156,6 +156,12 @@ mv ~/.claude/hooks/queue/knowledge-distill/pcloud/pending/* \
 
 ### PR-C: error-detector.sh リポジトリ追加 + setup/413（IMPL-03.2-03）
 
+> **✅ 完了（2026-07-17）**: [PR #322](https://github.com/YuushiOnozawa/Claude-StartUp/pull/322) merge 済み・live 検証 OK（配置・実行権限・PostToolUse 正規登録 1 件）。
+> - 実装ファイル: `setup/413-hooks-error-detector.sh`（新規）, `scripts/test-setup-hooks-registration.sh`（+12 テスト = 32 件）, `skills/self-improvement/SKILL.md`（正本参照修正）
+> - スコープ注記: 「repo 追加」は core-02 還流（PR-R4 = f9986f6）で先行完了。「setup.sh への source 追加」は glob 自動検出のため不要（本計画の記載は旧前提）
+> - 正本宣言: `hooks/error-detector.sh` が正本（skills/self-improvement/scripts/ 配下は複製）
+> - 判定補足: 本 PR の magi-fast は gate 修繕（#319 echo 対策 / #320 No findings 寛容化 / #321 completion OR 緩和）後、初の全 persona parse ok。HIGH 1 件は検証の上、人間判断で不採用
+
 **作業内容**:
 - `~/.claude/hooks/error-detector.sh` の内容を `hooks/error-detector.sh` として `git add`
 - `setup/413-hooks-error-detector.sh` を新設:

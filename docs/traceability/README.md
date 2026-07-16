@@ -1,6 +1,6 @@
 # トレーサビリティ全体ボード
 
-最終更新: 2026-07-16（core-03.2 PR-B 完了 = #317 merge・live 検証済み。traceability-board-update）
+最終更新: 2026-07-17（core-03.2 PR-C 完了 = #322 merge・live 検証済み。traceability-board-update）
 
 分類元: [docs/planning/fable-traceability-classification.md](../planning/fable-traceability-classification.md)
 運用手順: `/traceability-flow`（各 Step のスキル一覧と進行判定）
@@ -17,7 +17,7 @@
 
 ## 次のアクション候補
 
-- core-03.2: **実装進行中**。PR-A = #313・PR-B = #317 完了（2026-07-16 merge・live 検証済み）。次は PR-C（error-detector、独立）→ PR-D（lessons-learned ローカル化、PR-B 済みのため着手可）。ハードニング残件 #315・MAGI 誤検知改善 #314 は別トラック
+- core-03.2: **実装進行中**。PR-A = #313・PR-B = #317・PR-C = #322 完了（merge・live 検証済み）。残りは PR-D（lessons-learned ローカル化 + CLAUDE.md 変更）のみ。ハードニング残件 #315・MAGI 品質改善 #314（gate 修繕 #319/#320/#321 反映済み）は別トラック
 - core-03.3: impl-plan approved → 実装（Step 5/6）開始可能
 - core-03.4: impl-plan approved → 実装（Step 5/6）開始可能
 - core-03.1: ✅ **全工程完了・verified**（2026-07-16。core-02 に続き 2 例目）

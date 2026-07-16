@@ -45,7 +45,7 @@
 | SPEC-03.2-01（setup/410 SessionEnd→SessionStart 移行） | IMPL-03.2-01 | PR-A = [#313](https://github.com/YuushiOnozawa/Claude-StartUp/pull/313) | implemented（2026-07-16 merge・live 検証 4 項目 OK） |
 | SPEC-03.2-02（setup/410 log path 統一） | IMPL-03.2-01（PR-A で同時） | PR-A = [#313](https://github.com/YuushiOnozawa/Claude-StartUp/pull/313) | implemented（2026-07-16 merge・live 検証 4 項目 OK） |
 | SPEC-03.2-03（knowledge-distill.sh 記録層/配送層分離） | IMPL-03.2-02 | PR-B = [#317](https://github.com/YuushiOnozawa/Claude-StartUp/pull/317) | implemented（2026-07-16 merge・live 検証 OK。drain 条件の仕様改訂は spec 注記参照） |
-| SPEC-03.2-04（error-detector.sh リポジトリ追加） | IMPL-03.2-03 | PR-C | draft |
+| SPEC-03.2-04（error-detector.sh リポジトリ追加） | IMPL-03.2-03 | PR-C = [#322](https://github.com/YuushiOnozawa/Claude-StartUp/pull/322)（repo 追加は core-02 還流 PR-R4 で先行完了） | implemented（2026-07-17 merge・live 検証 OK） |
 | SPEC-03.2-05（lessons-learned ローカル化 + CLAUDE.md 変更） | IMPL-03.2-04, IMPL-03.2-05 | PR-D | draft |
 
 ## 注意
