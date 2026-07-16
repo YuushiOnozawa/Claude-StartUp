@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# knowledge-distill: SessionEnd hook — orchestrator
-# Extracts knowledge from session transcript and saves to Obsidian via Ollama.
+# knowledge-distill: SessionStart 起動（drain）+ 単発蒸留の orchestrator
+# Extracts knowledge from session transcript and saves to local staging (~/.local/share/knowledge-rag/sessions).
+# pCloud transfer is delegated to pcloud-sync.sh (core-01).
 set -euo pipefail
 # 終了コード方針（カテゴリ B / Issue #51）:
-#   exit 0 — 想定内スキップ（transcript なし・会話内容なし）、またはキュー追加（pCloud/Ollama 条件・成否問わず）
+#   exit 0 — 想定内スキップ（transcript なし・会話内容なし）、またはキュー追加（Ollama 条件・成否問わず）
 #   非ゼロ  — 想定外エラー（set -euo pipefail による自動終了。Claude Code ログに記録）
 
 HOOK_DIR="$(dirname "$0")"
@@ -19,8 +20,28 @@ HOOK_NAME="knowledge-distill"
 _OLLAMA_UP=0
 ollama_is_up && _OLLAMA_UP=1 || true
 
+# pCloud キューを pending に移行（リトライ実行時はスキップ）
+if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]]; then
+  # flock 競合時はスキップ。移行は毎回実行されるため、次回起動時に収束する。
+  mkdir -p "$QUEUE_LOCK_DIR"
+  if flock -n 9; then
+    for _item_file in "${QUEUE_BASE_DIR}/${HOOK_NAME}"/*.json; do
+      [[ -f "$_item_file" ]] || continue
+      if jq -e '.reason == "pcloud"' "$_item_file" >/dev/null 2>&1; then
+        _tmp_file="${_item_file}.tmp"
+        if jq '.reason = "pending"' "$_item_file" >"$_tmp_file" 2>/dev/null && mv "$_tmp_file" "$_item_file"; then
+          :
+        else
+          rm -f "$_tmp_file"
+        fi
+      fi
+    done
+  fi 9>"${QUEUE_LOCK_DIR}/knowledge-distill.lock"
+fi
+
 # キュー drain（リトライ実行時はスキップして無限ループを防ぐ）
-if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
+# 蒸留は Ollama 必須のため、停止中に drain すると retry_count を空費し dead-letter 化する
+if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]] && [[ $_OLLAMA_UP -eq 1 ]]; then
   _distill_retry_callback() {
     local item_file="$1"
     t=$(jq -e -r '.transcript_path // empty' "$item_file" 2>/dev/null) || { log_error "failed to read transcript_path from $item_file (null or missing)"; return 1; }
@@ -32,20 +53,13 @@ if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
   }
   _DISTILL_HOOK_DIR="$HOOK_DIR"
   _cnt_pending=$(queue_count "$HOOK_NAME" "pending" 2>/dev/null)
-  _cnt_pcloud=$(queue_count "$HOOK_NAME" "pcloud" 2>/dev/null)
-  _drain_count=$(( ${_cnt_pending:-0} + ${_cnt_pcloud:-0} ))
-  if [[ $_OLLAMA_UP -eq 1 ]]; then
-    _cnt_ollama=$(queue_count "$HOOK_NAME" "ollama" 2>/dev/null)
-    _drain_count=$(( _drain_count + ${_cnt_ollama:-0} ))
-  fi
+  _cnt_ollama=$(queue_count "$HOOK_NAME" "ollama" 2>/dev/null)
+  _drain_count=$(( ${_cnt_pending:-0} + ${_cnt_ollama:-0} ))
   if [[ $_drain_count -gt 0 ]]; then
     echo "⏳ knowledge-distill: 保留キュー ${_drain_count} 件をリトライ中..." >&2
   fi
   queue_drain "$HOOK_NAME" "pending" "_distill_retry_callback"
-  queue_drain "$HOOK_NAME" "pcloud" "_distill_retry_callback"
-  if [[ $_OLLAMA_UP -eq 1 ]]; then
-    queue_drain "$HOOK_NAME" "ollama" "_distill_retry_callback"
-  fi
+  queue_drain "$HOOK_NAME" "ollama" "_distill_retry_callback"
 fi
 
 # Read SessionEnd JSON from stdin
@@ -87,29 +101,14 @@ DATE=$(date +%Y-%m-%d)
 # TRANSCRIPT_BASE: transcript ファイル名（拡張子除く）を基準にする
 # → 初回実行・リトライで同一のファイル名が保証され、raw と distilled が対応する
 TRANSCRIPT_BASE="${TRANSCRIPT_PATH##*/}"; TRANSCRIPT_BASE="${TRANSCRIPT_BASE%.*}"
-OUTPUT_DIR="$HOME/pcloud/obsidian/sessions"
+OUTPUT_DIR="$HOME/.local/share/knowledge-rag/sessions"
 OUTPUT_FILE="${OUTPUT_DIR}/${DATE}-${TRANSCRIPT_BASE}-${PROJECT}.md"
-
-# pCloud マウント確認（マウント管理は systemd サービスの責務）
-if ! mountpoint -q "$HOME/pcloud"; then
-  log_error "pCloud not mounted at $HOME/pcloud"
-  echo "  ⏳ knowledge-distill: pCloud 未マウント → 保留 ($PROJECT)" >&2
-  if queue_push "$HOOK_NAME" "pcloud" "$TRANSCRIPT_PATH" "$PROJECT_CWD"; then
-    log_info "queued for retry: $TRANSCRIPT_PATH"
-    queue_notify_send "knowledge-distill" "pCloud 未マウントのため保留中 ($PROJECT)"
-  else
-    log_error "queue_push failed"
-  fi
-  exit 0
-fi
 
 mkdir -p "$OUTPUT_DIR"
 
-# Raw session log（初回のみ生成 — リトライ時はスキップ）
-if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]]; then
-  bash "${HOOK_DIR}/knowledge-distill-raw.sh" \
-    "$TRANSCRIPT_PATH" "$DATE" "$PROJECT" "$TRANSCRIPT_BASE" "$OUTPUT_DIR" || true
-fi
+# Raw session log（PR-A 以降は全てキュー drain（retry）経由のため、retry スキップだと raw が生成されない）
+bash "${HOOK_DIR}/knowledge-distill-raw.sh" \
+  "$TRANSCRIPT_PATH" "$DATE" "$PROJECT" "$TRANSCRIPT_BASE" "$OUTPUT_DIR" || true
 
 # Ollama 起動確認
 if [[ $_OLLAMA_UP -eq 0 ]]; then
