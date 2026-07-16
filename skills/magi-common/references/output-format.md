@@ -24,11 +24,24 @@ Description and improvement proposal.
 
 - Use `### [HIGH]`, `### [MEDIUM]`, `### [LOW]` as **separate entries** — NEVER combine as `[HIGH/MEDIUM/LOW]`
 - Every finding must include a specific reason explaining why it is a problem
-- Write "No findings" explicitly if there are none (do not omit)
+- The `line` in `filepath:line` must be a single positive integer only; ranges (`49-61`) and multiple line numbers (`49, 53`) are forbidden. For a range, write only its first line.
+- Write `No findings` explicitly only when there are zero findings; if any finding exists, never write `No findings`.
+- If there are zero findings, write `No findings` on the line immediately after the persona-specific Assessment header (`## ... Assessment` or `## Compliance Status`); if any finding exists, do not add `No findings` after the findings or elsewhere.
+- In a diff, a matching `-` line and `+` line form one change, not duplicate code. Do not report similar deletion/addition lines as a duplicate.
 - Sink mode only: when the prompt supplies a concrete completion marker, it must be the final non-empty line and must exactly match the supplied lowercase persona and four-digit chunk ID
 - Sink mode only: a successful zero-findings result requires both an explicit "No findings" in the Assessment and the matching completion marker
 - Legacy mode: no concrete completion marker is supplied; do not output a MAGI completion marker or the placeholder below
 
-Sink mode template only (replace both placeholders with the concrete values supplied in the prompt):
+## Finding Limits (mandatory)
 
+- Report at most 8 findings per chunk. If you find more, keep only the 8 most severe.
+- Consolidate repeated instances of the same pattern into ONE finding; mention "multiple occurrences" in the body instead of repeating the finding.
+- Never output two findings with the same headline.
+
+Sink mode terminal form only (replace the placeholders with the concrete values supplied in the prompt; this must be the final non-empty line):
+
+```
+## {Assessment Header}
+...
 <!-- MAGI_COMPLETE persona=<persona> chunk=<4桁ID> -->
+```

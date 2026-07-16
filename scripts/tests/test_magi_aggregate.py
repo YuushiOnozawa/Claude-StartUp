@@ -140,6 +140,29 @@ class MagiAggregateCliTests(unittest.TestCase):
         self.assertEqual(data["findings"][0]["body"], "説明。")
         self.assertEqual(data["findings"][2]["title"], "null を検査する")
 
+    def test_example_echo_finding_is_rejected_and_marks_chunk_malformed(self):
+        run = self.make_run(mel_text="""=== CHUNK: src/a.py (1) ===
+## Review
+### [MEDIUM] MAGI-EXAMPLE/sample.file:12 — example finding (format sample only)
+This fictional example must not be accepted as a finding.
+
+### [HIGH] src/a.py:12 — 実際の finding
+実際の本文。
+## Quality Assessment
+確認済み。
+<!-- MAGI_COMPLETE persona=melchior chunk=0001 -->
+""")
+        result, output = self.parse(run)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(output.read_text())
+        mel_findings = [item for item in data["findings"] if item["persona"] == "melchior"]
+        normal_mel_findings = [item for item in mel_findings if item["fallback"] is None]
+        self.assertEqual([item["title"] for item in normal_mel_findings], ["実際の finding"])
+        self.assertFalse(any((item.get("anchor", {}).get("path") or "").startswith("MAGI-EXAMPLE/")
+                             for item in mel_findings))
+        self.assertNotEqual(data["personas"][0]["parse_status"], "ok")
+        self.assertIn("example_echo_detected_0001", data["personas"][0]["diagnostics"])
+
     def test_partial_parse_adds_pr_level_fallback_and_retains_mid_body_marker(self):
         run = self.make_run(mel_text="""=== CHUNK: src/a.py (1) ===
 ## Review

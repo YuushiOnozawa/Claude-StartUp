@@ -335,7 +335,7 @@ def anchor(path=None, line=None):
             "start_side": None, "head_sha": None}
 
 
-def parse_markdown_chunk(lines, persona, ordinal, marker_required=True):
+def parse_markdown_chunk(lines, persona, ordinal, marker_required=True, diagnostics=None):
     expected_marker = "<!-- MAGI_COMPLETE persona=%s chunk=%04d -->" % (persona, ordinal)
     nonempty = [(index, line) for index, line in enumerate(lines) if line.strip()]
     marker_ok = bool(nonempty and nonempty[-1][1] == expected_marker)
@@ -344,6 +344,7 @@ def parse_markdown_chunk(lines, persona, ordinal, marker_required=True):
     end = nonempty[-1][0] if marker_ok else len(lines)
     findings = []
     malformed = False
+    chunk_diagnostics = []
     index = 0
     while index < end:
         line = lines[index]
@@ -351,6 +352,10 @@ def parse_markdown_chunk(lines, persona, ordinal, marker_required=True):
         if match:
             severity, path, number, title = match.groups()
             path_valid = path_is_safe_relative(path)
+            example_echo = path.startswith("MAGI-EXAMPLE/")
+            if example_echo:
+                malformed = True
+                chunk_diagnostics.append("example_echo_detected_%04d" % ordinal)
             start = index
             index += 1
             body_lines = []
@@ -364,7 +369,7 @@ def parse_markdown_chunk(lines, persona, ordinal, marker_required=True):
             title = normalise_text(title)
             if not path_valid or not title or not body:
                 malformed = True
-            else:
+            elif not example_echo:
                 raw_text = "\n".join([lines[start]] + body_lines)
                 raw = raw_text.encode("utf-8")
                 findings.append({"severity": severity, "path": path, "line": int(number), "title": title,
@@ -382,6 +387,8 @@ def parse_markdown_chunk(lines, persona, ordinal, marker_required=True):
             break
     useful = bool(findings) or (not malformed and marker_ok and no_findings)
     complete = (marker_ok if marker_required else True) and not malformed and (bool(findings) or no_findings)
+    if diagnostics is not None:
+        diagnostics.extend(chunk_diagnostics)
     return findings, useful, complete, marker_ok, malformed
 
 
@@ -419,7 +426,10 @@ def parse_persona(run_dir, person):
             if status and isinstance(status.get("chunks"), list) and ordinal <= len(status["chunks"]):
                 status_chunk = status["chunks"][ordinal - 1]
             marker_required = True
-            parsed, chunk_useful, chunk_complete, marker_ok, malformed = parse_markdown_chunk(chunk["lines"], key, ordinal, marker_required)
+            chunk_diagnostics = []
+            parsed, chunk_useful, chunk_complete, marker_ok, malformed = parse_markdown_chunk(
+                chunk["lines"], key, ordinal, marker_required, chunk_diagnostics)
+            diagnostics.extend(chunk_diagnostics)
             if isinstance(status_chunk, dict):
                 if status_chunk.get("source_label") != chunk["label"]:
                     diagnostics.append("result_chunk_source_label_mismatch_%04d" % ordinal)
