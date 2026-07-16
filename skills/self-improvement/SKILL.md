@@ -68,7 +68,7 @@ argument-hint: "<エントリタイプ: LRN|ERR|FEAT> または <自由記述>"
 PR マージ後、スクリプトを `~/.claude/hooks/` にコピーする:
 
 ```bash
-cp skills/self-improvement/scripts/error-detector.sh ~/.claude/hooks/
+cp hooks/error-detector.sh ~/.claude/hooks/
 chmod +x ~/.claude/hooks/error-detector.sh
 ```
 
