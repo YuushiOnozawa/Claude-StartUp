@@ -23,6 +23,7 @@ AUDIT_SCHEMA = "audit-annotations/v1"
 PLAN_SCHEMA = "review-plan/v1"
 HEADER = re.compile(r"^### \[(HIGH|MEDIUM|LOW)\] (.+):([1-9][0-9]*) — (.+)$")
 CHUNK = re.compile(r"^=== CHUNK: (.+) ===$")
+MAGI_MARKER = re.compile(r"^<!-- MAGI_COMPLETE persona=[^ ]+ chunk=[0-9]{4} -->$")
 # Sources: the "Assessment Header" entries in
 # skills/{melchior,balthasar,casper,metatron,sandalphon,leliel}/references/task-instruction.md.
 ASSESSMENT_HEADERS = frozenset((
@@ -336,6 +337,21 @@ def anchor(path=None, line=None):
             "start_side": None, "head_sha": None}
 
 
+def is_assessment_structurally_complete(lines, end):
+    """Return whether an assessment header has at least one non-empty body line."""
+    nonempty = [(index, line) for index, line in enumerate(lines[:end]) if line.strip()]
+    content_end = end
+    if nonempty and nonempty[-1][0] < end and MAGI_MARKER.fullmatch(nonempty[-1][1]):
+        content_end = nonempty[-1][0]
+    assessment_starts = [i for i, line in enumerate(lines[:content_end]) if line in ASSESSMENT_HEADERS]
+    for start in assessment_starts:
+        section_end = next((i for i in range(start + 1, content_end)
+                            if lines[i].startswith("## ")), content_end)
+        if any(line.strip() for line in lines[start + 1:section_end]):
+            return True
+    return False
+
+
 def parse_markdown_chunk(lines, persona, ordinal, marker_required=True, diagnostics=None):
     expected_marker = "<!-- MAGI_COMPLETE persona=%s chunk=%04d -->" % (persona, ordinal)
     nonempty = [(index, line) for index, line in enumerate(lines) if line.strip()]
@@ -380,6 +396,7 @@ def parse_markdown_chunk(lines, persona, ordinal, marker_required=True, diagnost
             malformed = True
         index += 1
     assessment_starts = [i for i, line in enumerate(lines[:end]) if line in ASSESSMENT_HEADERS]
+    assessment_complete = is_assessment_structurally_complete(lines, end)
     no_findings = False
     if not findings:
         for start in assessment_starts:
@@ -391,10 +408,11 @@ def parse_markdown_chunk(lines, persona, ordinal, marker_required=True, diagnost
             no_findings = any(NO_FINDINGS_LINE.fullmatch(line.strip())
                               for line in lines[:assessment_starts[0]])
     useful = bool(findings) or (not malformed and marker_ok and no_findings)
-    complete = (marker_ok if marker_required else True) and not malformed and (bool(findings) or no_findings)
+    completion_signal = marker_ok or assessment_complete if marker_required else True
+    complete = completion_signal and not malformed and (bool(findings) or no_findings)
     if diagnostics is not None:
         diagnostics.extend(chunk_diagnostics)
-    return findings, useful, complete, marker_ok, malformed
+    return findings, useful, complete, marker_ok, assessment_complete, malformed
 
 
 def make_fallback(persona, result_path, raw, partial, chunk_ordinals):
@@ -418,6 +436,9 @@ def parse_persona(run_dir, person):
     useful = False
     structural_complete = True
     chunk_ordinals = []
+    non_blocking_diagnostics = set()
+    markerless_chunk_count = 0
+    all_markerless_chunks_assessment_complete = True
     if raw is not None:
         chunks = split_result_chunks(raw)
         if not chunks:
@@ -432,20 +453,31 @@ def parse_persona(run_dir, person):
                 status_chunk = status["chunks"][ordinal - 1]
             marker_required = True
             chunk_diagnostics = []
-            parsed, chunk_useful, chunk_complete, marker_ok, malformed = parse_markdown_chunk(
+            parsed, chunk_useful, chunk_complete, marker_ok, assessment_complete, malformed = parse_markdown_chunk(
                 chunk["lines"], key, ordinal, marker_required, chunk_diagnostics)
             diagnostics.extend(chunk_diagnostics)
+            if not marker_ok:
+                markerless_chunk_count += 1
+                all_markerless_chunks_assessment_complete = (
+                    all_markerless_chunks_assessment_complete and assessment_complete)
+            if assessment_complete and not marker_ok:
+                marker_diagnostic = "marker_missing_structurally_complete_%04d" % ordinal
+                diagnostics.append(marker_diagnostic)
+                non_blocking_diagnostics.add(marker_diagnostic)
             if isinstance(status_chunk, dict):
                 if status_chunk.get("source_label") != chunk["label"]:
                     diagnostics.append("result_chunk_source_label_mismatch_%04d" % ordinal)
                 if status_chunk.get("marker") == "complete":
-                    if not marker_ok:
+                    if not marker_ok and not assessment_complete:
                         diagnostics.append("completion_marker_missing_or_mismatch_%04d" % ordinal)
                     if (status_chunk.get("output_bytes") != len(chunk["body"])
                             or status_chunk.get("output_sha256") != sha256_bytes(chunk["body"])):
                         diagnostics.append("result_chunk_output_identity_mismatch_%04d" % ordinal)
                 else:
-                    diagnostics.append("status_marker_not_complete_%04d" % ordinal)
+                    status_marker_diagnostic = "status_marker_not_complete_%04d" % ordinal
+                    diagnostics.append(status_marker_diagnostic)
+                    if assessment_complete:
+                        non_blocking_diagnostics.add(status_marker_diagnostic)
             if not chunk_complete:
                 structural_complete = False
             if malformed:
@@ -459,7 +491,18 @@ def parse_persona(run_dir, person):
                 chunk_ordinals.append(ordinal)
     else:
         structural_complete = False
-    if status is None or status.get("execution_status") != "complete" or diagnostics:
+    markerless_chunks_are_structurally_complete = (
+        markerless_chunk_count > 0 and all_markerless_chunks_assessment_complete)
+    if markerless_chunks_are_structurally_complete:
+        non_blocking_diagnostics.update({
+            "status_completed_chunks_inconsistent",
+            "status_execution_inconsistent",
+        })
+    blocking_diagnostics = [item for item in diagnostics if item not in non_blocking_diagnostics]
+    if (status is None
+            or (status.get("execution_status") != "complete"
+                and not markerless_chunks_are_structurally_complete)
+            or blocking_diagnostics):
         structural_complete = False
     # Exact duplicate removal is intentionally limited to one persona.
     seen = set(); deduped = []
