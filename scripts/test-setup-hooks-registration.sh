@@ -168,11 +168,53 @@ EOF
     [ "$(first_hook_command SessionStart knowledge-distill.sh)" = "$expected" ]
 }
 
+distill_deduplicates_canonical_session_start() {
+  local expected
+  create_fixture
+  expected="$(distill_command)"
+  write_settings "$(cat <<EOF
+{
+  "hooks": {
+    "SessionStart": [
+      {"matcher": "startup", "hooks": [{"type": "command", "command": "$expected"}]},
+      {"matcher": "resume", "hooks": [{"type": "command", "command": "$expected"}]}
+    ]
+  }
+}
+EOF
+)"
+
+  run_setup "$DISTILL_SCRIPT"
+  [ "$(hook_count SessionStart knowledge-distill.sh)" -eq 1 ] &&
+    [ "$(first_hook_command SessionStart knowledge-distill.sh)" = "$expected" ]
+}
+
 queue_registers_session_end() {
   local expected
   create_fixture
   write_settings '{}'
   expected="$(queue_command)"
+
+  run_setup "$QUEUE_SCRIPT"
+  [ "$(hook_count SessionEnd session-end-queue.sh)" -eq 1 ] &&
+    [ "$(first_hook_command SessionEnd session-end-queue.sh)" = "$expected" ]
+}
+
+queue_deduplicates_session_end() {
+  local expected
+  create_fixture
+  expected="$(queue_command)"
+  write_settings "$(cat <<EOF
+{
+  "hooks": {
+    "SessionEnd": [
+      {"matcher": "exit", "hooks": [{"type": "command", "command": "$expected"}]},
+      {"matcher": "shutdown", "hooks": [{"type": "command", "command": "$expected"}]}
+    ]
+  }
+}
+EOF
+)"
 
   run_setup "$QUEUE_SCRIPT"
   [ "$(hook_count SessionEnd session-end-queue.sh)" -eq 1 ] &&
@@ -239,6 +281,38 @@ queue_is_idempotent() {
   diff -u "$first_settings" "$SETTINGS" &&
     [ "$(hook_count SessionEnd session-end-queue.sh)" -eq 1 ] &&
     [ "$(first_hook_command SessionEnd session-end-queue.sh)" = "$expected" ]
+}
+
+distill_skips_dangling_settings_symlink() {
+  local symlink_target
+  create_fixture
+  symlink_target=/nonexistent-target
+  ln -s "$symlink_target" "$SETTINGS"
+
+  run_setup "$DISTILL_SCRIPT"
+  [ -L "$SETTINGS" ] &&
+    [ "$(readlink "$SETTINGS")" = "$symlink_target" ] &&
+    [ ! -e "$symlink_target" ]
+}
+
+distill_rejects_non_string_session_end_command() {
+  local before_settings
+  create_fixture
+  write_settings "$(cat <<'EOF'
+{
+  "hooks": {
+    "SessionEnd": [
+      {"hooks": [{"type": "command", "command": 123}]}
+    ]
+  }
+}
+EOF
+)"
+  before_settings="$FIXTURE_DIR/settings.before"
+  cp "$SETTINGS" "$before_settings"
+
+  run_setup "$DISTILL_SCRIPT"
+  diff -u "$before_settings" "$SETTINGS"
 }
 
 distill_preserves_unrelated_session_end_hook() {
@@ -331,12 +405,16 @@ if command -v jq >/dev/null 2>&1; then
   run_test "410 実行後に SessionStart へ正規コマンドを 1 件だけ登録" distill_registers_session_start
   run_test "古い knowledge-distill ログパスを正規コマンドへ置換" distill_replaces_legacy_session_start_log
   run_test "重複した SessionStart の knowledge-distill を 1 件へ収束" distill_deduplicates_session_start
+  run_test "重複した正規 SessionStart コマンドを 1 件へ収束" distill_deduplicates_canonical_session_start
   run_test "412 実行後に SessionEnd の session-end-queue を 1 件登録" queue_registers_session_end
+  run_test "重複した SessionEnd の session-end-queue を 1 件へ収束" queue_deduplicates_session_end
   run_test "settings.json 不存在でも 410 が初期化から登録まで完走" distill_initializes_missing_settings
   run_test "settings.json 不存在でも 412 が初期化から登録まで完走" queue_initializes_missing_settings
   run_test "410 実行後に hooks/logs を作成" distill_creates_logs_directory
   run_test "410 を 2 回実行しても settings.json が同一" distill_is_idempotent
   run_test "412 を 2 回実行しても settings.json が同一" queue_is_idempotent
+  run_test "410 は dangling symlink の settings.json を置換しない" distill_skips_dangling_settings_symlink
+  run_test "410 は非文字列 command で settings.json を変更しない" distill_rejects_non_string_session_end_command
   run_test "SessionEnd の無関係 hook と matcher を保持" distill_preserves_unrelated_session_end_hook
   run_test "knowledge-distill.sh 不在でも SessionEnd cleanup を実行" distill_cleans_without_hook_file
   run_test "lessons-learned-distill の SessionEnd 登録を維持" distill_registers_lessons_learned

@@ -9,7 +9,11 @@ echo "--- hooks: queue ---"
 
 _KHOOK_SETTINGS="$HOME/.claude/settings.json"
 mkdir -p "$HOME/.claude/hooks/logs"
-[[ -f "$_KHOOK_SETTINGS" ]] || echo '{}' > "$_KHOOK_SETTINGS"
+if [[ -L "$_KHOOK_SETTINGS" ]]; then
+  fail "settings.json が symlink のため更新をスキップ"
+else
+  [[ -f "$_KHOOK_SETTINGS" ]] || echo '{}' > "$_KHOOK_SETTINGS"
+fi
 
 # session-end-queue.sh の実行権限を保証し SessionEnd に登録
 KRAG_SEQ_HOOK="$HOME/.claude/hooks/session-end-queue.sh"
@@ -18,14 +22,19 @@ if [[ -f "$KRAG_SEQ_HOOK" ]]; then
   ok "session-end-queue hook (chmod)"
 fi
 
-if command -v jq &>/dev/null; then
+if [[ ! -L "$_KHOOK_SETTINGS" ]] && command -v jq &>/dev/null; then
   KRAG_SEQ_CMD="bash ${HOME}/.claude/hooks/session-end-queue.sh 2>> ${HOME}/.claude/hooks/logs/session-end-queue.log"
   _krag_tmp="${_KHOOK_SETTINGS}.tmp"
   if jq --arg cmd "$KRAG_SEQ_CMD" '
     .hooks.SessionEnd //= [] |
-    if (.hooks.SessionEnd | map(.hooks[]?.command // "") | any(contains("session-end-queue.sh"))) then .
-    else .hooks.SessionEnd += [{"hooks": [{"type": "command", "command": $cmd}]}]
-    end
+    .hooks.SessionEnd |= (
+      map(.hooks |= (
+        if . then map(select((.command // "") | contains("session-end-queue.sh") | not))
+        else . end
+      ))
+      | map(select((.hooks // []) | length > 0))
+    ) |
+    .hooks.SessionEnd += [{"hooks": [{"type": "command", "command": $cmd}]}]
   ' "$_KHOOK_SETTINGS" > "$_krag_tmp" && mv "$_krag_tmp" "$_KHOOK_SETTINGS"; then
     ok "settings.json (SessionEnd: session-end-queue)"
   else
@@ -41,7 +50,7 @@ if [[ -f "$KRAG_CQ_HOOK" ]]; then
   chmod +x "$KRAG_CQ_HOOK"
   ok "check-queue hook (chmod)"
 
-  if [[ -f "$_KHOOK_SETTINGS" ]] && command -v jq &>/dev/null; then
+  if [[ ! -L "$_KHOOK_SETTINGS" && -f "$_KHOOK_SETTINGS" ]] && command -v jq &>/dev/null; then
     KRAG_CQ_CMD="bash ${HOME}/.claude/hooks/check-queue.sh"
     _krag_tmp="${_KHOOK_SETTINGS}.tmp"
     if jq --arg cmd "$KRAG_CQ_CMD" '

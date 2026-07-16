@@ -10,7 +10,11 @@ echo "--- hooks: distill ---"
 _KHOOK_DISTILL_REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 _KHOOK_SETTINGS="$HOME/.claude/settings.json"
 mkdir -p "$HOME/.claude/hooks/logs"
-[[ -f "$_KHOOK_SETTINGS" ]] || echo '{}' > "$_KHOOK_SETTINGS"
+if [[ -L "$_KHOOK_SETTINGS" ]]; then
+  fail "settings.json が symlink のため更新をスキップ"
+else
+  [[ -f "$_KHOOK_SETTINGS" ]] || echo '{}' > "$_KHOOK_SETTINGS"
+fi
 
 # knowledge-distill hook スクリプトの実行権限を保証し SessionStart に登録
 KRAG_HOOK="$HOME/.claude/hooks/knowledge-distill.sh"
@@ -21,21 +25,31 @@ fi
 
 # bash -c 'trap "" INT TERM; ...' は Claude Code shell allowlist でブロックされるため除去（#226）
 KRAG_HOOK_CMD="bash ${HOME}/.claude/hooks/knowledge-distill.sh 2>> ${HOME}/.claude/hooks/logs/knowledge-distill.log"
-if command -v jq &>/dev/null; then
+if [[ ! -L "$_KHOOK_SETTINGS" ]] && command -v jq &>/dev/null; then
   _krag_tmp="${_KHOOK_SETTINGS}.tmp"
-  # SessionEnd から knowledge-distill エントリを削除（SessionStart 移行時の二重登録防止）
-  jq '
-    .hooks.SessionEnd |= (if . then map(.hooks |= (if . then map(select(.command // "" | contains("knowledge-distill.sh") | not)) else . end)) | map(select((.hooks // [] | length) > 0)) else . end)
-  ' "$_KHOOK_SETTINGS" > "$_krag_tmp" && mv "$_krag_tmp" "$_KHOOK_SETTINGS" || rm -f "$_krag_tmp"
-  # SessionStart の knowledge-distill を正規コマンドへ統一
-  jq --arg cmd "$KRAG_HOOK_CMD" '
-    .hooks.SessionStart |= (if . then map(.hooks |= (if . then map(select((.command // "" | contains("knowledge-distill.sh") | not) or (.command == $cmd))) else . end)) | map(select((.hooks // [] | length) > 0)) else . end)
-  ' "$_KHOOK_SETTINGS" > "$_krag_tmp" && mv "$_krag_tmp" "$_KHOOK_SETTINGS" || rm -f "$_krag_tmp"
   if jq --arg cmd "$KRAG_HOOK_CMD" '
-    .hooks.SessionStart //= [] |
-    if (.hooks.SessionStart | map(.hooks[]?.command // "") | any(contains("knowledge-distill.sh"))) then .
-    else .hooks.SessionStart += [{"hooks": [{"type": "command", "command": $cmd}]}]
-    end
+    .hooks.SessionEnd |= (
+      if . then
+        map(.hooks |= (
+          if . then map(select((.command // "") | contains("knowledge-distill.sh") | not))
+          else . end
+        ))
+        | map(select((.hooks // []) | length > 0))
+      else .
+      end
+    )
+    | .hooks.SessionStart |= (
+      if . then
+        map(.hooks |= (
+          if . then map(select((.command // "") | contains("knowledge-distill.sh") | not))
+          else . end
+        ))
+        | map(select((.hooks // []) | length > 0))
+      else .
+      end
+    )
+    | .hooks.SessionStart //= []
+    | .hooks.SessionStart += [{"hooks": [{"type": "command", "command": $cmd}]}]
   ' "$_KHOOK_SETTINGS" > "$_krag_tmp" && mv "$_krag_tmp" "$_KHOOK_SETTINGS"; then
     ok "settings.json (SessionStart: knowledge-distill)"
   else
@@ -57,7 +71,7 @@ if [[ -f "$_KRAG_LL_SRC" ]]; then
     fail "lessons-learned-distill.sh  →  手動: cp $_KRAG_LL_SRC $_KRAG_LL_DST"
   fi
 
-  if [[ -f "$_KHOOK_SETTINGS" ]] && command -v jq &>/dev/null; then
+  if [[ ! -L "$_KHOOK_SETTINGS" && -f "$_KHOOK_SETTINGS" ]] && command -v jq &>/dev/null; then
     # bash -c 'trap "" INT TERM; ...' は Claude Code shell allowlist でブロックされるため除去（#226）
     KRAG_LL_CMD="bash ${HOME}/.claude/hooks/lessons-learned-distill.sh 2>> ${HOME}/.claude/hooks/logs/lessons-learned-distill.log"
     _krag_tmp="${_KHOOK_SETTINGS}.tmp"
