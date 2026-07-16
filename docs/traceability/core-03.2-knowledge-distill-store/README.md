@@ -48,6 +48,18 @@ compact 強化セット（compact-prep skill + 復旧 hook + 閾値通知。`com
 - Step 3（要求定義）時にこの変更の存在を前提とし、Step 9（監査）で orphan implementation として
   誤検知しないこと（本記録が派生元）
 
+## 外部先行変更（2026-07-16 記録: PR #249 クローズ）
+
+PR #249「refactor(knowledge-distill): transcript依存をなくすためRaw即書き出し設計に変更」
+（2026-07-01 作成）は、SessionEnd 直後に Raw .md をローカル保存し以降を transcript 非依存にする構想
+（transcript_not_found dead-letter の根絶）だったが、本 core の PR-B（#317）と対象領域が重複し、
+2 週間 stale・SPEC-03.2-03 のスコープ外だったため 2026-07-16 にクローズした。
+
+- 記録層のローカル化そのものは PR-B が SPEC 準拠で実装済み
+- 「Raw 即書き出し・queue の source_path 汎用化」構想が今後も必要なら、spec 追補
+  （SPEC-03.2 系の改訂）を経て別 PR で再実装する
+- Step 9（監査）はこのクローズ済み PR を orphan implementation として誤検知しないこと（本記録が派生元）
+
 ## 重複・横断関係
 
 Fable 05 は core-03.3、13 は core-04 と重複する。
@@ -62,7 +74,7 @@ Fable 05 は core-03.3、13 は core-04 と重複する。
 | requirements.md | approved | 人間確認・承認済み（2026-07-07） |
 | specification.md | approved | SPEC-03.2-05（lessons-learned ローカル化）追補。人間承認済み（2026-07-08） |
 | implementation-plan.md | approved | PR-A/B/C/D 分割・Codex レビュー対応済み。人間承認済み（2026-07-08） |
-| 実装 | in progress | PR-A = #313 完了（2026-07-16 merge・live 検証済み）。残: PR-B（PR-A 依存解消済み）/ PR-C（独立）/ PR-D。ハードニング残件は #315 |
+| 実装 | in progress | PR-A = #313・PR-B = #317 完了（2026-07-16 merge・live 検証済み）。残: PR-C（独立）/ PR-D（PR-B 済みのため着手可）。ハードニング残件は #315 |
 | test-plan.md | draft | specification 確定後に更新 |
 | design-review.md | todo | Step 7 で作成 |
 | traceability-map.md | draft | 各工程で更新 |

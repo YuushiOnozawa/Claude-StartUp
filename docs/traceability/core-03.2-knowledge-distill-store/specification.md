@@ -144,12 +144,16 @@ ls ~/.claude/hooks/queue/knowledge-distill/pending/ | wc -l
 LOCAL_STAGING_DIR="$HOME/.local/share/knowledge-rag/sessions"
 ```
 
+> 注記（2026-07-16）: raw セッションログは `knowledge-distill-raw.sh` の既存実装どおり
+> `$LOCAL_STAGING_DIR/raw/` サブディレクトリに保存される。pcloud-sync.sh（core-01）の
+> 同期対象は `raw/` を含む sessions 領域全体とする。
+
 ### `knowledge-distill.sh` の変更
 
 | 変更箇所 | 変更内容 |
 |---|---|
 | 冒頭の pCloud マウント確認ブロック（L94-104: queue push して exit 0） | 削除する（pCloud 未マウントでも記録・登録を継続する） |
-| drain 条件（L23: `mountpoint -q "$HOME/pcloud"` で drain を囲む） | pCloud mount 条件を除去する。`pending` は常時 drain、`ollama` は Ollama 起動時のみ drain |
+| drain 条件（L23: `mountpoint -q "$HOME/pcloud"` で drain を囲む） | pCloud mount 条件を除去する。~~`pending` は常時 drain、`ollama` は Ollama 起動時のみ drain~~ **改訂（2026-07-16 人間承認）: pending / ollama とも Ollama 起動時のみ drain**。蒸留は Ollama 必須のため、停止中に drain すると retry_count を空費し 3 回で dead-letter 化してセッション知識を失う（PR-B 設計レビューで検出） |
 | `OUTPUT_DIR` の定義 | `$HOME/pcloud/obsidian/sessions` → `$HOME/.local/share/knowledge-rag/sessions` |
 | `mkdir -p "$OUTPUT_DIR"` | LOCAL_STAGING_DIR に対して実行（pCloud 依存なし） |
 | pCloud 配送処理 | **なし**（2026-07-08 確定）。ローカル保存完了で `knowledge-distill.sh` の責務は終わる。pCloud への転送は `scripts/pcloud-sync.sh`（core-01 impl で新設）が一括担当する。FUSE 直書き禁止（SPEC-01-03 不変条件優先） |
