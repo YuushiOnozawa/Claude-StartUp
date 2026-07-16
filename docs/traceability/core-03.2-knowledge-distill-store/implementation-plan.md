@@ -33,6 +33,12 @@
 
 ### PR-A: setup/410 SessionEnd→SessionStart 移行 + ログパス修正（IMPL-03.2-01）
 
+> **✅ 完了（2026-07-16）**: [PR #313](https://github.com/YuushiOnozawa/Claude-StartUp/pull/313) merge 済み・live デプロイ検証 4 項目 OK。
+> - 実装ファイル: `setup/410-hooks-distill.sh`, `setup/412-hooks-queue.sh`, `scripts/test-setup-hooks-registration.sh`（新規、fixture HOME で 20 テスト）
+> - blocker #1 の結論: session-end-queue.sh はどの setup からも未登録だったため、412 に SessionEnd 登録を追加
+> - レビュー由来のスコープ追加: settings.json `{}` 初期化（新規環境対応、触る 2 ファイルのみ）、jq を単一 atomic 更新に統合、正規化は「対象 hook 全除去 → 正規コマンド 1 件追加」方式（重複収束）、settings.json symlink ガード
+> - 既存慣行由来のハードニング残件は [#315](https://github.com/YuushiOnozawa/Claude-StartUp/issues/315)、magi-fast 誤検知の改善は [#314](https://github.com/YuushiOnozawa/Claude-StartUp/issues/314) に分離
+
 > **着手前確認（blocker）:**
 > - `session-end-queue.sh` の SessionEnd 登録が現行どのスクリプトで行われているかを確認する（UND 未確定事項 #2）
 >   **確認コマンド:** `grep -rn "session-end-queue" setup/`

@@ -38,12 +38,12 @@
 | REQ-03.2-03 | SPEC-03.2-03（knowledge-distill.sh の記録層を pCloud 非依存化・配送層分離）・SPEC-03.2-05（lessons-learned パイプラインをローカル保存に統一）| approved |
 | REQ-03.2-04 | SPEC-03.2-04（hooks/error-detector.sh リポジトリ追加 + setup/413 新設） | approved |
 
-## Step 5 — 仕様 → 実装項目（draft）
+## Step 5/6 — 仕様 → 実装項目
 
 | SPEC ID | 対応 IMPL | PR | ステータス |
 |---|---|---|---|
-| SPEC-03.2-01（setup/410 SessionEnd→SessionStart 移行） | IMPL-03.2-01 | PR-A | draft |
-| SPEC-03.2-02（setup/410 log path 統一） | IMPL-03.2-01（PR-A で同時） | PR-A | draft |
+| SPEC-03.2-01（setup/410 SessionEnd→SessionStart 移行） | IMPL-03.2-01 | PR-A = [#313](https://github.com/YuushiOnozawa/Claude-StartUp/pull/313) | implemented（2026-07-16 merge・live 検証 4 項目 OK） |
+| SPEC-03.2-02（setup/410 log path 統一） | IMPL-03.2-01（PR-A で同時） | PR-A = [#313](https://github.com/YuushiOnozawa/Claude-StartUp/pull/313) | implemented（2026-07-16 merge・live 検証 4 項目 OK） |
 | SPEC-03.2-03（knowledge-distill.sh 記録層/配送層分離） | IMPL-03.2-02 | PR-B | draft |
 | SPEC-03.2-04（error-detector.sh リポジトリ追加） | IMPL-03.2-03 | PR-C | draft |
 | SPEC-03.2-05（lessons-learned ローカル化 + CLAUDE.md 変更） | IMPL-03.2-04, IMPL-03.2-05 | PR-D | draft |
