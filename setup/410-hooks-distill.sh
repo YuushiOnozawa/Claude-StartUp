@@ -1,5 +1,5 @@
 # setup/410-hooks-distill.sh — knowledge-rag: 蒸留パイプライン hook 配置・登録
-# Hooks: knowledge-distill (SessionEnd), lessons-learned-distill (SessionEnd)
+# Hooks: knowledge-distill (SessionStart), lessons-learned-distill (SessionEnd)
 # Requires: ok, fail, MISSING_CMDS (append-only)
 
 [[ "${BASH_SOURCE[0]}" == "$0" ]] && { echo "ERROR: setup.sh から source してください" >&2; exit 1; }
@@ -9,29 +9,39 @@ echo "--- hooks: distill ---"
 
 _KHOOK_DISTILL_REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 _KHOOK_SETTINGS="$HOME/.claude/settings.json"
+mkdir -p "$HOME/.claude/hooks/logs"
+[[ -f "$_KHOOK_SETTINGS" ]] || echo '{}' > "$_KHOOK_SETTINGS"
 
-# knowledge-distill hook スクリプトの実行権限を保証し SessionEnd に登録
+# knowledge-distill hook スクリプトの実行権限を保証し SessionStart に登録
 KRAG_HOOK="$HOME/.claude/hooks/knowledge-distill.sh"
 if [[ -f "$KRAG_HOOK" ]]; then
   chmod +x "$KRAG_HOOK"
   ok "knowledge-distill hook (chmod)"
+fi
 
-  if [[ -f "$_KHOOK_SETTINGS" ]] && command -v jq &>/dev/null; then
-    # bash -c 'trap "" INT TERM; ...' は Claude Code shell allowlist でブロックされるため除去（#226）
-    KRAG_HOOK_CMD="bash ${HOME}/.claude/hooks/knowledge-distill.sh 2>> ${HOME}/.claude/hooks/knowledge-distill.log"
-    _krag_tmp="${_KHOOK_SETTINGS}.tmp"
-    if jq --arg cmd "$KRAG_HOOK_CMD" '
-      .hooks.SessionEnd //= [] |
-      if (.hooks.SessionEnd | map(.hooks[]?.command // "") | any(contains("knowledge-distill.sh"))) then .
-      else .hooks.SessionEnd += [{"hooks": [{"type": "command", "command": $cmd}]}]
-      end
-    ' "$_KHOOK_SETTINGS" > "$_krag_tmp" && mv "$_krag_tmp" "$_KHOOK_SETTINGS"; then
-      ok "settings.json (SessionEnd: knowledge-distill)"
-    else
-      rm -f "$_krag_tmp"
-      fail "settings.json の SessionEnd 更新に失敗"
-      MISSING_CMDS+=("knowledge-distill-hook-settings")
-    fi
+# bash -c 'trap "" INT TERM; ...' は Claude Code shell allowlist でブロックされるため除去（#226）
+KRAG_HOOK_CMD="bash ${HOME}/.claude/hooks/knowledge-distill.sh 2>> ${HOME}/.claude/hooks/logs/knowledge-distill.log"
+if command -v jq &>/dev/null; then
+  _krag_tmp="${_KHOOK_SETTINGS}.tmp"
+  # SessionEnd から knowledge-distill エントリを削除（SessionStart 移行時の二重登録防止）
+  jq '
+    .hooks.SessionEnd |= (if . then map(.hooks |= (if . then map(select(.command // "" | contains("knowledge-distill.sh") | not)) else . end)) | map(select((.hooks // [] | length) > 0)) else . end)
+  ' "$_KHOOK_SETTINGS" > "$_krag_tmp" && mv "$_krag_tmp" "$_KHOOK_SETTINGS" || rm -f "$_krag_tmp"
+  # SessionStart の knowledge-distill を正規コマンドへ統一
+  jq --arg cmd "$KRAG_HOOK_CMD" '
+    .hooks.SessionStart |= (if . then map(.hooks |= (if . then map(select((.command // "" | contains("knowledge-distill.sh") | not) or (.command == $cmd))) else . end)) | map(select((.hooks // [] | length) > 0)) else . end)
+  ' "$_KHOOK_SETTINGS" > "$_krag_tmp" && mv "$_krag_tmp" "$_KHOOK_SETTINGS" || rm -f "$_krag_tmp"
+  if jq --arg cmd "$KRAG_HOOK_CMD" '
+    .hooks.SessionStart //= [] |
+    if (.hooks.SessionStart | map(.hooks[]?.command // "") | any(contains("knowledge-distill.sh"))) then .
+    else .hooks.SessionStart += [{"hooks": [{"type": "command", "command": $cmd}]}]
+    end
+  ' "$_KHOOK_SETTINGS" > "$_krag_tmp" && mv "$_krag_tmp" "$_KHOOK_SETTINGS"; then
+    ok "settings.json (SessionStart: knowledge-distill)"
+  else
+    rm -f "$_krag_tmp"
+    fail "settings.json の SessionStart 更新に失敗"
+    MISSING_CMDS+=("knowledge-distill-hook-settings")
   fi
 fi
 
