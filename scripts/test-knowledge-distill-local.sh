@@ -217,6 +217,19 @@ session_end_queues_ollama_and_writes_raw() {
     [ "$(queue_reason_count ollama)" -eq 1 ]
 }
 
+same_transcript_is_not_queued_twice_while_ollama_is_down() {
+  local output
+  local status
+
+  create_fixture
+  make_transcript
+  run_hook output status "$(session_input)"
+  [ "$status" -eq 0 ] || return 1
+  run_hook output status "$(session_input)"
+
+  [ "$status" -eq 0 ] && [ "$(queue_reason_count ollama)" -eq 1 ]
+}
+
 session_end_does_not_create_pcloud_or_pcloud_queue_item() {
   local output
   local status
@@ -350,6 +363,7 @@ run_test "bash -n がテストと hook の両方で通る" bash_syntax
 
 if command -v jq >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
   run_test "SessionEnd 相当入力で raw と Ollama キューを生成" session_end_queues_ollama_and_writes_raw
+  run_test "Ollama 停止中の同一 transcript を重複キューしない" same_transcript_is_not_queued_twice_while_ollama_is_down
   run_test "pCloud ディレクトリと pCloud キューを生成しない" session_end_does_not_create_pcloud_or_pcloud_queue_item
   run_test "pCloud キューを Ollama 停止中でも pending へ移行" pcloud_queue_item_migrates_to_pending_while_ollama_is_down
   run_test "Ollama 停止中は pending キューを drain しない" pending_queue_is_not_drained_while_ollama_is_down

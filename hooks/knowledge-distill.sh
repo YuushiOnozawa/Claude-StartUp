@@ -33,11 +33,26 @@ if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]]; then
           :
         else
           rm -f "$_tmp_file"
+          log_warn "pcloud item migration failed: $_item_file"
         fi
       fi
     done
   fi 9>"${QUEUE_LOCK_DIR}/knowledge-distill.lock"
 fi
+
+_distill_already_queued() {
+  local transcript_path="$1"
+  local item_file
+
+  for item_file in "${QUEUE_BASE_DIR}/${HOOK_NAME}"/*.json; do
+    [[ -f "$item_file" ]] || continue
+    if jq -e --arg transcript_path "$transcript_path" \
+      '.transcript_path == $transcript_path' "$item_file" >/dev/null 2>&1; then
+      return 0
+    fi
+  done
+  return 1
+}
 
 # キュー drain（リトライ実行時はスキップして無限ループを防ぐ）
 # 蒸留は Ollama 必須のため、停止中に drain すると retry_count を空費し dead-letter 化する
@@ -118,11 +133,15 @@ if [[ $_OLLAMA_UP -eq 0 ]]; then
     exit 1
   fi
   echo "  ⏳ knowledge-distill: Ollama 未起動 → 保留 ($PROJECT)" >&2
-  if queue_push "$HOOK_NAME" "ollama" "$TRANSCRIPT_PATH" "$PROJECT_CWD"; then
-    log_info "queued for retry (ollama): $TRANSCRIPT_PATH"
-    queue_notify_send "knowledge-distill" "Ollama 未起動のため distill を保留中 ($PROJECT)"
+  if _distill_already_queued "$TRANSCRIPT_PATH"; then
+    log_info "already queued: $TRANSCRIPT_PATH"
   else
-    log_error "queue_push failed"
+    if queue_push "$HOOK_NAME" "ollama" "$TRANSCRIPT_PATH" "$PROJECT_CWD"; then
+      log_info "queued for retry (ollama): $TRANSCRIPT_PATH"
+      queue_notify_send "knowledge-distill" "Ollama 未起動のため distill を保留中 ($PROJECT)"
+    else
+      log_error "queue_push failed"
+    fi
   fi
   exit 0
 fi
@@ -143,11 +162,15 @@ if [[ $_EXTRACT_EXIT -ne 0 ]]; then
     log_warn "retry: extract failed, handing off to queue_drain dead-letter"
     exit 1
   fi
-  if queue_push "$HOOK_NAME" "ollama" "$TRANSCRIPT_PATH" "$PROJECT_CWD"; then
-    log_info "queued for retry (ollama): $TRANSCRIPT_PATH"
-    queue_notify_send "knowledge-distill" "Ollama 実行失敗のため distill を保留中 ($PROJECT)"
+  if _distill_already_queued "$TRANSCRIPT_PATH"; then
+    log_info "already queued: $TRANSCRIPT_PATH"
   else
-    log_error "queue_push failed after extract failure"
+    if queue_push "$HOOK_NAME" "ollama" "$TRANSCRIPT_PATH" "$PROJECT_CWD"; then
+      log_info "queued for retry (ollama): $TRANSCRIPT_PATH"
+      queue_notify_send "knowledge-distill" "Ollama 実行失敗のため distill を保留中 ($PROJECT)"
+    else
+      log_error "queue_push failed after extract failure"
+    fi
   fi
   exit 0
 fi
