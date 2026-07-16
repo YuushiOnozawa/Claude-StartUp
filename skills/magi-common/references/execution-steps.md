@@ -376,6 +376,7 @@ run one shell script for this persona:
     open_new_no_follow(stderr_file) as stderr_fd
 
     set +e
+    OLLAMA_REPEAT_PENALTY=1.3 OLLAMA_NUM_PREDICT=2048 \
     bash ~/.claude/scripts/ollama-run.sh "$OLLAMA_MODEL" "$MAGI_PERSONA_TMPDIR/system.txt" \
       < "$prompt_file" >&${result_fd} 2>&${stderr_fd}
     exit_code := $?

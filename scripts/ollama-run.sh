@@ -18,6 +18,7 @@
 #                       16384 に変更。LELIEL など長い diff を扱う場合は環境変数で上書きすること。
 #                       例: OLLAMA_NUM_CTX=65536 bash ollama-run.sh <model> system.txt < prompt.txt
 #   OLLAMA_TEMPERATURE  サンプリング温度（デフォルト: 0.1）
+#   MAGI レビュー呼び出しで推奨: OLLAMA_REPEAT_PENALTY=1.3 OLLAMA_NUM_PREDICT=2048（#314 実測）
 #   OLLAMA_BASE_URL     Ollama ベース URL（デフォルト: WSL2 は自動検出、それ以外は http://localhost:11434）
 #                       例: OLLAMA_BASE_URL=http://172.17.96.1:11434 bash ollama-run.sh <model>
 #   OLLAMA_THINK        think パラメータ（デフォルト: false で thinking chain を無効化）
@@ -39,6 +40,8 @@ LOCK="${OLLAMA_LOCK_DIR:-/tmp}/ollama.lock"
 TIMEOUT="${OLLAMA_TIMEOUT:-1800}"
 CONTEXT_SIZE="${OLLAMA_NUM_CTX:-16384}"
 TEMPERATURE="${OLLAMA_TEMPERATURE:-0.1}"
+REPEAT_PENALTY="${OLLAMA_REPEAT_PENALTY:-}"
+NUM_PREDICT="${OLLAMA_NUM_PREDICT:-}"
 THINK_OPT="${OLLAMA_THINK:-false}"
 
 # system プロンプトファイルの読み込み（省略可）
@@ -119,6 +122,15 @@ else
     --argjson num_ctx "$CONTEXT_SIZE" \
     --argjson temperature "$TEMPERATURE" \
     '{"model":$model,"prompt":$prompt,"stream":false,"keep_alive":0,"options":{"num_ctx":$num_ctx,"temperature":$temperature}}')"
+fi
+
+if [[ -n "$REPEAT_PENALTY" ]]; then
+  JSON="$(printf '%s\n' "$JSON" | jq --argjson repeat_penalty "$REPEAT_PENALTY" \
+    '.options.repeat_penalty = $repeat_penalty')"
+fi
+if [[ -n "$NUM_PREDICT" ]]; then
+  JSON="$(printf '%s\n' "$JSON" | jq --argjson num_predict "$NUM_PREDICT" \
+    '.options.num_predict = $num_predict')"
 fi
 
 if [[ "$THINK_OPT" == "false" ]]; then
