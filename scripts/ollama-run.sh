@@ -18,7 +18,7 @@
 #                       16384 に変更。LELIEL など長い diff を扱う場合は環境変数で上書きすること。
 #                       例: OLLAMA_NUM_CTX=65536 bash ollama-run.sh <model> system.txt < prompt.txt
 #   OLLAMA_TEMPERATURE  サンプリング温度（デフォルト: 0.1）
-#   MAGI レビュー呼び出しで推奨: OLLAMA_REPEAT_PENALTY=1.3 OLLAMA_NUM_PREDICT=2048（#314 実測）
+#   MAGI レビュー呼び出しで推奨: OLLAMA_REPEAT_PENALTY=1.3 OLLAMA_NUM_PREDICT=4096（#314 実測）
 #   OLLAMA_BASE_URL     Ollama ベース URL（デフォルト: WSL2 は自動検出、それ以外は http://localhost:11434）
 #                       例: OLLAMA_BASE_URL=http://172.17.96.1:11434 bash ollama-run.sh <model>
 #   OLLAMA_THINK        think パラメータ（デフォルト: false で thinking chain を無効化）

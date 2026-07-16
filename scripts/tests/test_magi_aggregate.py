@@ -235,6 +235,52 @@ No findings
         self.assertEqual(failed["personas"][0]["parse_status"], "failed")
         self.assertEqual(failed["findings"][0]["fallback"]["kind"], "unstructured_output")
 
+    def test_zero_findings_before_assessment_is_accepted_with_final_marker(self):
+        output = """=== CHUNK: src/a.py (1) ===
+No findings
+## Review
+確認済み。
+## Quality Assessment
+確認済み。
+<!-- MAGI_COMPLETE persona=melchior chunk=0001 -->
+"""
+        run = self.make_run(mel_text=output)
+        result, output = self.parse(run, output_name="before-assessment.json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        parsed = json.loads(output.read_text())
+        self.assertEqual(parsed["personas"][0]["parse_status"], "ok")
+        self.assertEqual([item for item in parsed["findings"] if item["persona"] == "melchior"], [])
+
+    def test_diff_explanation_is_not_accepted_as_no_findings_fallback(self):
+        output = """=== CHUNK: src/a.py (1) ===
+## Review
++# no findings in reviewed file
+## Quality Assessment
+確認済み。
+<!-- MAGI_COMPLETE persona=melchior chunk=0001 -->
+"""
+        run = self.make_run(mel_text=output)
+        result, output = self.parse(run, output_name="diff-explanation.json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        parsed = json.loads(output.read_text())
+        self.assertEqual(parsed["personas"][0]["parse_status"], "failed")
+
+    def test_no_findings_explanation_after_assessment_is_not_fallback(self):
+        output = """=== CHUNK: src/a.py (1) ===
+## Review
+確認済み。
+## Quality Assessment
+確認済み。
+## Notes
+説明文: no findings という語を本文で説明しているだけです。
+<!-- MAGI_COMPLETE persona=melchior chunk=0001 -->
+"""
+        run = self.make_run(mel_text=output)
+        result, output = self.parse(run, output_name="after-assessment-explanation.json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        parsed = json.loads(output.read_text())
+        self.assertEqual(parsed["personas"][0]["parse_status"], "failed")
+
     def test_undocumented_no_findings_with_normal_finding_is_partial(self):
         run = self.make_run(mel_text="""=== CHUNK: src/a.py (1) ===
 ## Review

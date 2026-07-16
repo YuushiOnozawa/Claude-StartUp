@@ -34,6 +34,7 @@ ASSESSMENT_HEADERS = frozenset((
     "## Impact Assessment",
 ))
 NO_FINDINGS = re.compile(r"\bno findings\b", re.IGNORECASE)
+NO_FINDINGS_LINE = re.compile(r"No findings\.?", re.IGNORECASE)
 KEY = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 PREFIX = re.compile(r"^[A-Z][A-Z0-9]{1,7}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -380,11 +381,15 @@ def parse_markdown_chunk(lines, persona, ordinal, marker_required=True, diagnost
         index += 1
     assessment_starts = [i for i, line in enumerate(lines[:end]) if line in ASSESSMENT_HEADERS]
     no_findings = False
-    for start in assessment_starts:
-        section_end = next((i for i in range(start + 1, end) if lines[i].startswith("## ")), end)
-        if any(NO_FINDINGS.search(line) for line in lines[start + 1:section_end]):
-            no_findings = True
-            break
+    if not findings:
+        for start in assessment_starts:
+            section_end = next((i for i in range(start + 1, end) if lines[i].startswith("## ")), end)
+            if any(NO_FINDINGS.search(line) for line in lines[start + 1:section_end]):
+                no_findings = True
+                break
+        if assessment_starts and not no_findings:
+            no_findings = any(NO_FINDINGS_LINE.fullmatch(line.strip())
+                              for line in lines[:assessment_starts[0]])
     useful = bool(findings) or (not malformed and marker_ok and no_findings)
     complete = (marker_ok if marker_required else True) and not malformed and (bool(findings) or no_findings)
     if diagnostics is not None:
