@@ -140,6 +140,137 @@ class MagiAggregateCliTests(unittest.TestCase):
         self.assertEqual(data["findings"][0]["body"], "説明。")
         self.assertEqual(data["findings"][2]["title"], "null を検査する")
 
+    def test_findings_with_complete_assessment_are_ok_without_marker(self):
+        run = self.make_run(mel_text="""=== CHUNK: src/a.py (1) ===
+## Review
+### [HIGH] src/a.py:12 — null を検査する
+説明。
+## Quality Assessment
+確認済み。
+""")
+        result, output = self.parse(run, output_name="markerless-findings.json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(output.read_text())
+        persona = data["personas"][0]
+        mel = [item for item in data["findings"] if item["persona"] == "melchior"]
+        self.assertEqual(persona["parse_status"], "ok")
+        self.assertEqual([item["title"] for item in mel], ["null を検査する"])
+        self.assertIn("marker_missing_structurally_complete_0001", persona["diagnostics"])
+
+    def test_zero_findings_with_complete_assessment_are_ok_without_marker(self):
+        run = self.make_run(mel_text="""=== CHUNK: src/a.py (1) ===
+## Review
+確認済み。
+## Quality Assessment
+No findings
+""")
+        result, output = self.parse(run, output_name="markerless-zero-findings.json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(output.read_text())
+        self.assertEqual(data["personas"][0]["parse_status"], "ok")
+        self.assertEqual([item for item in data["findings"] if item["persona"] == "melchior"], [])
+        self.assertIn("marker_missing_structurally_complete_0001", data["personas"][0]["diagnostics"])
+
+    def test_truncated_findings_without_assessment_and_marker_are_not_ok(self):
+        run = self.make_run(mel_text="""=== CHUNK: src/a.py (1) ===
+## Review
+### [HIGH] src/a.py:12 — null を検査する
+途中で切断された本文。
+""")
+        result, output = self.parse(run, output_name="truncated-no-assessment.json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        persona = json.loads(output.read_text())["personas"][0]
+        self.assertNotEqual(persona["parse_status"], "ok")
+
+    def test_assessment_header_without_body_and_marker_is_not_ok(self):
+        run = self.make_run(mel_text="""=== CHUNK: src/a.py (1) ===
+## Review
+### [HIGH] src/a.py:12 — null を検査する
+説明。
+## Quality Assessment
+""")
+        result, output = self.parse(run, output_name="truncated-assessment.json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        persona = json.loads(output.read_text())["personas"][0]
+        self.assertNotEqual(persona["parse_status"], "ok")
+
+    def test_mismatched_marker_is_not_assessment_body(self):
+        run = self.make_run(mel_text="""=== CHUNK: src/a.py (1) ===
+## Review
+### [HIGH] src/a.py:12 — null を検査する
+説明。
+## Quality Assessment
+<!-- MAGI_COMPLETE persona=other chunk=0001 -->
+""")
+        result, output = self.parse(run, output_name="mismatched-marker-assessment.json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        persona = json.loads(output.read_text())["personas"][0]
+        self.assertNotEqual(persona["parse_status"], "ok")
+
+    def test_incomplete_status_marker_is_non_blocking_for_structural_completion(self):
+        run = self.make_run(mel_text="""=== CHUNK: src/a.py (1) ===
+## Review
+### [HIGH] src/a.py:12 — null を検査する
+説明。
+## Quality Assessment
+確認済み。
+""")
+        status_path = run / "status/melchior.json"
+        status = json.loads(status_path.read_text())
+        status["chunks"][0]["marker"] = "missing"
+        status_path.write_text(json.dumps(status), encoding="utf-8")
+        result, output = self.parse(run, output_name="status-markerless.json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        persona = json.loads(output.read_text())["personas"][0]
+        self.assertEqual(persona["parse_status"], "ok")
+        self.assertIn("status_marker_not_complete_0001", persona["diagnostics"])
+        self.assertIn("status_completed_chunks_inconsistent", persona["diagnostics"])
+        self.assertIn("status_execution_inconsistent", persona["diagnostics"])
+
+    def test_markerless_assessment_allows_legacy_failed_status(self):
+        run = self.make_run(mel_text="""=== CHUNK: src/a.py (1) ===
+## Review
+### [HIGH] src/a.py:12 — null を検査する
+説明。
+## Quality Assessment
+確認済み。
+""")
+        status_path = run / "status/melchior.json"
+        status = json.loads(status_path.read_text())
+        status.update({"completed_chunks": 0, "execution_status": "failed"})
+        status_path.write_text(json.dumps(status), encoding="utf-8")
+        result, output = self.parse(run, output_name="legacy-failed-status.json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        persona = json.loads(output.read_text())["personas"][0]
+        self.assertEqual(persona["parse_status"], "ok")
+        self.assertIn("marker_missing_structurally_complete_0001", persona["diagnostics"])
+        self.assertIn("status_completed_chunks_inconsistent", persona["diagnostics"])
+        self.assertIn("status_execution_inconsistent", persona["diagnostics"])
+
+    def test_incomplete_assessment_chunk_keeps_status_inconsistencies_blocking(self):
+        run = self.make_run(mel_text="""=== CHUNK: src/a.py (1) ===
+## Review
+### [HIGH] src/a.py:12 — null を検査する
+説明。
+## Quality Assessment
+確認済み。
+=== CHUNK: src/b.py (1) ===
+## Review
+### [MEDIUM] src/b.py:20 — 切断された finding
+途中で切断された本文。
+""")
+        result_path = run / "results/melchior.md"
+        status = status_for("melchior", result_path, chunks=2, execution_status="failed")
+        status.update({"completed_chunks": 0})
+        for chunk in status["chunks"]:
+            chunk["marker"] = "missing"
+        (run / "status/melchior.json").write_text(json.dumps(status), encoding="utf-8")
+        result, output = self.parse(run, output_name="mixed-incomplete-assessment.json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        persona = json.loads(output.read_text())["personas"][0]
+        self.assertEqual(persona["parse_status"], "partial")
+        self.assertIn("status_marker_not_complete_0002", persona["diagnostics"])
+
     def test_example_echo_finding_is_rejected_and_marks_chunk_malformed(self):
         run = self.make_run(mel_text="""=== CHUNK: src/a.py (1) ===
 ## Review
