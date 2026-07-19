@@ -15,7 +15,7 @@
 
 ### Step 1: Plan Creation（Codex artifact モード委譲）
 
-**事前チェック:** `$CLARIFY_NOTES` が空の場合は Codex 委譲しない → Claude が直接プランを作成（下記フォールバックと同じ処理）、`PLAN_AUTHOR=claude` をセット → `EnterPlanMode` を呼んで Phase 1.5 に進む。
+**事前チェック:** `$CLARIFY_NOTES` が空の場合は Codex 委譲しない → Claude が直接プランを作成（下記フォールバックと同じ処理）、`PLAN_AUTHOR=claude` をセット → Claude が 1〜2 行の short summary を生成して提示し、`$PLAN_SHORT_SUMMARY`（shell 変数ではなく Claude が会話コンテキスト内で保持するテキスト）として以降のフェーズへ引き継ぐ → `EnterPlanMode` を呼んで Phase 1.5 に進む。
 
 `$CLARIFY_NOTES` が非空の場合、`skills/flow-common/references/codex-task-runner.md` を Read し、以下の変数をセットしてランナー手順（ステップ 1〜5）に従う。
 - `PLAN_TMPDIR=$(mktemp -d)`（Phase 1 専用。Phase 1.5 の `DESIGN_REVIEW_TMPDIR` と名前空間を分離）
@@ -51,9 +51,9 @@ PROMPT_EOF2
 
 **結果判定**（runner 呼び出し直後。成功・フォールバック両経路で必ず `rm -rf "$PLAN_TMPDIR"` を実行する）:
 - runner の stdout に `CODEX_TASK_SKIPPED` が含まれる（`grep -q "CODEX_TASK_SKIPPED"`）場合、または `$PLAN_TMPDIR/plan.md` が存在しない場合（フォールバック）:
-  `rm -rf "$PLAN_TMPDIR"` → Claude が直接設計プランを作成（**ステップ 4 prompt 内の 7 項目構成に従う**） → `$PLAN` に保持 → `PLAN_AUTHOR=claude`
+  `rm -rf "$PLAN_TMPDIR"` → Claude が直接設計プランを作成（**ステップ 4 prompt 内の 7 項目構成に従う**） → `$PLAN` に保持 → `PLAN_AUTHOR=claude` → Claude が 1〜2 行の short summary を生成して提示し、`$PLAN_SHORT_SUMMARY`（shell 変数ではなく会話コンテキスト内のテキスト）として以降のフェーズへ引き継ぐ
 - 成功時（`$PLAN_TMPDIR/plan.md` が存在）:
-  `PLAN=$(cat "$PLAN_TMPDIR/plan.md")` → `rm -rf "$PLAN_TMPDIR"` → `PLAN_AUTHOR=codex` → Claude が 1〜2 行の short summary を生成して提示
+  `PLAN=$(cat "$PLAN_TMPDIR/plan.md")` → `rm -rf "$PLAN_TMPDIR"` → `PLAN_AUTHOR=codex` → Claude が 1〜2 行の short summary を生成して提示し、`$PLAN_SHORT_SUMMARY`（shell 変数ではなく会話コンテキスト内のテキスト）として以降のフェーズへ引き継ぐ
 
 `EnterPlanMode` を呼ぶ（runner 実行・`$PLAN` セット完了後、Phase 1.5 に進む前）。Proceed to Phase 1.5.
 
@@ -73,20 +73,20 @@ Hold `$DESIGN_REVIEW_RESULT` and `$DESIGN_REVIEW_SOURCE`. Proceed to Phase 2.
 **`PLAN_AUTHOR=claude`（または未設定）の場合:** 下記の現行フォーマットで提示する。
 
 **`PLAN_AUTHOR=codex` の場合:** 以下の 3 点セットで提示する。
-- question: "[要件の 1〜2 行サマリー]\n\n### 1. Codex 生成プラン\n$PLAN\n\n### 2. 設計レビュー（$DESIGN_REVIEW_SOURCE）\n$DESIGN_REVIEW_RESULT\n\n### 3. Claude 整合チェック\n[重大な要件漏れ・危険な実装順序・未確定事項の3観点のみを 3〜5 行で記載。全文再生成禁止]"
+- question: "$PLAN_SHORT_SUMMARY\n\n### 1. Codex 生成プラン\n$PLAN\n\n### 2. 設計レビュー（$DESIGN_REVIEW_SOURCE）\n$DESIGN_REVIEW_RESULT\n\n### 3. Claude 整合チェック\n[重大な要件漏れ・危険な実装順序・未確定事項の3観点のみを 3〜5 行で記載。全文再生成禁止]"
 - options: ["承認（実装開始）", "修正（修正内容を続けて入力）", "中断"]
 
 **On 修正（`PLAN_AUTHOR=codex` の場合）:** Claude が `$PLAN` にユーザーの修正指示を直接適用する（差分改訂。`$PLAN` の全文再生成・Codex 再委譲は禁止）。`PLAN_AUTHOR` は変更しない（`=codex` を維持）。design-review を再実行し（Phase 1.5 を繰り返す）、Phase 2 に戻る。
 
 Present the plan and design review using the format below. Then **call `AskUserQuestion`** with:
-- question: "[要件の 1〜2 行サマリー]\n\n[プラン内容]\n\n### 設計レビュー（$DESIGN_REVIEW_SOURCE）\n$DESIGN_REVIEW_RESULT"
+- question: "$PLAN_SHORT_SUMMARY\n\n[プラン内容]\n\n### 設計レビュー（$DESIGN_REVIEW_SOURCE）\n$DESIGN_REVIEW_RESULT"
 - options: ["承認（実装開始）", "修正（修正内容を続けて入力）", "中断"]
 
 ```
 ## 設計レビュー ✋
 
 ### 概要
-[要件の 1〜2 行サマリー]
+$PLAN_SHORT_SUMMARY
 
 ### 実装方針
 [主要な設計決定]
@@ -156,6 +156,8 @@ Fall back to direct implementation only if Codex is unavailable.
 Proceed to Phase 5.
 
 ## Phase 5: REVIEW → FIX Loop
+
+`$PLAN_SHORT_SUMMARY`が非空の場合、magi-fast のステップ1（run dir 準備）完了後に Claude が Write tool で `$RUN_DIR/change-summary.txt` へ `$PLAN_SHORT_SUMMARY` の内容を直接書き込んでから `/magi-fast` の残りのステップを実行する（bash コマンド文字列へは埋め込まない）。`/codegen`による修正が元の`$PLAN`の「Implementation approach」「Affected files」の範囲内（HIGH 指摘の是正のみ）であれば`$PLAN_SHORT_SUMMARY`は据え置く。範囲を超える変更をユーザーが承認した場合は Claude が`$PLAN_SHORT_SUMMARY`を再生成する。再生成できない、または範囲内/範囲外を判定できない場合は、次の`/magi-fast`実行時にこの書き込み手順自体をスキップする（安全側に倒す）。
 
 Execute `/magi-fast`.
 
