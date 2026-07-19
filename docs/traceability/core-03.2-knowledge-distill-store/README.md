@@ -76,6 +76,6 @@ Fable 05 は core-03.3、13 は core-04 と重複する。
 | implementation-plan.md | approved | PR-A/B/C/D 分割・Codex レビュー対応済み。人間承認済み（2026-07-08） |
 | 実装 | implemented | PR-A = #313・PR-B = #317（2026-07-16）・PR-C = #322（2026-07-17）・PR-D = #324（2026-07-19）**全 4 PR 完了**、いずれも merge・live 検証済み。ハードニング残件は #315 |
 | test-plan.md | draft | specification 確定後に更新 |
-| design-review.md | todo | Step 7 で作成 |
+| design-review.md | approved | 2026-07-19 実施（Codex）・人間承認済み。HIGH 1 件は #326 に別トラック化・REQ-03.2-03 の登録/自動昇格は blocked（audit で管理） |
 | traceability-map.md | draft | 各工程で更新 |
 | traceability-audit.md | todo | Step 9 で作成 |

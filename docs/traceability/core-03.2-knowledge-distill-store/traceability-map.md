@@ -48,6 +48,12 @@
 | SPEC-03.2-04（error-detector.sh リポジトリ追加） | IMPL-03.2-03 | PR-C = [#322](https://github.com/YuushiOnozawa/Claude-StartUp/pull/322)（repo 追加は core-02 還流 PR-R4 で先行完了） | implemented（2026-07-17 merge・live 検証 OK） |
 | SPEC-03.2-05（lessons-learned ローカル化 + CLAUDE.md 変更） | IMPL-03.2-04, IMPL-03.2-05 | PR-D = [#324](https://github.com/YuushiOnozawa/Claude-StartUp/pull/324) | implemented（2026-07-19 merge・live 検証 OK。手動保存スコープ外の仕様注記は spec 参照） |
 
+## Step 7 — 設計レビュー
+
+| 対象 | 実施 | 結果 |
+|---|---|---|
+| REQ↔SPEC↔IMPL 整合（実装後） | 2026-07-19 Codex（Claude がコード検証） | design-review.md 参照。HIGH 1 件（knowledge-rag 登録先の documents_dir 依存）= [#326](https://github.com/YuushiOnozawa/Claude-StartUp/issues/326) 別トラック化・REQ-03.2-03 の登録/自動昇格の受け入れ条件は blocked。MEDIUM の旧配送方針行は修正済み。LOW は Step 8 test-plan へ |
+
 ## 注意
 
 要求・仕様・実装計画・テスト設計の各段階で更新する。
