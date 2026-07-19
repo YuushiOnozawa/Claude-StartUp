@@ -31,8 +31,8 @@
 - 「以前調べた」「既知のはず」と感じたら必ず `search_knowledge` で確認してから回答すること
 
 ## lessons-learned の記録
-- 作業中に自分のミスに気づいたら `mcp__knowledge-rag__add_document` を直接呼び出して登録すること
-- filepath: `lessons-learned/YYYY-MM-DD-HHMMSS-<要約>.md`、category: `lessons-learned`
+- 作業中に自分のミスに気づいたら `$HOME/.local/share/knowledge-rag/lessons-learned/YYYY-MM-DD-HHMMSS-<要約>.md` にファイルを保存すること
+- 手動保存はローカル記録のみ（knowledge-rag への登録は行われない）。transcript からの自動抽出分は `lessons-learned-distill.sh` が保存・登録を担う
 - フォーマット: 状況 / ミス / 原因 / 解決 / 防止策
 
 ## モデル委譲（コスト最適化）
