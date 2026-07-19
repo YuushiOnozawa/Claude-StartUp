@@ -54,6 +54,18 @@
 |---|---|---|
 | REQ↔SPEC↔IMPL 整合（実装後） | 2026-07-19 Codex（Claude がコード検証） | design-review.md 参照。HIGH 1 件（knowledge-rag 登録先の documents_dir 依存）= [#326](https://github.com/YuushiOnozawa/Claude-StartUp/issues/326) 別トラック化・REQ-03.2-03 の登録/自動昇格の受け入れ条件は blocked。MEDIUM の旧配送方針行は修正済み。LOW は Step 8 test-plan へ |
 
+## Step 8 — テスト
+
+| SPEC ID | 対応 TEST | 実行スクリプト | 結果 |
+|---|---|---|---|
+| SPEC-03.2-01 | TEST-03.2-01 | `scripts/test-setup-hooks-registration.sh` | 9 ケース PASS |
+| SPEC-03.2-02 | TEST-03.2-02 | `scripts/test-setup-hooks-registration.sh` | 2 ケース PASS |
+| SPEC-03.2-03 | TEST-03.2-03 | `scripts/test-knowledge-distill-local.sh` | 13 ケース PASS。knowledge-rag 登録の mount 非依存性は [#326](https://github.com/YuushiOnozawa/Claude-StartUp/issues/326) 待ちで未テスト |
+| SPEC-03.2-04 | TEST-03.2-04 | `scripts/test-setup-hooks-registration.sh` | 8 ケース PASS |
+| SPEC-03.2-05 | TEST-03.2-05 | `scripts/test-lessons-learned-local.sh` | 12 ケース PASS |
+
+合計 57 PASS / 0 FAIL / 0 SKIP（2026-07-19 実行）。詳細は test-plan.md 参照。
+
 ## 注意
 
 要求・仕様・実装計画・テスト設計の各段階で更新する。
