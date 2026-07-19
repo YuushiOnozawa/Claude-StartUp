@@ -1,6 +1,6 @@
 # トレーサビリティ全体ボード
 
-最終更新: 2026-07-19（core-03.2 Step 8 test approved。57 PASS / 0 FAIL。未テスト 2 件は #326 blocked。次は Step 9 audit）
+最終更新: 2026-07-19（core-03.2 全工程完了・verified。REQ-03.2-03 の knowledge-rag 登録 mount 非依存性は #326 blocked として継続追跡）
 
 分類元: [docs/planning/fable-traceability-classification.md](../planning/fable-traceability-classification.md)
 運用手順: `/traceability-flow`（各 Step のスキル一覧と進行判定）
@@ -10,14 +10,14 @@
 | [core-01-environment-scope](core-01-environment-scope/README.md) — 対応環境スコープ・優先度の未確定（旧 core-07） | 要確認 | medium | **approved** | **approved** | **approved** | todo | todo | draft | todo |
 | [core-02-live-deploy-drift](core-02-live-deploy-drift/README.md) — 実働環境で生まれた開発内容の還流経路が未定義（旧 core-05、旧名「本番とリポジトリの正の分裂」） | 必須 | high | **approved** | **approved** | **approved** | **implemented** | **approved** | **approved** | **verified** |
 | [core-03.1-magi-codex-llm-sync](core-03.1-magi-codex-llm-sync/README.md) — MAGI/Codex/ローカルLLM の実体・参照・割当ズレ（旧 core-02） | 必須 | high | **approved** | **approved** | **approved** | **verified** | **approved** | **approved** | **verified** |
-| [core-03.2-knowledge-distill-store](core-03.2-knowledge-distill-store/README.md) — hooks/蒸留/知識ストアの二重化・欠落・密結合（旧 core-03） | 必須 | high | **approved** | **approved** | **approved** | **implemented** | **approved** | **approved** | todo |
+| [core-03.2-knowledge-distill-store](core-03.2-knowledge-distill-store/README.md) — hooks/蒸留/知識ストアの二重化・欠落・密結合（旧 core-03） | 必須 | high | **approved** | **approved** | **approved** | **implemented** | **approved** | **approved** | **verified** |
 | [core-03.3-setup-readiness](core-03.3-setup-readiness/README.md) — ワンライナー展開後の実行可能状態保証（旧 core-01） | 必須 | high | **approved** | **approved** | **approved** | todo | todo | draft | todo |
 | [core-03.4-continuous-assurance](core-03.4-continuous-assurance/README.md) — ドキュメント・CI・verify の継続保証不足（旧 core-06） | 必須 | high | **approved** | **approved** | **approved** | todo | todo | draft | todo |
 | [core-04-second-brain-recall](core-04-second-brain-recall/README.md) — 第二の脳・横断想起の運用仕様化（番号変更なし） | 将来拡張 | medium | **approved** | **approved** | **approved** | todo | todo | draft | todo |
 
 ## 次のアクション候補
 
-- core-03.2: **Step 8（test）approved**。既存自動テスト 3 本で計 57 PASS / 0 FAIL / 0 SKIP。未テスト 2 件（knowledge-rag 登録の mount 非依存性・auto-promote 完走定義）は #326（別トラック）待ちで blocked。次は Step 9（audit）。ハードニング残件 #315・MAGI 品質改善 #314（gate 修繕 #319/#320/#321 反映済み）は別トラック
+- core-03.2: ✅ **全工程完了・verified**（2026-07-19。core-02・core-03.1 に続き 3 例目）。REQ-03.2-01/02/04 は完全達成、REQ-03.2-03 は記録層部分は達成・knowledge-rag 登録の mount 非依存性は #326（別トラック）で blocked のまま継続追跡。ハードニング残件 #315・MAGI 品質改善 #314（gate 修繕 #319/#320/#321 反映済み）も別トラック
 - core-03.3: impl-plan approved → 実装（Step 5/6）開始可能
 - core-03.4: impl-plan approved → 実装（Step 5/6）開始可能
 - core-03.1: ✅ **全工程完了・verified**（2026-07-16。core-02 に続き 2 例目）

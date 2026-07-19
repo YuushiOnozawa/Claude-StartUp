@@ -23,7 +23,7 @@
 |---|---|---|---|---|
 | IMPL-03.2-01 | `setup/410` の SessionEnd 削除 + SessionStart 追加 + ログパス修正 + `mkdir -p` | SPEC-03.2-01, SPEC-03.2-02 | `setup/410*.sh` | `/dev-flow` |
 | IMPL-03.2-02 | `knowledge-distill.sh` 記録層/配送層分離（pCloud 非依存化 + LOCAL_STAGING_DIR + pcloud コールバック削除） | SPEC-03.2-03 | `hooks/knowledge-distill.sh` | `/dev-flow` |
-| IMPL-03.2-03 | `hooks/error-detector.sh` を repo に追加 + `setup/413-hooks-error-detector.sh` 新設 + `setup.sh` へ 413 source 追加 | SPEC-03.2-04 | `hooks/error-detector.sh`（新規）・`setup/413-hooks-error-detector.sh`（新規）・`setup/setup.sh` | `/dev-flow` |
+| IMPL-03.2-03 | `hooks/error-detector.sh` を repo に追加 + `setup/413-hooks-error-detector.sh` 新設（`setup.sh` は `setup/*.sh` を glob 自動読み込みするため source 追加は不要。実装時に判明・PR-C 注記参照） | SPEC-03.2-04 | `hooks/error-detector.sh`（新規）・`setup/413-hooks-error-detector.sh`（新規） | `/dev-flow` |
 | IMPL-03.2-04 | `lessons-learned-distill.sh` の OUTPUT_DIR をローカルに変更 + pCloud FUSE 直書き廃止（pCloud 転送は pcloud-sync.sh に委任） | SPEC-03.2-05 | `hooks/lessons-learned-distill.sh` | `/dev-flow` |
 | IMPL-03.2-05 | `CLAUDE.md` の `lessons-learned` 登録手順を `mcp__knowledge-rag__add_document` 直接呼び出し → ローカルファイル保存に変更 | SPEC-03.2-05 | `CLAUDE.md` | `/codegen` + `/commit`（IMPL-03.2-04 と同一 PR） |
 
