@@ -194,6 +194,14 @@ test "$(jq '[.hooks.PostToolUse[].hooks[].command] | map(select(contains("error-
 
 ### PR-D: lessons-learned ローカル化 + CLAUDE.md 変更（IMPL-03.2-04, IMPL-03.2-05）
 
+> **✅ 完了（2026-07-19）**: [PR #324](https://github.com/YuushiOnozawa/Claude-StartUp/pull/324) merge 済み・live 検証 OK（setup.sh 配備で repo/live 同一・`mountpoint` 参照消滅・テスト 12 PASS）。
+> - 実装ファイル: `hooks/lessons-learned-distill.sh`, `CLAUDE.md`, `scripts/test-lessons-learned-local.sh`（新規、fixture HOME で 12 テスト）
+> - 仕様明確化（Codex 設計レビュー指摘・人間確認済み 2026-07-19）: **手動保存はローカル記録のみ**（knowledge-rag 登録経路は追加しない）。distill.sh の登録は transcript 由来の自動抽出分のみが対象。specification.md の SPEC-03.2-05 に注記を追記
+> - drain ゲートは PR-B と同旨で「Ollama 起動時のみ」に変更（dead-letter 防止）。pcloud reason の既存キューアイテムは `queue_drain "" `（全 reason）が処理するため移行処理は不要
+> - **下記の「CLAUDE.md デプロイ手順」の全文 `cp` は不採用**: `~/.claude/CLAUDE.md` は repo 版と分岐している（lean-ctx・RTK import 等グローバル専用セクションあり）ため、該当セクションのみの手動編集で反映した（バックアップ作成・旧文言消滅/新文言存在を検証済み）
+> - **下記「検証」の `filepath/content` JSON を渡すコマンドは実態と不一致**（hook は SessionEnd の transcript_path を処理する）。正しい検証は `scripts/test-lessons-learned-local.sh`
+> - magi-fast: 3 persona 全 parse ok。HIGH 1 件（テストの mktemp ガード）は repo 慣行（既存テスト群と同一パターン）と統一済みのため人間判断で不採用
+
 **作業内容**:
 - `hooks/lessons-learned-distill.sh` の変更:
   - `~/pcloud/obsidian/lessons-learned/` への書き込みを `$HOME/.local/share/knowledge-rag/lessons-learned/` に変更
