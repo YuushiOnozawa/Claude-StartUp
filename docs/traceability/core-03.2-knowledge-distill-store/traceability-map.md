@@ -66,6 +66,12 @@
 
 合計 57 PASS / 0 FAIL / 0 SKIP（2026-07-19 実行）。詳細は test-plan.md 参照。
 
+## Step 9 — 監査
+
+| 対象 | 実施 | 結果 |
+|---|---|---|
+| 全体（PROB→REQ→SPEC→IMPL→TEST 突合） | 2026-07-19 Claude（機械的+意味的）+ Codex（二次確認） | traceability-audit.md 参照。orphan・漏れなし。指摘3件（A-001 情報=#326既知、A-002 低=本監査で修正済み、A-003 情報=スコープ外）。**verified**（REQ-03.2-03 のknowledge-rag登録mount非依存性はblocked=#326として明記の上） |
+
 ## 注意
 
 要求・仕様・実装計画・テスト設計の各段階で更新する。
