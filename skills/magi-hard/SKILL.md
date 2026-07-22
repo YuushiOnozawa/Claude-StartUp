@@ -180,16 +180,43 @@ manifest と policy は一時ファイルを `mv` して atomic に保存し、�
 
 ```bash
 MAGI_CHANGE_SUMMARY=$(cat "$RUN_DIR/change-summary.txt" 2>/dev/null || true)
-for persona in melchior balthasar casper metatron sandalphon; do
+for persona in melchior balthasar; do
   PERSONA_NAME=$(printf '%s' "$persona" | tr '[:lower:]' '[:upper:]')
-  IMPACT_ARG=()
+  case "$persona" in
+    melchior) OLLAMA_MODEL='qwen2.5-coder:7b' ;;
+    balthasar) OLLAMA_MODEL='gemma4:e4b-it-qat' ;;
+  esac
+  IMPACT_CONTEXT=
   if [ "$persona" = balthasar ]; then
     IMPACT_CONTEXT=$(bash "$HOME/.claude/scripts/magi-impact-context.sh" "$(cat "$RUN_DIR/diff/input.filtered.patch")" 2>/dev/null || true)
-    export MAGI_IMPACT_CONTEXT="$IMPACT_CONTEXT"
   fi
   MAGI_RUN_DIR="$RUN_DIR" MAGI_INPUT_FILE="$RUN_DIR/diff/input.filtered.patch" \
   MAGI_RESULT_FILE="$RUN_DIR/results/$persona.md" MAGI_STATUS_FILE="$RUN_DIR/status/$persona.json" \
-  MAGI_QUIET=1 PERSONA_NAME="$PERSONA_NAME" MAGI_CHANGE_SUMMARY="${MAGI_CHANGE_SUMMARY:-}" run_persona "$persona"
+  MAGI_QUIET=1 PERSONA_NAME="$PERSONA_NAME" MAGI_CHANGE_SUMMARY="${MAGI_CHANGE_SUMMARY:-}" \
+  MAGI_IMPACT_CONTEXT="${IMPACT_CONTEXT:-}" \
+  python3 "$REPO_ROOT/scripts/magi-persona-runner.py" "$persona" --repo-root "$REPO_ROOT" --model "$OLLAMA_MODEL"
+done
+```
+
+上記ループ完了後、3体目として CASPER を実行する。`magi-common/references/execution-steps.md` の「Haiku パス」節の契約に従い、Claude が `Agent(subagent_type="general-purpose", model="haiku")` を直接呼び出す。渡す内容は、共通 4 reference（`magi-common/references/task-base.md`、`casper/references/task-instruction.md`、`casper/references/review-criteria.md`、`magi-common/references/output-format.md`）、system prompt 末尾へ追加する `$CLAUDE_RULES`、filter 済み diff、chunk ID、期待される completion marker（`<!-- MAGI_COMPLETE persona=casper chunk=XXXX -->`）とする。magi-hard の CASPER には `plan-receipt.json` を渡さない。
+
+Haiku 応答には staging file（`$RUN_DIR/results/.CASPER.<chunk_id>.haiku.tmp`）への書き込みだけを指示する。Claude は `execution-steps.md` の「Haiku パス」節の receipt 検証手順を実行し、検証済み本文だけを chunk 順に組み立ててから、`results/casper.md` と `status/casper.json` へ atomic commit する。
+
+CASPER の atomic commit が完了してから、4体目以降を実行する。
+
+```bash
+for persona in metatron sandalphon; do
+  PERSONA_NAME=$(printf '%s' "$persona" | tr '[:lower:]' '[:upper:]')
+  case "$persona" in
+    metatron) OLLAMA_MODEL='granite3.3:8b' ;;
+    sandalphon) OLLAMA_MODEL='phi4:latest' ;;
+  esac
+  IMPACT_CONTEXT=
+  MAGI_RUN_DIR="$RUN_DIR" MAGI_INPUT_FILE="$RUN_DIR/diff/input.filtered.patch" \
+  MAGI_RESULT_FILE="$RUN_DIR/results/$persona.md" MAGI_STATUS_FILE="$RUN_DIR/status/$persona.json" \
+  MAGI_QUIET=1 PERSONA_NAME="$PERSONA_NAME" MAGI_CHANGE_SUMMARY="${MAGI_CHANGE_SUMMARY:-}" \
+  MAGI_IMPACT_CONTEXT="${IMPACT_CONTEXT:-}" \
+  python3 "$REPO_ROOT/scripts/magi-persona-runner.py" "$persona" --repo-root "$REPO_ROOT" --model "$OLLAMA_MODEL"
 done
 ```
 
@@ -293,9 +320,12 @@ fi
 ```bash
 MAGI_IMPACT_CONTEXT=$(cat "$RUN_DIR/plan/leliel-context/impact-context.md")
 MAGI_CHANGE_SUMMARY=$(cat "$RUN_DIR/change-summary.txt" 2>/dev/null || true)
+OLLAMA_MODEL='llama3.1:8b'
 MAGI_RUN_DIR="$RUN_DIR" MAGI_INPUT_FILE="$RUN_DIR/diff/input.filtered.patch" \
 MAGI_RESULT_FILE="$RUN_DIR/results/leliel.md" MAGI_STATUS_FILE="$RUN_DIR/status/leliel.json" \
-MAGI_QUIET=1 PERSONA_NAME=LELIEL MAGI_CHANGE_SUMMARY="${MAGI_CHANGE_SUMMARY:-}" run_persona leliel
+MAGI_QUIET=1 PERSONA_NAME=LELIEL MAGI_CHANGE_SUMMARY="${MAGI_CHANGE_SUMMARY:-}" \
+MAGI_IMPACT_CONTEXT="${MAGI_IMPACT_CONTEXT:-}" \
+python3 "$REPO_ROOT/scripts/magi-persona-runner.py" leliel --repo-root "$REPO_ROOT" --model "$OLLAMA_MODEL"
 ```
 
 LELIEL 実行後、5体に `leliel/LELIEL/LEL` ordinal 6 を加えた manifest を `$RUN_DIR/manifest-6.json` として atomic に生成し、2回目の parse を行う。persona 別連番 ID のため、先行5体の ID は1回目と一致する。

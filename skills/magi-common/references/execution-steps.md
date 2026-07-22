@@ -403,73 +403,17 @@ BOUNDARY_INSTRUCTION
 
 legacy mode では各 chunk の本文を従来どおり受け取り、backend 行とともに stdout へ表示する。run artifact は作らない。
 
-sink mode では persona の全 chunk 実行から result の atomic rename までを、1 回の単一シェルスクリプト（1 プロセス）内で完結させる。その中で persona result の sibling tmp を mktemp で作成して FD を保持し、raw output を直接 redirect する。stdout やシェル変数へ本文を取り込まない。stderr は chunk ごとの sidecar に分離する。
+sink mode での Ollama 系 5persona（MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIEL）の実行は `scripts/magi-persona-runner.py` が担う。呼び出し元は以下の契約でこのスクリプトを呼ぶ。
 
-```text
-run one shell script for this persona:
-  (result_tmp, result_fd) := mktemp_open_new_no_follow(
-      result_dir, "." + PERSONA + ".result.XXXXXX")
-  result_identity := fstat(result_fd)
-  reject unless result_tmp is a fresh regular non-symlink file in result_dir,
-                lstat(result_tmp) has result_identity, and its link count is 1
-  retain result_fd and the exact result_tmp returned by mktemp until commit;
-  write and inspect only through result_fd, never rederive or reopen result_tmp
-
-  for chunk in immutable chunk records, in ordinal order:
-    reject unless byte_length(chunk_input) == input_bytes
-                  and sha256_lower_hex(chunk_input) == input_sha256
-    expected_marker := concrete marker for this chunk_id if sink; otherwise null
-    prompt_file := MAGI_PERSONA_TMPDIR + "/prompt." + chunk_id + ".txt"
-    create prompt_file as a fresh regular non-symlink file from prompt_for(chunk)
-    reject unless the generated prompt contains this chunk_id, expected_marker when sink,
-                  and the exact chunk_input bytes from the same immutable chunk record
-    reject unless fstat(result_fd) still has result_identity and is a regular file
-    write_all(result_fd, "=== CHUNK: " + source_label + " ===\n")
-    body_start := file_length(result_fd)
-    stderr_file := stderr_dir + "/" + chunk_id + ".stderr"
-    revalidate stderr_file as absent with a regular non-symlink parent
-    open_new_no_follow(stderr_file) as stderr_fd
-
-    set +e
-    OLLAMA_REPEAT_PENALTY=1.3 OLLAMA_NUM_PREDICT=4096 \
-    bash ~/.claude/scripts/ollama-run.sh "$OLLAMA_MODEL" "$MAGI_PERSONA_TMPDIR/system.txt" \
-      < "$prompt_file" >&${result_fd} 2>&${stderr_fd}
-    exit_code := $?
-    set -e
-
-    body_end     := file_length(result_fd)
-    raw_body     := byte_range(result_fd, body_start, body_end)
-    output_bytes := byte_length(raw_body)
-    output_sha256 := sha256_lower_hex(raw_body) if output_bytes > 0 else null
-    stderr_bytes := byte_length(stderr_file)
-    stderr_sha256 := sha256_lower_hex(stderr_file)
-    last_line    := last_non_empty_line(model_generated_raw_body_only)
-
-    if last_line == expected_marker:              marker := "complete"
-    else if last_line matches MAGI marker syntax: marker := "mismatch"
-    else:                                         marker := "missing"
-
-    body_without_marker := model_generated_raw_body_only with its final marker line removed if present
-    assessment_structurally_complete := false
-    for header in ASSESSMENT_HEADERS:
-        header_line := grep -n -F -x "$header" body_without_marker
-        if header_line exists:
-            assessment_body := lines after header_line until the next line matching '^## '
-            if printf '%s\n' "$assessment_body" | grep -q '[^[:space:]]':
-                assessment_structurally_complete := true
-                break
-
-    chunk_complete := exit_code == 0
-                      && output_bytes > 0
-                      && (marker == "complete" || assessment_structurally_complete)
-
-    write exactly one separator newline to result_fd after body_end
-    if !chunk_complete: mark all remaining chunks "not_run" and stop  # fail-fast
-
-  execute the Ollama result-publication branch in step 3 before this shell exits
+```bash
+MAGI_RUN_DIR="$RUN_DIR" MAGI_INPUT_FILE="$RUN_DIR/diff/input.filtered.patch" \
+MAGI_RESULT_FILE="$RUN_DIR/results/$persona.md" MAGI_STATUS_FILE="$RUN_DIR/status/$persona.json" \
+MAGI_QUIET=1 PERSONA_NAME="$PERSONA_NAME" MAGI_CHANGE_SUMMARY="${MAGI_CHANGE_SUMMARY:-}" \
+MAGI_IMPACT_CONTEXT="${MAGI_IMPACT_CONTEXT:-}" \
+python3 "$REPO_ROOT/scripts/magi-persona-runner.py" "$persona" --repo-root "$REPO_ROOT" --model "$OLLAMA_MODEL"
 ```
 
-Ollama の prompt はループ内で chunk ごとに必ず再生成し、別 chunk の prompt file を再利用しない。status の `input_bytes`／`input_sha256` とモデルへ渡すレビュー対象は、同じ immutable chunk record の `chunk_input` raw bytes に固定する。chunk の `output_bytes`／`output_sha256` は header と親が追加した separator を含まない raw body の byte range に対して計算する。stderr 本文を result や status JSON に埋め込まない。sidecar は run-relative path、bytes、SHA-256 だけを status に記録する。Ollama の non-zero、空 body、marker missing/mismatch かつ Assessment 構造不完全な chunk は完了件数に含めない。`result_fd` はこのシェルプロセスの外へ持ち出さず、commit まで path を再オープンしない。
+このスクリプトの実装が、上記に定義する sink mode 変数契約・path 検証規則・status JSON schema・marker/Assessment 構造完全性の受理条件を満たすことを前提とする。
 
 ### Haiku パス
 
