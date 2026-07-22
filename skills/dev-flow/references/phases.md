@@ -106,7 +106,21 @@ $DESIGN_REVIEW_RESULT
 ```
 
 On **修正**: return to Phase 1, revise the plan, and re-run design-review.
-On **承認**: call `ExitPlanMode`, then call `ctx_compress` to free context before implementation. Proceed to Phase 3.
+On **承認**: 承認直後に Claude が `$PLAN_RECEIPT_JSON`（shell 変数ではなく Claude が会話コンテキスト内で保持するテキスト）を次の schema で確定する。`target_files` は `$PLAN` の「Affected files」または提示時の「影響ファイル」セクションから抽出する。`plan_id` は短い不透明 ID（短いランダム文字列、または `$PLAN_TMPDIR` の basename 由来など）でよい。
+
+```json
+{
+  "schema_version": "plan-receipt/v1",
+  "plan_id": "<短い不透明ID>",
+  "approved": true,
+  "scope": "<承認されたプランの1行要約>",
+  "target_files": ["path1", "path2", "..."],
+  "generated_at": "<UTC RFC3339>",
+  "source": "dev-flow CHECK phase"
+}
+```
+
+Then call `ExitPlanMode`, then call `ctx_compress` to free context before implementation. Proceed to Phase 3.
 
 ## Phase 3: WORKTREE
 
@@ -158,6 +172,8 @@ Proceed to Phase 5.
 ## Phase 5: REVIEW → FIX Loop
 
 `$PLAN_SHORT_SUMMARY`が非空の場合、magi-fast のステップ1（run dir 準備）完了後に Claude が Write tool で `$RUN_DIR/change-summary.txt` へ `$PLAN_SHORT_SUMMARY` の内容を直接書き込んでから `/magi-fast` の残りのステップを実行する（bash コマンド文字列へは埋め込まない）。`/codegen`による修正が元の`$PLAN`の「Implementation approach」「Affected files」の範囲内（HIGH 指摘の是正のみ）であれば`$PLAN_SHORT_SUMMARY`は据え置く。範囲を超える変更をユーザーが承認した場合は Claude が`$PLAN_SHORT_SUMMARY`を再生成する。再生成できない、または範囲内/範囲外を判定できない場合は、次の`/magi-fast`実行時にこの書き込み手順自体をスキップする（安全側に倒す）。
+
+`$PLAN_RECEIPT_JSON`が非空の場合、magi-fast のステップ1（run dir 準備）完了後に Claude が Write tool で `$RUN_DIR/plan-receipt.json` へ `$PLAN_RECEIPT_JSON` の内容を直接書き込んでから `/magi-fast` の残りのステップを実行する（bash コマンド文字列へは埋め込まない）。`/codegen`による修正が元の`$PLAN`の「Implementation approach」「Affected files」の範囲内であれば`$PLAN_RECEIPT_JSON`は据え置く。範囲を超える変更をユーザーが承認した場合は Claude が`$PLAN_RECEIPT_JSON`を再生成する（`target_files`を更新後の影響ファイルに合わせる）。再生成できない場合は、次の`/magi-fast`実行時にこの書き込み手順自体をスキップする（安全側に倒す）。
 
 Execute `/magi-fast`.
 
