@@ -190,10 +190,18 @@ def build(args):
             x.get("id", ""), x.get("persona", ""), x.get("title", ""),
             x.get("reason_ja", ""), x.get("raw_sha256", "")) for x in excluded)
         details = "\n<details><summary>除外された finding</summary>\n\n%s\n</details>" % rows
+    profile_note = ""
+    if getattr(args, "profile_verification", None):
+        pv = load_json(args.profile_verification)
+        profile_note = "\nannotation_profile: %s (eligible=%s, verified=%s)\nnetwork_isolation: %s" % (
+            pv.get("status", "unknown"), pv.get("annotation_eligible", False),
+            pv.get("profile_verified", False), pv.get("network_isolation", "unknown"))
+        if pv.get("failed_checks"):
+            profile_note += "\nfailed_checks: %s" % ", ".join(pv["failed_checks"])
     needs = [x["id"] for x in entries if x["needs_human"]]
     summary_body = ("<!-- magi-summary: @%s -->\n" % sha + "## MAGI hard review\n"
                     + "raw_counts: %s\ngrouped_counts: %s\n" % (json.dumps(summary.get("raw_counts", {}), ensure_ascii=False, sort_keys=True), json.dumps(summary.get("grouped_counts", {}), ensure_ascii=False, sort_keys=True))
-                    + "needs_human: %s\naudit: %s%s" % (", ".join(needs) or "none", plan.get("audit", {}).get("status", "unknown"), details))
+                    + "needs_human: %s\naudit: %s%s%s" % (", ".join(needs) or "none", plan.get("audit", {}).get("status", "unknown"), details, profile_note))
     output = {"schema_version": "post-plan/v1", "head_sha": sha, "summary_body": summary_body, "entries": entries}
     atomic_write(args.output, canonical(output))
 
@@ -316,7 +324,7 @@ def post(args):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(); sub = parser.add_subparsers(dest="command", required=True)
-    b = sub.add_parser("build"); b.add_argument("--review-plan", required=True); b.add_argument("--output", required=True); b.add_argument("--translations")
+    b = sub.add_parser("build"); b.add_argument("--review-plan", required=True); b.add_argument("--output", required=True); b.add_argument("--translations"); b.add_argument("--profile-verification")
     p = sub.add_parser("post"); p.add_argument("--post-plan", required=True); p.add_argument("--pr", required=True); p.add_argument("--repo", required=True); p.add_argument("--results", required=True); p.add_argument("--gh", default="gh"); p.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     try: return build(args) if args.command == "build" else post(args)

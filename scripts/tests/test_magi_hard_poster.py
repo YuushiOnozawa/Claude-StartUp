@@ -79,7 +79,7 @@ class MagiHardPosterTests(unittest.TestCase):
     def write_json(self, path, value):
         path.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
 
-    def build(self, root, plan=None, translations=None):
+    def build(self, root, plan=None, translations=None, profile_verification=None):
         review = root / "review.json"
         output = root / "post.json"
         self.write_json(review, plan or make_plan())
@@ -88,6 +88,10 @@ class MagiHardPosterTests(unittest.TestCase):
             translated = root / "translations.json"
             self.write_json(translated, translations)
             command += ["--translations", str(translated)]
+        if profile_verification is not None:
+            profile = root / "profile-verification.json"
+            self.write_json(profile, profile_verification)
+            command += ["--profile-verification", str(profile)]
         result = subprocess.run(command, text=True, capture_output=True)
         return result, output
 
@@ -257,6 +261,20 @@ if "--method" in args and "PATCH" in args:
             summary = json.loads(output.read_text())["summary_body"]
             self.assertIn("<details>", summary)
             self.assertIn("- CAS-001 [casper] 除外 finding: 誤検知 (raw:%s)" % ("d" * 64), summary)
+
+    def test_build_appends_profile_verification_when_supplied(self):
+        with tempfile.TemporaryDirectory() as name:
+            profile = {"schema_version": "profile-verification/v1",
+                       "status": "invalid", "annotation_eligible": True,
+                       "profile_verified": False,
+                       "network_isolation": "not_supported_by_codex_companion_1.0.5",
+                       "failed_checks": ["post_run_tree_changed"]}
+            result, output = self.build(Path(name), profile_verification=profile)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            summary = json.loads(output.read_text(encoding="utf-8"))["summary_body"]
+            self.assertIn("annotation_profile: invalid (eligible=True, verified=False)", summary)
+            self.assertIn("network_isolation: not_supported_by_codex_companion_1.0.5", summary)
+            self.assertIn("failed_checks: post_run_tree_changed", summary)
 
     def test_post_head_drift_stops_all_api_posts(self):
         with tempfile.TemporaryDirectory() as name:

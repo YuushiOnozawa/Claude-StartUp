@@ -154,7 +154,7 @@ class LelielPretriageTest(unittest.TestCase):
                 result = subprocess.run([sys.executable, str(SCRIPT), "prepare", "--diff-file", str(FIXTURES / "required-signature.patch"),
                                          "--repo-root", str(root), "--output-dir", str(output), "--audit-dir", str(audit),
                                          "--tracked-files", str(tracked), "--codex-command", str(FIXTURES / fake),
-                                         "--isolated-profile", "hard-read-only/v1"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                         "--isolated-profile", "codex-companion-read-only/v1"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                         env=environment, timeout=10)
                 self.assertEqual(result.returncode, 0, result.stderr.decode())
                 self.assertEqual(json.loads(self.published(output)["impact-targets.json"])["pretriage"]["codex_status"], "fallback_legacy")
@@ -169,7 +169,7 @@ class LelielPretriageTest(unittest.TestCase):
             result = subprocess.run([sys.executable, str(SCRIPT), "prepare", "--diff-file", str(diff), "--repo-root", str(root),
                                      "--output-dir", str(output), "--audit-dir", str(audit), "--tracked-files", str(tracked),
                                      "--codex-command", str(FIXTURES / "fake-codex-ignore-stdin"),
-                                     "--isolated-profile", "hard-read-only/v1"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                     "--isolated-profile", "codex-companion-read-only/v1"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                     env=dict(os.environ, MAGI_CODEGRAPH="definitely-not-codegraph"), timeout=8)
             self.assertLess(time.monotonic() - started, 7)
             self.assertEqual(result.returncode, 0, result.stderr.decode())
@@ -183,7 +183,7 @@ class LelielPretriageTest(unittest.TestCase):
             result = subprocess.run([sys.executable, str(SCRIPT), "prepare", "--diff-file", str(FIXTURES / "required-signature.patch"),
                                      "--repo-root", str(root), "--output-dir", str(output), "--audit-dir", str(audit),
                                      "--tracked-files", str(tracked), "--codex-command", str(FIXTURES / "fake-codex-oversized-output"),
-                                     "--isolated-profile", "hard-read-only/v1"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                     "--isolated-profile", "codex-companion-read-only/v1"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                     env=dict(os.environ, MAGI_CODEGRAPH="definitely-not-codegraph"), timeout=8)
             self.assertLess(time.monotonic() - started, 7)
             self.assertEqual(result.returncode, 0, result.stderr.decode())
