@@ -5,19 +5,16 @@
 
 set -euo pipefail
 # 終了コード方針（カテゴリ B / Issue #51）:
-#   exit 0 — 想定内スキップ（pCloud 未マウント→キュー後）
+#   exit 0 — 想定内スキップ（documents dir 未存在）
 #   非ゼロ  — 想定外エラー（set -euo pipefail による自動終了）
 
 HOOK_DIR="$(dirname "$0")"
 
 # shellcheck source=lib/logging.sh
 source "${HOOK_DIR}/lib/logging.sh"
-# shellcheck source=lib/queue.sh
-source "${HOOK_DIR}/lib/queue.sh"
 
-HOOK_NAME="knowledge-prune"
-DOCS_DIR="$HOME/pcloud/obsidian"
-ARCHIVE_DIR="$HOME/pcloud/obsidian/archive"
+DOCS_DIR="$HOME/.local/share/knowledge-rag"
+ARCHIVE_DIR="$HOME/.local/share/knowledge-rag/archive"
 
 # カテゴリ別 TTL（日数）。-1 は永続保持。
 declare -A CATEGORY_TTL=(
@@ -27,23 +24,6 @@ declare -A CATEGORY_TTL=(
   [lessons-learned]=-1
   [general]=90
 )
-
-# キュードレイン（リトライ実行時はスキップして無限ループを防ぐ）
-if [[ "${KRAG_PRUNE_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
-  _prune_retry_callback() {
-    log_info "retrying queued prune"
-    KRAG_PRUNE_RETRY=1 bash "${_PRUNE_HOOK_DIR}/knowledge-prune.sh"
-  }
-  _PRUNE_HOOK_DIR="$(cd "$HOOK_DIR" && pwd)"
-  queue_drain "$HOOK_NAME" "pcloud" "_prune_retry_callback"
-fi
-
-# pCloud マウント確認 → 未マウントならキューに積んで終了
-if ! mountpoint -q "$HOME/pcloud"; then
-  log_info "pCloud not mounted, queuing"
-  queue_push "$HOOK_NAME" "pcloud" "" ""
-  exit 0
-fi
 
 if [[ ! -d "$DOCS_DIR" ]]; then
   log_info "documents dir not found: $DOCS_DIR, skipping"
