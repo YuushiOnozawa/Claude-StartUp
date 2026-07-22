@@ -97,10 +97,10 @@ if [[ -f "$KRAG_CONFIG" ]]; then
 elif [[ -f "$KRAG_CONFIG_EXAMPLE" ]]; then
   echo "  → config.yaml を生成: $KRAG_CONFIG"
   mkdir -p "$(dirname "$KRAG_CONFIG")"
-  if sed "s|documents_dir: \"./documents\"|documents_dir: \"${HOME}/pcloud/obsidian\"|" \
+  if sed "s|documents_dir: \"./documents\"|documents_dir: \"${HOME}/.local/share/knowledge-rag\"|" \
     "$KRAG_CONFIG_EXAMPLE" > "$KRAG_CONFIG" && \
-    grep -q "documents_dir: \"${HOME}/pcloud/obsidian\"" "$KRAG_CONFIG"; then
-    ok "config.yaml (documents_dir=${HOME}/pcloud/obsidian)"
+    grep -q "documents_dir: \"${HOME}/.local/share/knowledge-rag\"" "$KRAG_CONFIG"; then
+    ok "config.yaml (documents_dir=${HOME}/.local/share/knowledge-rag)"
   else
     fail "config.yaml  →  sed 置換失敗"
     rm -f "$KRAG_CONFIG"
@@ -111,32 +111,316 @@ else
   MISSING_CMDS+=("knowledge-rag-config")
 fi
 
-# 既存 config.yaml の category_mappings が空なら sessions/knowledge を追記（冪等）
-if [[ -f "$KRAG_CONFIG" ]] && grep -q 'category_mappings: {}' "$KRAG_CONFIG"; then
-  echo "  → config.yaml に category_mappings を追記"
-  _KRAG_TMP="${KRAG_CONFIG}.tmp"
-  if sed \
-    's|category_mappings: {}|category_mappings:\n  "sessions": "sessions"\n  "knowledge": "knowledge"|' \
-    "$KRAG_CONFIG" > "$_KRAG_TMP" && mv "$_KRAG_TMP" "$KRAG_CONFIG"; then
-    ok "config.yaml (category_mappings 追加)"
+# 既存 config.yaml の documents_dir を旧 pCloud パスからローカルパスへ移行する。
+# documents_dir の値行だけを対象にし、カスタム値や複雑な設定は変更しない。
+if [[ -f "$KRAG_CONFIG" ]]; then
+  _KRAG_LOCAL_DOCS_DIR="$HOME/.local/share/knowledge-rag"
+  if ! _KRAG_DOCS_SUMMARY="$(awk \
+    -v old_abs="$HOME/pcloud/obsidian" \
+    -v old_tilde="~/pcloud/obsidian" \
+    -v new_path="$_KRAG_LOCAL_DOCS_DIR" '
+      function trim(value) {
+        sub(/^[[:space:]]+/, "", value)
+        sub(/[[:space:]]+$/, "", value)
+        return value
+      }
+      function document_value(line,    colon, value) {
+        if (line !~ /^[[:space:]]*documents_dir[[:space:]]*:/) return ""
+        colon = index(line, ":")
+        value = trim(substr(line, colon + 1))
+        if (value ~ /^"[^"]*"[[:space:]]*(#.*)?$/) {
+          sub(/^"/, "", value)
+          sub(/"[[:space:]]*(#.*)?$/, "", value)
+          return value
+        }
+        if (value ~ /^[^[:space:]#]+[[:space:]]*(#.*)?$/) {
+          sub(/[[:space:]]+#.*$/, "", value)
+          return value
+        }
+        return "__complex_documents_dir__"
+      }
+      {
+        if ($0 !~ /^[[:space:]]*documents_dir[[:space:]]*:/) next
+        total++
+        value = document_value($0)
+        if (value == old_abs || value == old_tilde) old++
+        else if (value == new_path) new++
+        else custom++
+      }
+      END { printf "%d %d %d %d\n", old, new, custom, total }
+    ' "$KRAG_CONFIG")"; then
+    fail "config.yaml documents_dir の検査に失敗"
+    MISSING_CMDS+=("knowledge-rag-documents-dir")
   else
-    rm -f "$_KRAG_TMP"
-    fail "config.yaml category_mappings 更新失敗（手動で追加してください）"
+    read -r _KRAG_OLD_DOCS _KRAG_NEW_DOCS _KRAG_CUSTOM_DOCS _KRAG_DOCS_TOTAL <<<"$_KRAG_DOCS_SUMMARY"
+    if [[ "$_KRAG_OLD_DOCS" -eq 1 && "$_KRAG_NEW_DOCS" -eq 0 && "$_KRAG_CUSTOM_DOCS" -eq 0 ]]; then
+      _KRAG_DOCS_TMP=""
+      if _KRAG_DOCS_TMP="$(mktemp "${KRAG_CONFIG}.XXXXXX" 2>/dev/null)" && \
+         awk \
+           -v old_abs="$HOME/pcloud/obsidian" \
+           -v old_tilde="~/pcloud/obsidian" \
+           -v new_path="$_KRAG_LOCAL_DOCS_DIR" '
+             function trim(value) {
+               sub(/^[[:space:]]+/, "", value)
+               sub(/[[:space:]]+$/, "", value)
+               return value
+             }
+             function document_value(line,    colon, value) {
+               if (line !~ /^[[:space:]]*documents_dir[[:space:]]*:/) return ""
+               colon = index(line, ":")
+               value = trim(substr(line, colon + 1))
+               if (value ~ /^"[^"]*"[[:space:]]*(#.*)?$/) {
+                 sub(/^"/, "", value)
+                 sub(/"[[:space:]]*(#.*)?$/, "", value)
+                 return value
+               }
+               if (value ~ /^[^[:space:]#]+[[:space:]]*(#.*)?$/) {
+                 sub(/[[:space:]]+#.*$/, "", value)
+                 return value
+               }
+               return "__complex_documents_dir__"
+             }
+             function replacement(line,    colon, rest, suffix) {
+               colon = index(line, ":")
+               rest = substr(line, colon + 1)
+               suffix = ""
+               if (match(rest, /[[:space:]]+#.*/)) suffix = substr(rest, RSTART)
+               return substr(line, 1, colon) " \"" new_path "\"" suffix
+             }
+             {
+               value = document_value($0)
+               if (value == old_abs || value == old_tilde) print replacement($0)
+               else print
+             }
+           ' "$KRAG_CONFIG" >"$_KRAG_DOCS_TMP"; then
+        _KRAG_DOCS_AFTER="$(awk \
+          -v old_abs="$HOME/pcloud/obsidian" \
+          -v old_tilde="~/pcloud/obsidian" \
+          -v new_path="$_KRAG_LOCAL_DOCS_DIR" '
+            function trim(value) {
+              sub(/^[[:space:]]+/, "", value)
+              sub(/[[:space:]]+$/, "", value)
+              return value
+            }
+            function document_value(line,    colon, value) {
+              if (line !~ /^[[:space:]]*documents_dir[[:space:]]*:/) return ""
+              colon = index(line, ":")
+              value = trim(substr(line, colon + 1))
+              if (value ~ /^"[^"]*"[[:space:]]*(#.*)?$/) {
+                sub(/^"/, "", value)
+                sub(/"[[:space:]]*(#.*)?$/, "", value)
+                return value
+              }
+              if (value ~ /^[^[:space:]#]+[[:space:]]*(#.*)?$/) {
+                sub(/[[:space:]]+#.*$/, "", value)
+                return value
+              }
+              return "__complex_documents_dir__"
+            }
+            {
+              if ($0 !~ /^[[:space:]]*documents_dir[[:space:]]*:/) next
+              total++
+              value = document_value($0)
+              if (value == old_abs || value == old_tilde) old++
+              else if (value == new_path) new++
+              else custom++
+            }
+            END { printf "%d %d %d %d\n", old, new, custom, total }
+          ' "$_KRAG_DOCS_TMP")"
+        read -r _KRAG_AFTER_OLD _KRAG_AFTER_NEW _KRAG_AFTER_CUSTOM _KRAG_AFTER_TOTAL <<<"$_KRAG_DOCS_AFTER"
+        if [[ "$_KRAG_AFTER_OLD" -eq 0 && "$_KRAG_AFTER_NEW" -eq 1 && \
+              "$_KRAG_AFTER_CUSTOM" -eq 0 && "$_KRAG_AFTER_TOTAL" -eq 1 ]] && \
+           mv "$_KRAG_DOCS_TMP" "$KRAG_CONFIG"; then
+          ok "config.yaml (documents_dir=${_KRAG_LOCAL_DOCS_DIR})"
+        else
+          rm -f "$_KRAG_DOCS_TMP"
+          fail "config.yaml documents_dir の移行検証に失敗（変更しません）"
+          MISSING_CMDS+=("knowledge-rag-documents-dir")
+        fi
+      else
+        [[ -n "$_KRAG_DOCS_TMP" ]] && rm -f "$_KRAG_DOCS_TMP"
+        fail "config.yaml documents_dir の移行に失敗（変更しません）"
+        MISSING_CMDS+=("knowledge-rag-documents-dir")
+      fi
+    elif [[ "$_KRAG_CUSTOM_DOCS" -gt 0 || "$_KRAG_OLD_DOCS" -gt 1 || \
+            "$_KRAG_NEW_DOCS" -gt 1 || \
+            ("$_KRAG_OLD_DOCS" -gt 0 && "$_KRAG_NEW_DOCS" -gt 0) ]]; then
+      fail "config.yaml documents_dir はカスタム値または複数値のため変更しません。hooks は新ローカルパス前提のため、カスタム値のまま放置すると保存先が分裂します"
+      MISSING_CMDS+=("knowledge-rag-documents-dir")
+    fi
+  fi
+fi
+
+# category_mappings を標準3キーで補完する（既存エントリ・インデント・コメントを保持）。
+if [[ -f "$KRAG_CONFIG" ]]; then
+  _KRAG_CATEGORY_TMP=""
+  if _KRAG_CATEGORY_TMP="$(mktemp "${KRAG_CONFIG}.XXXXXX" 2>/dev/null)" && \
+     awk '
+       function trim(value) {
+         sub(/^[[:space:]]+/, "", value)
+         sub(/[[:space:]]+$/, "", value)
+         return value
+       }
+       function ignored(line) { return line ~ /^[[:space:]]*($|#)/ }
+       function indent_of(line) {
+         match(line, /^[[:space:]]*/)
+         return RLENGTH
+       }
+       function top_key(line,    colon, key) {
+         if (line ~ /^[[:space:]]/ || ignored(line)) return ""
+         colon = index(line, ":")
+         if (colon == 0) return ""
+         key = trim(substr(line, 1, colon - 1))
+         if (key ~ /^".*"$/) {
+           sub(/^"/, "", key)
+           sub(/"$/, "", key)
+         }
+         return key
+       }
+       function mapping_key(line,    colon, key) {
+         if (ignored(line)) return ""
+         colon = index(line, ":")
+         if (colon == 0) return ""
+         key = trim(substr(line, 1, colon - 1))
+         if (key ~ /^".*"$/) {
+           sub(/^"/, "", key)
+           sub(/"$/, "", key)
+         }
+         if (key == "" || key ~ /^-/) return ""
+         return key
+       }
+       function spaces(count,    value) {
+         value = ""
+         while (length(value) < count) value = value " "
+         return value
+       }
+       function mark_bad(message) {
+         bad = 1
+         if (error_message == "") error_message = message
+       }
+       function emit_missing(child_indent,    i, key) {
+         for (i = 1; i <= 3; i++) {
+           key = required[i]
+           if (!seen[key]) printf "%s\"%s\": \"%s\"\n", spaces(child_indent), key, key
+         }
+       }
+       {
+         lines[NR] = $0
+         key = top_key($0)
+         if (key == "category_mappings") {
+           category_count++
+           if (category_count == 1) category_start = NR
+         }
+       }
+       END {
+         line_count = NR
+         required[1] = "sessions"
+         required[2] = "knowledge"
+         required[3] = "lessons-learned"
+
+         if (category_count > 1) mark_bad("複数の top-level category_mappings")
+         if (bad) {
+           print "category_mappings の構造が複雑なため変更しません: " error_message > "/dev/stderr"
+           exit 2
+         }
+
+         if (category_count == 0) {
+           for (i = 1; i <= line_count; i++) print lines[i]
+           print "category_mappings:"
+           emit_missing(2)
+           exit 0
+         }
+
+         category_end = line_count + 1
+         for (i = category_start + 1; i <= line_count; i++) {
+           if (top_key(lines[i]) != "") {
+             category_end = i
+             break
+           }
+         }
+
+         header = lines[category_start]
+         colon = index(header, ":")
+         value = trim(substr(header, colon + 1))
+         if (value ~ /^\{\}[[:space:]]*(#.*)?$/) {
+           mode = "inline_empty"
+         } else if (value == "" || value ~ /^#/) {
+           mode = "mapping"
+         } else {
+           mark_bad("category_mappings が map ではありません")
+         }
+
+         child_indent = -1
+         if (mode == "mapping") {
+           for (i = category_start + 1; i < category_end; i++) {
+             if (ignored(lines[i])) continue
+             current_indent = indent_of(lines[i])
+             if (current_indent <= 0) {
+               mark_bad("category_mappings の子要素のインデントが不正です")
+               continue
+             }
+             if (child_indent < 0) child_indent = current_indent
+             if (current_indent < child_indent) {
+               mark_bad("category_mappings に複数階層の子インデントがあります")
+               continue
+             }
+             if (current_indent == child_indent) {
+               key = mapping_key(lines[i])
+               if (key == "") mark_bad("category_mappings の子要素が map ではありません")
+               else if (seen[key]) mark_bad("category_mappings に重複キーがあります")
+               else seen[key] = 1
+             }
+           }
+           if (child_indent < 0) child_indent = 2
+         } else if (mode == "inline_empty") {
+           for (i = category_start + 1; i < category_end; i++) {
+             if (!ignored(lines[i])) mark_bad("空 map の後に予期しない子要素があります")
+           }
+         }
+
+         if (bad) {
+           print "category_mappings の構造が複雑なため変更しません: " error_message > "/dev/stderr"
+           exit 2
+         }
+
+         needs_update = (mode == "inline_empty")
+         for (i = 1; i <= 3; i++) if (!seen[required[i]]) needs_update = 1
+         if (!needs_update) {
+           for (i = 1; i <= line_count; i++) print lines[i]
+           exit 0
+         }
+
+         for (i = 1; i <= line_count; i++) {
+           if (i == category_start && mode == "inline_empty") {
+             header = lines[i]
+             sub(/[[:space:]]*\{\}/, "", header)
+             print header
+             emit_missing(2)
+           } else {
+             if (i == category_end && mode == "mapping") emit_missing(child_indent)
+             print lines[i]
+           }
+         }
+         if (category_end == line_count + 1 && mode == "mapping") emit_missing(child_indent)
+       }
+     ' "$KRAG_CONFIG" >"$_KRAG_CATEGORY_TMP"; then
+    if cmp -s "$_KRAG_CATEGORY_TMP" "$KRAG_CONFIG"; then
+      rm -f "$_KRAG_CATEGORY_TMP"
+    elif mv "$_KRAG_CATEGORY_TMP" "$KRAG_CONFIG"; then
+      ok "config.yaml (category_mappings 補完)"
+    else
+      rm -f "$_KRAG_CATEGORY_TMP"
+      fail "config.yaml category_mappings 更新失敗（手動で追加してください）"
+      MISSING_CMDS+=("knowledge-rag-category-mappings")
+    fi
+  else
+    [[ -n "$_KRAG_CATEGORY_TMP" ]] && rm -f "$_KRAG_CATEGORY_TMP"
+    fail "config.yaml category_mappings 更新失敗（構造が複雑なため変更しません）"
     MISSING_CMDS+=("knowledge-rag-category-mappings")
   fi
 fi
 
-# config.yaml の ~/pcloud を $HOME/pcloud に展開（upstream _resolve_path が expanduser() 未実装のため）
-if [[ -f "$KRAG_CONFIG" ]] && grep -q '~/pcloud' "$KRAG_CONFIG"; then
-  _KRAG_TMP="${KRAG_CONFIG}.tmp"
-  if sed "s|~/pcloud|$HOME/pcloud|g" "$KRAG_CONFIG" > "$_KRAG_TMP" && mv "$_KRAG_TMP" "$KRAG_CONFIG"; then
-    ok "config.yaml (~/pcloud → \$HOME/pcloud 展開)"
-  else
-    rm -f "$_KRAG_TMP"
-    fail "config.yaml  →  ~/pcloud の展開失敗"
-    MISSING_CMDS+=("knowledge-rag-config-expand")
-  fi
-fi
-
 unset _KRAG_MCP_REPO_DIR KRAG_PYTHON_ABS _KRAG_CC_SETTINGS _krag_py_abs _krag_already _krag_tmp _krag_ok
-unset LLM_MCP_DIR LLM_MCP_CONF KRAG_CONFIG KRAG_CONFIG_EXAMPLE _KRAG_TMP
+unset LLM_MCP_DIR LLM_MCP_CONF KRAG_CONFIG KRAG_CONFIG_EXAMPLE _KRAG_LOCAL_DOCS_DIR _KRAG_DOCS_SUMMARY
+unset _KRAG_OLD_DOCS _KRAG_NEW_DOCS _KRAG_CUSTOM_DOCS _KRAG_DOCS_TOTAL _KRAG_DOCS_TMP _KRAG_DOCS_AFTER
+unset _KRAG_AFTER_OLD _KRAG_AFTER_NEW _KRAG_AFTER_CUSTOM _KRAG_AFTER_TOTAL _KRAG_CATEGORY_TMP
