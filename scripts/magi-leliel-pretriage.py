@@ -1041,7 +1041,7 @@ def prepare(args):
     candidates, excluded = record_candidates(records)
     catalog = candidate_catalog(sha256(raw), candidates)
     additions, legacy, status, error = [], [], "applied", None
-    if args.codex_command and args.isolated_profile != "hard-read-only/v1":
+    if args.codex_command and args.isolated_profile != "codex-companion-read-only/v1":
         status, error = "fallback_legacy", "codex_profile_unavailable"
     elif args.codex_command:
         try:
@@ -1127,7 +1127,7 @@ def parser():
         prepare_parser.add_argument("--" + option.replace("_", "-"), required=True)
     prepare_parser.add_argument("--added-response", help="strict JSON response from an isolated Codex executor")
     prepare_parser.add_argument("--codex-command", help="isolated executor path; output is strict additions JSON")
-    prepare_parser.add_argument("--isolated-profile", help="must be hard-read-only/v1 when --codex-command is used")
+    prepare_parser.add_argument("--isolated-profile", help="must be codex-companion-read-only/v1 when --codex-command is used")
     prepare_parser.set_defaults(handler=prepare)
     merge = modes.add_parser("merge-added", help="validate and publish a Codex additions artifact")
     merge.add_argument("--catalog", required=True); merge.add_argument("--added-response", required=True); merge.add_argument("--output-dir", required=True)
