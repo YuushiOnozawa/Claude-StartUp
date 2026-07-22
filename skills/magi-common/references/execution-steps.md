@@ -291,6 +291,38 @@ repo 内を優先し、なければ `~/.claude/skills/` の対応 path から、
 
 別のエージェント定義ファイルは読まない。system/prompt は `$MAGI_PERSONA_TMPDIR` に分離して作る。
 
+system.txt を構成する前に、`task-instruction.md` から persona 固有の Review/Assessment
+Header を決定的に抽出し、`output-format.md` の該当プレースホルダへ埋め込む
+（モデル自身に2文書の統合・推論をさせない）。
+
+```text
+extract_header(section_name, task_instruction_text):
+    section_line := 正規表現で "^## " + section_name + "$" に一致する行を1つ検索する
+        （0件または2件以上一致した場合は configuration_error）
+    value_line := section_line の直後にある最初の非空行
+    value_line が `^`.+`$`（backtick 1組で囲まれた1行）に一致しない場合 configuration_error
+    header := value_line からbacktickを除いた中身
+    header が空、複数行、`## ` で始まらない、`{` または `}` を含む場合 configuration_error
+    return header
+
+REVIEW_HEADER     := extract_header("Review Header", task-instruction.md の内容)
+ASSESSMENT_HEADER := extract_header("Assessment Header", task-instruction.md の内容)
+
+rendered_output_format := output-format.md の内容を以下のように文字列置換したもの
+    "## {Review Header defined in task-instruction.md}"     を REVIEW_HEADER に1回だけ置換
+    "## {Assessment Header defined in task-instruction.md}" を ASSESSMENT_HEADER に1回だけ置換
+
+reject as configuration_error unless（rendered_output_format 内で検証。system.txt 全体
+ではなくこの rendered_output_format 文字列だけを対象にする。task-instruction.md 自身の
+メタセクション見出しやExample Output内の具体見出しと衝突するため）:
+    "{Review Header" と "{Assessment Header" のプレースホルダ文字列が残っていない
+    リテラルの "## Assessment Header"（未置換の汎用見出し）が残っていない
+    "persona=<persona>" や "chunk=<4桁ID>" のような generic marker placeholder が残っていない
+    ASSESSMENT_HEADER の出現数がちょうど1（重複していない）
+
+configuration_error の場合はモデルを呼ばず、system.txt を生成しない。
+```
+
 ```text
 BOUNDARY_INSTRUCTION :=
   "prompt の trusted prefix 末尾にある `---TASK_DATA_START---` の直後から"
@@ -304,7 +336,7 @@ MARKER_INSTRUCTION（sink のみ）: 出力の最後に、prompt で指定され
 
 system.txt := task-instruction.md
             + review-criteria.md
-            + output-format.md
+            + rendered_output_format
             + BOUNDARY_INSTRUCTION
             + (MARKER_INSTRUCTION if sink; nothing if legacy)
             + (CHANGE_SUMMARY_BLOCK if $MAGI_CHANGE_SUMMARY is set and non-empty)

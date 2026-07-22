@@ -491,6 +491,8 @@ def parse_persona(run_dir, person):
                 chunk_ordinals.append(ordinal)
     else:
         structural_complete = False
+    # require_marker declares a policy expectation; markerless Assessment completeness
+    # is an independent acceptance path here.
     markerless_chunks_are_structurally_complete = (
         markerless_chunk_count > 0 and all_markerless_chunks_assessment_complete)
     if markerless_chunks_are_structurally_complete:

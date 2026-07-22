@@ -38,10 +38,8 @@ Description and improvement proposal.
 - Consolidate repeated instances of the same pattern into ONE finding; mention "multiple occurrences" in the body instead of repeating the finding.
 - Never output two findings with the same headline.
 
-Sink mode terminal form only (replace the placeholders with the concrete values supplied in the prompt; this must be the final non-empty line):
-
-```
-## {Assessment Header}
-...
-<!-- MAGI_COMPLETE persona=<persona> chunk=<4桁ID> -->
-```
+Sink mode only: when the chunk prompt supplies a concrete completion marker, the exact
+supplied marker must be the final non-empty line. Do not output a generic marker
+template — only the concrete marker text given in the chunk prompt. Do not repeat
+the Assessment header a second time for this purpose; the header already required
+above is sufficient.
