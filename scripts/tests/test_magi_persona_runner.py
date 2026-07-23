@@ -113,6 +113,56 @@ class MagiPersonaRunnerTests(unittest.TestCase):
             self.assertEqual(status["chunks"][0]["marker"], "missing")
             self.assertEqual(status["chunks"][0]["exit_code"], 0)
 
+    def test_markerless_assessment_with_finding_completes_chunk(self):
+        with tempfile.TemporaryDirectory() as name:
+            output = (
+                "## MELCHIOR Review (Code Quality & Bugs)\n\n"
+                "### [HIGH] src/example.py:12 — null を検査する\n"
+                "説明。\n"
+                "## Quality Assessment\n確認済み。\n"
+            )
+            result, _, status = self.run_persona(Path(name), env_extra={"FAKE_OLLAMA_OUTPUT": output})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(status["execution_status"], "complete")
+            self.assertEqual(status["completed_chunks"], 1)
+            self.assertEqual(status["chunks"][0]["marker"], "missing")
+            self.assertEqual(status["chunks"][0]["exit_code"], 0)
+
+    def test_markerless_assessment_with_dummy_body_is_not_complete(self):
+        with tempfile.TemporaryDirectory() as name:
+            output = (
+                "## MELCHIOR Review (Code Quality & Bugs)\n\n"
+                "## Quality Assessment\n"
+                "meaningless placeholder output\n"
+            )
+            result, _, status = self.run_persona(Path(name), env_extra={"FAKE_OLLAMA_OUTPUT": output})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotEqual(status["execution_status"], "complete")
+            self.assertEqual(status["completed_chunks"], 0)
+            self.assertEqual(status["chunks"][0]["marker"], "missing")
+            self.assertEqual(status["chunks"][0]["exit_code"], 0)
+
+    def test_prompt_does_not_include_concrete_completion_marker(self):
+        with tempfile.TemporaryDirectory() as name:
+            prompt_log = Path(name) / "prompt.log"
+            system_log = Path(name) / "system.log"
+            output = (
+                "## MELCHIOR Review (Code Quality & Bugs)\n\n"
+                "## Quality Assessment\nNo findings\n"
+            )
+            result, _, _ = self.run_persona(
+                Path(name),
+                env_extra={
+                    "FAKE_OLLAMA_OUTPUT": output,
+                    "FAKE_OLLAMA_PROMPT_LOG": str(prompt_log),
+                    "FAKE_OLLAMA_SYSTEM_LOG": str(system_log),
+                },
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            concrete_marker = "<!-- MAGI_COMPLETE persona=melchior chunk=0001 -->"
+            self.assertNotIn(concrete_marker, prompt_log.read_text(encoding="utf-8"))
+            self.assertNotIn(concrete_marker, system_log.read_text(encoding="utf-8"))
+
     def test_fail_fast_marks_remaining_chunks_not_run(self):
         with tempfile.TemporaryDirectory() as name:
             result, _, status = self.run_persona(

@@ -337,22 +337,31 @@ def anchor(path=None, line=None):
             "start_side": None, "head_sha": None}
 
 
-def is_assessment_structurally_complete(lines, end):
-    """Return whether an assessment header has at least one non-empty body line."""
+def assessment_sections(lines, end):
     nonempty = [(index, line) for index, line in enumerate(lines[:end]) if line.strip()]
     content_end = end
     if nonempty and nonempty[-1][0] < end and MAGI_MARKER.fullmatch(nonempty[-1][1]):
         content_end = nonempty[-1][0]
-    assessment_starts = [i for i, line in enumerate(lines[:content_end]) if line in ASSESSMENT_HEADERS]
-    for start in assessment_starts:
+    for start in (i for i, line in enumerate(lines[:content_end]) if line in ASSESSMENT_HEADERS):
         section_end = next((i for i in range(start + 1, content_end)
                             if lines[i].startswith("## ")), content_end)
-        if any(line.strip() for line in lines[start + 1:section_end]):
+        body = [line for line in lines[start + 1:section_end]
+                if line.strip() and not MAGI_MARKER.fullmatch(line.strip())]
+        yield start, section_end, body
+
+
+def is_assessment_structurally_complete(lines, end):
+    """Return whether an assessment section has findings context or explicit No findings."""
+    has_finding = any(HEADER.fullmatch(line) for line in lines[:end])
+    for _, _, body in assessment_sections(lines, end):
+        if any(NO_FINDINGS.search(line) for line in body):
+            return True
+        if has_finding and body:
             return True
     return False
 
 
-def parse_markdown_chunk(lines, persona, ordinal, marker_required=True, diagnostics=None):
+def parse_markdown_chunk(lines, persona, ordinal, diagnostics=None):
     expected_marker = "<!-- MAGI_COMPLETE persona=%s chunk=%04d -->" % (persona, ordinal)
     nonempty = [(index, line) for index, line in enumerate(lines) if line.strip()]
     marker_ok = bool(nonempty and nonempty[-1][1] == expected_marker)
@@ -395,21 +404,24 @@ def parse_markdown_chunk(lines, persona, ordinal, marker_required=True, diagnost
         if line.startswith("###"):
             malformed = True
         index += 1
-    assessment_starts = [i for i, line in enumerate(lines[:end]) if line in ASSESSMENT_HEADERS]
+    sections = list(assessment_sections(lines, end))
     assessment_complete = is_assessment_structurally_complete(lines, end)
+    no_findings_in_assessment = any(
+        NO_FINDINGS.search(line) for _, _, body in sections for line in body)
+    if findings and no_findings_in_assessment:
+        malformed = True
+        chunk_diagnostics.append("no_findings_with_findings_%04d" % ordinal)
     no_findings = False
     if not findings:
-        for start in assessment_starts:
-            section_end = next((i for i in range(start + 1, end) if lines[i].startswith("## ")), end)
-            if any(NO_FINDINGS.search(line) for line in lines[start + 1:section_end]):
-                no_findings = True
-                break
-        if assessment_starts and not no_findings:
+        no_findings = no_findings_in_assessment
+        if marker_ok and sections and not no_findings:
             no_findings = any(NO_FINDINGS_LINE.fullmatch(line.strip())
-                              for line in lines[:assessment_starts[0]])
-    useful = bool(findings) or (not malformed and marker_ok and no_findings)
-    completion_signal = marker_ok or assessment_complete if marker_required else True
-    complete = completion_signal and not malformed and (bool(findings) or no_findings)
+                              for line in lines[:sections[0][0]])
+    useful = bool(findings) or (not malformed and no_findings)
+    complete = not malformed and (
+        (assessment_complete and (bool(findings) or no_findings))
+        or (marker_ok and (bool(findings) or (bool(sections) and no_findings)))
+    )
     if diagnostics is not None:
         diagnostics.extend(chunk_diagnostics)
     return findings, useful, complete, marker_ok, assessment_complete, malformed
@@ -451,10 +463,9 @@ def parse_persona(run_dir, person):
             status_chunk = None
             if status and isinstance(status.get("chunks"), list) and ordinal <= len(status["chunks"]):
                 status_chunk = status["chunks"][ordinal - 1]
-            marker_required = True
             chunk_diagnostics = []
             parsed, chunk_useful, chunk_complete, marker_ok, assessment_complete, malformed = parse_markdown_chunk(
-                chunk["lines"], key, ordinal, marker_required, chunk_diagnostics)
+                chunk["lines"], key, ordinal, chunk_diagnostics)
             diagnostics.extend(chunk_diagnostics)
             if not marker_ok:
                 markerless_chunk_count += 1

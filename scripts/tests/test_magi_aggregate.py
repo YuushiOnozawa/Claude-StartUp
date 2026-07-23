@@ -194,6 +194,20 @@ No findings
         persona = json.loads(output.read_text())["personas"][0]
         self.assertNotEqual(persona["parse_status"], "ok")
 
+    def test_assessment_header_with_dummy_body_only_is_not_structurally_complete(self):
+        run = self.make_run(mel_text="""=== CHUNK: src/a.py (1) ===
+## Review
+確認済み。
+## Quality Assessment
+meaningless placeholder output
+""")
+        result, output = self.parse(run, output_name="dummy-assessment-body.json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        parsed = json.loads(output.read_text())
+        persona = parsed["personas"][0]
+        self.assertNotEqual(persona["parse_status"], "ok")
+        self.assertTrue(parsed["summary"]["review_incomplete"])
+
     def test_mismatched_marker_is_not_assessment_body(self):
         run = self.make_run(mel_text="""=== CHUNK: src/a.py (1) ===
 ## Review
@@ -226,6 +240,26 @@ No findings
         self.assertIn("status_marker_not_complete_0001", persona["diagnostics"])
         self.assertIn("status_completed_chunks_inconsistent", persona["diagnostics"])
         self.assertIn("status_execution_inconsistent", persona["diagnostics"])
+
+    def test_marker_missing_structural_completion_keeps_status_diagnostics_non_blocking(self):
+        run = self.make_run(mel_text="""=== CHUNK: src/a.py (1) ===
+## Review
+### [HIGH] src/a.py:12 — null を検査する
+説明。
+## Quality Assessment
+確認済み。
+""")
+        status_path = run / "status/melchior.json"
+        status = json.loads(status_path.read_text())
+        status["chunks"][0]["marker"] = "missing"
+        status_path.write_text(json.dumps(status), encoding="utf-8")
+        result, output = self.parse(run, output_name="marker-missing-non-blocking.json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        persona = json.loads(output.read_text())["personas"][0]
+        self.assertEqual(persona["parse_status"], "ok")
+        self.assertIn("status_completed_chunks_inconsistent", persona["diagnostics"])
+        self.assertIn("status_execution_inconsistent", persona["diagnostics"])
+        self.assertIn("status_marker_not_complete_0001", persona["diagnostics"])
 
     def test_markerless_assessment_allows_legacy_failed_status(self):
         run = self.make_run(mel_text="""=== CHUNK: src/a.py (1) ===
@@ -485,6 +519,22 @@ No findings
         self.assertEqual(parsed["personas"], [{"key": "casper", "parse_status": "ok",
                                                   "execution_status": "complete", "diagnostics": []}])
         self.assertEqual(parsed["findings"], [])
+
+    def test_no_findings_later_in_assessment_section_is_accepted(self):
+        output = """=== CHUNK: src/a.py (1) ===
+## Review
+確認済み。
+## Quality Assessment
+確認メモ。
+No findings
+<!-- MAGI_COMPLETE persona=melchior chunk=0001 -->
+"""
+        run = self.make_run(mel_text=output)
+        result, output = self.parse(run, output_name="later-no-findings.json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        parsed = json.loads(output.read_text())
+        self.assertEqual(parsed["personas"][0]["parse_status"], "ok")
+        self.assertEqual([item for item in parsed["findings"] if item["persona"] == "melchior"], [])
 
     def test_consistent_partial_execution_with_successful_chunk_is_partial(self):
         run = self.make_run()
