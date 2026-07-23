@@ -11,6 +11,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -176,6 +177,52 @@ def run_filter(raw_diff, args, repo_root, filter_path):
                 excluded_path.unlink()
             except FileNotFoundError:
                 pass
+
+
+def run_review_router(raw_diff, repo_root, router_path):
+    need(router_path.is_file(), "magi-review-router.py is unavailable")
+    fd, diff_path = tempfile.mkstemp(prefix="magi-review-router-", suffix=".patch")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            fd = None
+            handle.write(raw_diff)
+        result = subprocess.run([sys.executable, str(router_path), "--diff-file", diff_path],
+                                cwd=str(repo_root), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode != 0:
+            message = result.stderr.decode("utf-8", "replace").strip()
+            raise RuntimeError("magi-review-router.py failed%s" %
+                               (": " + message if message else ""))
+        route = json.loads(result.stdout.decode("utf-8"))
+        need(isinstance(route, dict), "review route root must be an object")
+        return route, result.stdout
+    finally:
+        if fd is not None:
+            os.close(fd)
+        try:
+            Path(diff_path).unlink()
+        except FileNotFoundError:
+            pass
+
+
+def finalise_review_route(route, raw_diff, filtered_diff):
+    route = dict(route)
+    route["raw_diff_sha256"] = sha256_bytes(raw_diff)
+    route["filtered_diff_sha256"] = sha256_bytes(filtered_diff)
+    return route, json.dumps(route, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+
+def is_fixture_filtered_route(route):
+    paths = route.get("path_summary", {}).get("paths", [])
+    need(isinstance(paths, list), "review route path summary paths must be an array")
+    fixture_path = re.compile(r"(^|/)tests?/fixtures?/")
+    fixture_suffixes = {".json", ".jsonl", ".txt", ".patch", ".diff", ".csv", ".tsv",
+                        ".yml", ".yaml", ".xml"}
+    return bool(paths) and all(
+        isinstance(path, str)
+        and fixture_path.search(path)
+        and Path(path.lower()).suffix in fixture_suffixes
+        for path in paths
+    )
 
 
 # 2. environment validation and run directory creation layer
@@ -389,6 +436,10 @@ def save_excluded_files(run_dir, excluded):
         open_new_no_follow(run_dir / "diff" / "excluded-files.txt", excluded)
 
 
+def save_review_route(run_dir, route_bytes):
+    open_new_no_follow(run_dir / "review-route.json", route_bytes)
+
+
 def maybe_age_current_run(run_dir):
     value = os.environ.get("MAGI_RUN_SETUP_TEST_CURRENT_MTIME_DAYS_AGO")
     if not value:
@@ -510,7 +561,7 @@ def publish_artifacts(args, run_dir, filtered, excluded, manifest_template, poli
     }
 
 
-def setup_receipt(workflow, run_dir, run_id, diff_hash, diff_source, input_receipt):
+def setup_receipt(workflow, run_dir, run_id, diff_hash, diff_source, input_receipt, review_route):
     return {
         "status": "ready",
         "workflow": workflow,
@@ -518,9 +569,24 @@ def setup_receipt(workflow, run_dir, run_id, diff_hash, diff_source, input_recei
         "run_id": run_id,
         "diff_hash": diff_hash,
         "diff_source": diff_source,
+        "review_route": review_route,
+        "review_route_artifact": "review-route.json",
         "input": input_receipt,
         "manifest": "manifest.json",
         "run_policy": "run-policy.json",
+    }
+
+
+def routed_receipt(workflow, run_dir, run_id, diff_hash, diff_source, review_route):
+    return {
+        "status": "routed",
+        "workflow": workflow,
+        "run_dir": str(run_dir),
+        "run_id": run_id,
+        "diff_hash": diff_hash,
+        "diff_source": diff_source,
+        "review_route": review_route,
+        "review_route_artifact": "review-route.json",
     }
 
 
@@ -558,6 +624,7 @@ def main(argv=None):
     args = parse_args(argv or sys.argv[1:])
     repo_root = canonical_existing_directory(Path(args.repo_root).resolve(strict=True))
     filter_path = repo_root / "scripts" / "magi-diff-filter.sh"
+    router_path = Path(__file__).resolve(strict=True).parent / "magi-review-router.py"
     need(filter_path.is_file(), "magi-diff-filter.sh is unavailable")
     manifest_template = load_json_arg(args.manifest_file, args.manifest_json)
     policy_template = load_json_arg(args.policy_template_file, args.policy_json)
@@ -565,7 +632,24 @@ def main(argv=None):
 
     raw_diff, diff_source = acquire_raw_diff(args, repo_root)
     filtered, excluded = run_filter(raw_diff, args, repo_root, filter_path)
+    route = None
+    route_bytes = b""
+    if filtered or raw_diff:
+        router_input = filtered if filtered else raw_diff
+        route, route_bytes = run_review_router(router_input, repo_root, router_path)
+        route, route_bytes = finalise_review_route(route, raw_diff, filtered)
     if not filtered:
+        if raw_diff and not is_fixture_filtered_route(route):
+            diff_hash = sha256_bytes(filtered)
+            runs_root, run_dir, run_id = create_run_environment(diff_hash, args.extra_subdir)
+            save_review_route(run_dir, route_bytes)
+            maybe_age_current_run(run_dir)
+            if not args.no_prune:
+                prune_runs(runs_root, run_dir, run_id)
+            print(json.dumps(routed_receipt(args.workflow, run_dir, run_id, diff_hash, diff_source,
+                                            route.get("review_route")),
+                             ensure_ascii=False, separators=(",", ":")))
+            return 0
         print(json.dumps({
             "status": "empty",
             "workflow": args.workflow,
@@ -578,9 +662,11 @@ def main(argv=None):
     runs_root, run_dir, run_id = create_run_environment(diff_hash, args.extra_subdir)
     input_receipt = publish_artifacts(args, run_dir, filtered, excluded, manifest_template,
                                       policy_template, diff_source)
+    save_review_route(run_dir, route_bytes)
     if not args.no_prune:
         prune_runs(runs_root, run_dir, run_id)
-    print(json.dumps(setup_receipt(args.workflow, run_dir, run_id, diff_hash, diff_source, input_receipt),
+    print(json.dumps(setup_receipt(args.workflow, run_dir, run_id, diff_hash, diff_source,
+                                   input_receipt, route.get("review_route")),
                      ensure_ascii=False, separators=(",", ":")))
     return 0
 

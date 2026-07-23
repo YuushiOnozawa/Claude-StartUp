@@ -177,6 +177,8 @@ Proceed to Phase 5.
 
 Execute `/magi-fast`.
 
+`/magi-fast` が `review_route=codex` で route skip した場合、MAGI の raw gate は未評価であり commit gate として機能しない。この場合の品質担保は Issue #331 の決定論的テストゲート、または別途の確認に委ねる。
+
 ### If `COMMIT_GATE=true` → proceed to Phase 6
 
 `/magi-fast` が出力した commit gate を正本とする。進行条件は raw HIGH が 0、全 persona の `parse_status=ok`、かつ `needs_human` がないこと。Codex の `false_positive` 注記や duplicate 統合は raw gate を緩和しない。

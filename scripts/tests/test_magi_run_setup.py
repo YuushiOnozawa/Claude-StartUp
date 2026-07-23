@@ -479,6 +479,138 @@ exit 99
         receipt = self.parse_stdout_object(result)
         self.assertEqual(receipt["status"], "ready")
 
+    def test_code_only_diff_records_magi_review_route_on_ready_receipt(self):
+        diff = one_file_diff("src/review_target.py")
+        result = self.run_setup(staged_diff=diff, env_extra={"MAGI_RUN_SETUP_TEST_RUN_IDS": RUN_ID_1})
+
+        receipt, run_dir = self.assert_ready_receipt_matches_saved_input(result, "staged")
+        self.assertEqual(receipt["review_route"], "magi")
+        route_artifact = json.loads((run_dir / "review-route.json").read_text(encoding="utf-8"))
+        self.assertEqual(route_artifact["schema_version"], "magi-review-route/v1")
+        self.assertEqual(route_artifact["review_route"], "magi")
+        self.assertEqual(route_artifact["raw_diff_sha256"], sha256(diff))
+        self.assertEqual(route_artifact["filtered_diff_sha256"], sha256(diff))
+        self.assertEqual(route_artifact["path_summary"]["paths"], ["src/review_target.py"])
+
+    def test_dockerfile_only_diff_records_magi_review_route(self):
+        diff = one_file_diff("Dockerfile")
+        result = self.run_setup(staged_diff=diff, env_extra={"MAGI_RUN_SETUP_TEST_RUN_IDS": RUN_ID_1})
+
+        receipt, run_dir = self.assert_ready_receipt_matches_saved_input(result, "staged")
+        self.assertEqual(receipt["review_route"], "magi")
+        route_artifact = json.loads((run_dir / "review-route.json").read_text(encoding="utf-8"))
+        self.assertEqual(route_artifact["review_route"], "magi")
+        self.assertEqual(route_artifact["path_summary"]["unknown_paths"], ["Dockerfile"])
+        self.assertIn("implementation_adjacent_unknown_only", route_artifact["matched_rules"])
+
+    def test_mixed_filtered_code_routes_to_magi_after_prompt_paths_are_removed(self):
+        kept = one_file_diff("src/app.py")
+        removed = one_file_diff("skills/example/SKILL.md")
+        raw = kept + removed
+        result = self.run_setup(staged_diff=raw, env_extra={"MAGI_RUN_SETUP_TEST_RUN_IDS": RUN_ID_1})
+
+        receipt, run_dir = self.assert_ready_receipt_matches_saved_input(result, "staged")
+        self.assertEqual(receipt["review_route"], "magi")
+        route_artifact = json.loads((run_dir / "review-route.json").read_text(encoding="utf-8"))
+        self.assertEqual(route_artifact["review_route"], "magi")
+        self.assertEqual(route_artifact["raw_diff_sha256"], sha256(raw))
+        self.assertEqual(route_artifact["filtered_diff_sha256"], sha256(kept))
+        self.assertEqual(route_artifact["path_summary"]["paths"], ["src/app.py"])
+
+    def test_docs_only_filtered_empty_diff_creates_route_only_run(self):
+        diff = one_file_diff("skills/example/SKILL.md")
+        result = self.run_setup(staged_diff=diff, env_extra={"MAGI_RUN_SETUP_TEST_RUN_IDS": RUN_ID_1})
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = self.parse_stdout_object(result)
+        self.assertEqual(receipt["status"], "routed")
+        self.assertEqual(receipt["review_route"], "codex")
+        self.assertEqual(receipt["diff_hash"], sha256(b""))
+        run_dir = Path(receipt["run_dir"])
+        self.assertTrue(run_dir.is_dir())
+        self.assertEqual(run_dir.parent.name, sha256(b""))
+
+        route_artifact = json.loads((run_dir / "review-route.json").read_text(encoding="utf-8"))
+        self.assertEqual(route_artifact["schema_version"], "magi-review-route/v1")
+        self.assertEqual(route_artifact["review_route"], "codex")
+        self.assertEqual(route_artifact["raw_diff_sha256"], sha256(diff))
+        self.assertEqual(route_artifact["filtered_diff_sha256"], sha256(b""))
+        self.assertEqual(route_artifact["path_summary"]["paths"], ["skills/example/SKILL.md"])
+        self.assertFalse((run_dir / "manifest.json").exists())
+        self.assertFalse((run_dir / "run-policy.json").exists())
+        self.assertFalse((run_dir / "diff" / "input.filtered.patch").exists())
+
+    def test_magi_infrastructure_script_and_test_mix_records_manual_confirm_route(self):
+        diff = one_file_diff("scripts/magi-persona-runner.py") + one_file_diff(
+            "scripts/tests/test_magi_persona_runner.py"
+        )
+        result = self.run_setup(staged_diff=diff, env_extra={"MAGI_RUN_SETUP_TEST_RUN_IDS": RUN_ID_1})
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = self.parse_stdout_object(result)
+        self.assertEqual(receipt["review_route"], "manual_confirm")
+        run_dir = Path(receipt["run_dir"])
+        route_artifact = json.loads((run_dir / "review-route.json").read_text(encoding="utf-8"))
+        self.assertEqual(route_artifact["schema_version"], "magi-review-route/v1")
+        self.assertEqual(route_artifact["review_route"], "manual_confirm")
+        self.assertEqual(
+            route_artifact["path_summary"]["magi_infrastructure_scripts"],
+            ["scripts/magi-persona-runner.py"],
+        )
+        self.assertEqual(
+            route_artifact["path_summary"]["magi_infrastructure_tests"],
+            ["scripts/tests/test_magi_persona_runner.py"],
+        )
+
+    def test_empty_raw_and_filtered_diff_keeps_existing_empty_contract(self):
+        result = self.run_setup(staged_diff=b"", head_diff=b"", env_extra={"MAGI_RUN_SETUP_TEST_RUN_IDS": RUN_ID_1})
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = self.parse_stdout_object(result)
+        self.assertEqual(receipt["status"], "empty")
+        self.assertEqual(receipt["workflow"], "fast")
+        self.assertEqual(receipt["diff_source"]["kind"], "head")
+        self.assertEqual(self.iter_run_dirs(), [])
+
+    def test_review_route_artifact_preserves_router_schema_fields(self):
+        diff = one_file_diff("src/calculator.py")
+        expected_fields = {
+            "schema_version",
+            "review_route",
+            "magi_skipped",
+            "reason",
+            "fallback",
+            "confidence",
+            "matched_rules",
+            "path_summary",
+            "raw_diff_sha256",
+            "filtered_diff_sha256",
+            "decision_source",
+        }
+        result = self.run_setup(staged_diff=diff, env_extra={"MAGI_RUN_SETUP_TEST_RUN_IDS": RUN_ID_1})
+
+        receipt, run_dir = self.assert_ready_receipt_matches_saved_input(result, "staged")
+        route_artifact = json.loads((run_dir / "review-route.json").read_text(encoding="utf-8"))
+        self.assertTrue(expected_fields <= set(route_artifact))
+        self.assertEqual(route_artifact["schema_version"], "magi-review-route/v1")
+        self.assertEqual(route_artifact["review_route"], receipt["review_route"])
+        self.assertEqual(route_artifact["magi_skipped"], False)
+        self.assertIsNone(route_artifact["fallback"])
+        self.assertGreaterEqual(route_artifact["confidence"], 0)
+        self.assertLessEqual(route_artifact["confidence"], 1)
+        self.assertEqual(route_artifact["raw_diff_sha256"], sha256(diff))
+        self.assertEqual(route_artifact["filtered_diff_sha256"], sha256(diff))
+        self.assertEqual(route_artifact["decision_source"], "path_metadata")
+
+    def test_route_only_run_rejects_symlinked_filtered_empty_hash_directory(self):
+        diff = one_file_diff("skills/example/SKILL.md")
+        empty_hash_dir = self.case.home / ".cache" / "magi" / "runs" / sha256(b"")
+        self.symlink_component(empty_hash_dir)
+        result = self.run_setup(staged_diff=diff, env_extra={"MAGI_RUN_SETUP_TEST_RUN_IDS": RUN_ID_1})
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("configuration_error", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

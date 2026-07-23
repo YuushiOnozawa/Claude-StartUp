@@ -37,9 +37,13 @@ magi-hard は以下を担う：
 - pre-triage、2段階 aggregate、Codex annotation
 - `review-plan.json` と summary JSON の生成、poster による GitHub への冪等投稿
 
+ただし `/magi-hard` が `review_route=magi` 以外で route skip した場合は、GitHub 投稿済みレビューとはみなさない。
+
 ## ステップ 3: 次のアクション判定
 
-Claude の目視カウント、raw persona artifact の全文再表示、全文の再集計は禁止する。magi-hard 完了後、`$RUN_DIR/review-plan.json` の summary と canonical summary だけを読む。
+Claude の目視カウント、raw persona artifact の全文再表示、全文の再集計は禁止する。magi-hard 完了後、`review_route` が `magi` 以外、または setup status が `routed` の場合は `review-plan.json` を読まず、MAGI未実行・GitHub投稿なし・`REVIEW_GATE=false` として停止する。
+
+`review_route=magi` の通常完了時だけ、`$RUN_DIR/review-plan.json` の summary と canonical summary だけを読む。
 
 - persona の `parse_status != ok` が1件でもあれば「レビュー不完全 — LGTM 禁止、/magi-hard を再実行」と表示する。
 - `needs_human > 0` なら「要人判断 N 件 — 解決まで LGTM 対象外」と表示する。

@@ -51,7 +51,7 @@ fi
 
 ## ステップ 1: filter 済み入力、diff-hash、run dir の準備
 
-staged diff を優先し、空なら `HEAD` diff を使う。raw diff 取得、filter 適用、diff hash 算出、run dir 作成、input 保存、安全な prune は `scripts/magi-run-setup.py` に集約する。filter 済み入力が空なら「MAGI-FAST: レビュー対象の差分がありません」と表示し、run dir を作らずに正常終了する。
+staged diff を優先し、空なら `HEAD` diff を使う。raw diff 取得、filter 適用、diff hash 算出、run dir 作成、input 保存、安全な prune は `scripts/magi-run-setup.py` に集約する。setup status が `empty` なら「MAGI-FAST: レビュー対象の差分がありません」と表示し、run dir なしで正常終了する。raw diff が docs/meta-only で filter 後に空になり route skip した場合は、setup が status `routed` の route-only run dir を作成し、`review-route.json` だけを正本として残す。
 
 ```bash
 umask 077
@@ -72,17 +72,62 @@ SETUP_JSON=$(python3 "$SETUP" \
   --policy-template-file "$SETUP_TMPDIR/run-policy.json" \
   --audit-enabled "$AUDIT_MODE") || exit $?
 SETUP_STATUS=$(jq -r '.status' <<<"$SETUP_JSON") || exit 1
+REVIEW_ROUTE=$(jq -r '.review_route // "magi"' <<<"$SETUP_JSON") || exit 1
 if [ "$SETUP_STATUS" = empty ]; then
   echo 'MAGI-FAST: レビュー対象の差分がありません'
   exit 0
 fi
-[ "$SETUP_STATUS" = ready ] || { echo 'MAGI-FAST: setup failed'; exit 1; }
+[ "$SETUP_STATUS" = ready ] || [ "$SETUP_STATUS" = routed ] || { echo 'MAGI-FAST: setup failed'; exit 1; }
 RUN_DIR=$(jq -r '.run_dir' <<<"$SETUP_JSON")
 RUN_ID=$(jq -r '.run_id' <<<"$SETUP_JSON")
 DIFF_HASH=$(jq -r '.diff_hash' <<<"$SETUP_JSON")
 DIFF_SOURCE=$(jq -r '.diff_source.kind' <<<"$SETUP_JSON")
 [ -n "$RUN_DIR" ] && [ -n "$DIFF_HASH" ] && [ -n "$DIFF_SOURCE" ] || exit 1
+
+case "$REVIEW_ROUTE" in
+  magi)
+    ;;
+  codex)
+    COMMIT_GATE=false
+    echo "MAGI-FAST: review route=codex（MAGI skip）。$RUN_DIR/review-route.json を参照。COMMIT_GATE=false（MAGI未実行のため raw gate は未評価）"
+    # TODO: Codex batch review の summary artifact 生成は別スコープで実装する。
+    exit 0
+    ;;
+  manual_confirm)
+    # orchestrator が AskUserQuestion を実行し、回答を ROUTE_DECISION_REPLY に設定してから再開する。
+    case "${ROUTE_DECISION_REPLY:-}" in
+      'MAGI実行')
+        jq -n --arg route "$REVIEW_ROUTE" --arg decision magi --arg source user_override \
+          '{schema_version:"review-route-decision/v1",review_route:$route,decision:$decision,decision_source:$source}' \
+          > "$RUN_DIR/review-route-decision.json"
+        ;;
+      'Codex fallback')
+        jq -n --arg route "$REVIEW_ROUTE" --arg decision codex --arg source user \
+          '{schema_version:"review-route-decision/v1",review_route:$route,decision:$decision,decision_source:$source}' \
+          > "$RUN_DIR/review-route-decision.json"
+        COMMIT_GATE=false
+        echo "MAGI-FAST: review route=codex（MAGI skip）。$RUN_DIR/review-route.json を参照。COMMIT_GATE=false（MAGI未実行のため raw gate は未評価）"
+        # TODO: Codex batch review の summary artifact 生成は別スコープで実装する。
+        exit 0
+        ;;
+      *)
+        jq -n --arg route "$REVIEW_ROUTE" --arg decision abort --arg source unanswered \
+          '{schema_version:"review-route-decision/v1",review_route:$route,decision:$decision,decision_source:$source}' \
+          > "$RUN_DIR/review-route-decision.json"
+        COMMIT_GATE=false
+        echo "MAGI-FAST: review route=manual_confirm（未実行）。$RUN_DIR/review-route.json と $RUN_DIR/review-route-decision.json を参照。COMMIT_GATE=false"
+        exit 0
+        ;;
+    esac
+    ;;
+  *)
+    echo "MAGI-FAST: unknown review_route=$REVIEW_ROUTE"
+    exit 1
+    ;;
+esac
 ```
+
+`review_route=magi` の場合だけステップ 2 以降へ進む。`review_route=manual_confirm` の場合、上記分岐の前に `AskUserQuestion` で「MAGI実行」「Codex fallback」「中止」の3択を提示する。「MAGI実行」は `decision_source=user_override` を `$RUN_DIR/review-route-decision.json` に記録して既存フローへ進む。「Codex fallback」は codex route 相当として MAGI・aggregate・gate 判定を行わず終了する。「中止」または未回答は MAGI・Codex のどちらも実行せず、`COMMIT_GATE=false` で終了する。`review-route.json` は router が保存した正本であり、上書きしない。
 
 `DIFF_HASH` は **filter 適用後、splitter に渡す raw bytes の SHA-256** であり、同じ bytes が `$RUN_DIR/diff/input.filtered.patch` に保存される。`magi-run-setup.py` は `${HOME}/.cache/magi/runs/<diff-hash>/<run-id>`、`diff/`、`results/`、`status/` を non-symlink directory として排他的に作成し、現在の `$RUN_DIR` を除外して 14 日超過または全 diff-hash 横断で 20 run を超える古い run だけを安全に prune する。warning は stderr に限定され、stdout は JSON receipt だけである。
 
