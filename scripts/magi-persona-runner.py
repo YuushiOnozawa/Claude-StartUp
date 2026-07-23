@@ -16,6 +16,7 @@ from pathlib import Path
 
 MAX_INPUT = 32 * 1024 * 1024
 MAX_REFERENCE = 1024 * 1024
+CHUNK_TIMEOUT_SECONDS = int(os.environ.get("MAGI_PERSONA_CHUNK_TIMEOUT", "1800"))
 PERSONAS = ("melchior", "balthasar", "metatron", "sandalphon", "leliel")
 DEFAULT_MODELS = {
     "melchior": "qwen2.5-coder:7b",
@@ -531,7 +532,8 @@ def run_ollama_chunks(repo_root, run_dir, result_file, persona, model, task_base
             try:
                 with open(prompt_path, "rb") as prompt_handle:
                     completed = subprocess.run([str(runner), model, str(system_path)], stdin=prompt_handle,
-                                               stdout=result_fd, stderr=stderr_fd, env=env, timeout=600)
+                                               stdout=result_fd, stderr=stderr_fd, env=env,
+                                               timeout=CHUNK_TIMEOUT_SECONDS)
             except (OSError, subprocess.TimeoutExpired) as exc:
                 completed = subprocess.CompletedProcess([str(runner), model, str(system_path)], 127)
                 os.write(stderr_fd, str(exc).encode("utf-8", "replace"))

@@ -27,10 +27,12 @@ FILTER="$REPO_ROOT/scripts/magi-diff-filter.sh"
 SPLITTER="$REPO_ROOT/scripts/magi-split-hunk.sh"
 PRETRIAGE="$REPO_ROOT/scripts/magi-leliel-pretriage.py"
 POSTER="$REPO_ROOT/scripts/magi-hard-poster.py"
-[ -f "$AGGREGATE" ] && [ -f "$FILTER" ] && [ -f "$SPLITTER" ] && [ -f "$PRETRIAGE" ] && [ -f "$POSTER" ] || {
+SETUP="$REPO_ROOT/scripts/magi-run-setup.py"
+[ -f "$AGGREGATE" ] && [ -f "$FILTER" ] && [ -f "$SPLITTER" ] && [ -f "$PRETRIAGE" ] && [ -f "$POSTER" ] && [ -f "$SETUP" ] || {
   echo 'MAGI-HARD: required MAGI scripts are unavailable'
   exit 1
 }
+fatal() { echo "MAGI-HARD: $*" >&2; exit 1; }
 [ "$#" -eq 0 ] || { echo 'usage: /magi-hard'; exit 2; }
 
 BRANCH=$(git branch --show-current) || exit 1
@@ -94,52 +96,44 @@ Codex annotation の可否は自己申告の環境変数ではなく、以後に
 
 ## ステップ 1: filter 済み入力、diff-hash、run dir の準備
 
-`gh pr diff $PR_NUM` の stdout を raw file に一度だけ保存し、filter の stdout を候補 file に保存する。差分をシェル変数へ入れてはならない。filter の excluded list は run dir 作成前には一時ファイルへ出力し、run dir 作成後に移す。
+`gh pr diff $PR_NUM` の stdout を raw input として使う。raw diff 取得、filter 適用、excluded list 保存、diff hash 算出、run dir 作成、input 保存、安全な prune は `scripts/magi-run-setup.py` に集約する。filter 済み入力が空なら「MAGI-HARD: レビュー対象の差分がありません」と表示し、run dir を作らずに正常終了する。
 
 ```bash
 umask 077
-PREP_TMPDIR=$(mktemp -d)
-trap 'rm -rf "$PREP_TMPDIR"' EXIT
-gh pr diff "$PR_NUM" > "$PREP_TMPDIR/input.raw" || exit 1
-MAGI_FILTER_EXCLUDED_LIST="$PREP_TMPDIR/excluded.txt" bash "$FILTER" < "$PREP_TMPDIR/input.raw" > "$PREP_TMPDIR/input.filtered"
-if [ ! -s "$PREP_TMPDIR/input.filtered" ]; then
+SETUP_TMPDIR=$(mktemp -d)
+trap 'rm -rf "$SETUP_TMPDIR"' EXIT
+cat > "$SETUP_TMPDIR/manifest.json" <<'JSON'
+{"schema_version":"persona-manifest/v1","personas":[
+  {"ordinal":1,"key":"melchior","name":"MELCHIOR","id_prefix":"MEL"},
+  {"ordinal":2,"key":"balthasar","name":"BALTHASAR","id_prefix":"BAL"},
+  {"ordinal":3,"key":"casper","name":"CASPER","id_prefix":"CAS"},
+  {"ordinal":4,"key":"metatron","name":"METATRON","id_prefix":"MET"},
+  {"ordinal":5,"key":"sandalphon","name":"SANDALPHON","id_prefix":"SAN"}
+]}
+JSON
+jq -n --arg head_sha "$HEAD_SHA" '{"schema_version":"magi-run-policy/v1","workflow":"hard","gate_basis":"raw","gate_severity":"HIGH","audit_enabled":true,"audit_severities":["HIGH","MEDIUM"],"false_positive_policy":"annotate","needs_human_policy":"label_and_block","dedupe_enabled":true,"renderer":"github","locale":"ja","anchor_policy":"pr","completion_policy":{"require_marker":true,"zero_findings_requires_no_findings":true},"diff_source":{"kind":"file"},"head_sha":$head_sha}' > "$SETUP_TMPDIR/run-policy.json"
+SETUP_JSON=$(python3 "$SETUP" \
+  --workflow hard \
+  --repo-root "$REPO_ROOT" \
+  --manifest-file "$SETUP_TMPDIR/manifest.json" \
+  --policy-template-file "$SETUP_TMPDIR/run-policy.json" \
+  --pr-number "$PR_NUM" \
+  --head-sha "$HEAD_SHA" \
+  --extra-subdir audit \
+  --extra-subdir plan \
+  --extra-subdir isolated) || exit $?
+SETUP_STATUS=$(jq -r '.status' <<<"$SETUP_JSON") || exit 1
+if [ "$SETUP_STATUS" = empty ]; then
   echo 'MAGI-HARD: レビュー対象の差分がありません'
   exit 0
 fi
-DIFF_HASH=$(sha256sum "$PREP_TMPDIR/input.filtered" | awk '{print $1}')
-```
-
-`DIFF_HASH` は filter 適用後、splitter に渡す raw bytes の SHA-256 である。改行正規化、再 filter、別入力の hash は禁止する。
-
-run ID の排他的作成、canonical path の検証、14日超過および各 diff-hash 配下20 run超過の安全な prune は `magi-fast` ステップ1と同一の手順を用いる。`MAGI_RUN_DIR`、`MAGI_RESULT_FILE`、`MAGI_STATUS_FILE`、`MAGI_QUIET=1` の sink 契約は `execution-steps.md` に従う。hard では `diff/`、`results/`、`status/` に加えて `audit/`、`plan/`、`isolated/` も、同じ non-symlink directory 検証と mode 700 で作成する。
-
-```bash
-fatal() { echo "MAGI-HARD: $*" >&2; exit 1; }
-reject_symlink() { [ ! -L "$1" ] || fatal "symlink は許可しません: $1"; }
-verify_dir() { [ -d "$1" ] && [ ! -L "$1" ] || fatal "non-symlink directory ではありません: $1"; }
-HOME_CANONICAL=$(realpath "$HOME") || fatal 'HOME を canonical 化できません'
-RUNS_ROOT="$HOME_CANONICAL/.cache/magi/runs"; DIFF_RUNS_DIR="$RUNS_ROOT/$DIFF_HASH"
-for path in "$HOME_CANONICAL/.cache" "$HOME_CANONICAL/.cache/magi" "$RUNS_ROOT" "$DIFF_RUNS_DIR"; do reject_symlink "$path"; done
-mkdir -p -m 700 "$DIFF_RUNS_DIR" || fatal 'run root を作成できません'
-verify_dir "$RUNS_ROOT"; verify_dir "$DIFF_RUNS_DIR"
-RUN_DIR_CREATED=false
-for attempt in 1 2 3 4 5; do
-  RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$-$(od -An -N4 -tx4 /dev/urandom | tr -d ' \n')"
-  RUN_DIR="$DIFF_RUNS_DIR/$RUN_ID"; reject_symlink "$RUN_DIR"
-  if mkdir -m 700 "$RUN_DIR" 2>/dev/null; then RUN_DIR_CREATED=true; break; fi
-  [ -e "$RUN_DIR" ] || fatal "run dir を作成できません: $RUN_DIR"
-done
-[ "$RUN_DIR_CREATED" = true ] || fatal 'run ID の衝突が継続したため run dir を作成できません'
-EXPECTED_RUN_DIR=$(realpath -e "$RUN_DIR") || fatal 'run dir を検証できません'
-for path in diff results status audit plan isolated; do
-  reject_symlink "$RUN_DIR/$path"; [ ! -e "$RUN_DIR/$path" ] || fatal "run subdirectory が既に存在します: $path"
-  mkdir -m 700 "$RUN_DIR/$path" || fatal "run subdirectory を作成できません: $path"
-  verify_dir "$RUN_DIR/$path"
-done
+[ "$SETUP_STATUS" = ready ] || { echo 'MAGI-HARD: setup failed'; exit 1; }
+RUN_DIR=$(jq -r '.run_dir' <<<"$SETUP_JSON")
+RUN_ID=$(jq -r '.run_id' <<<"$SETUP_JSON")
+DIFF_HASH=$(jq -r '.diff_hash' <<<"$SETUP_JSON")
+DIFF_SOURCE=$(jq -r '.diff_source.kind' <<<"$SETUP_JSON")
+[ -n "$RUN_DIR" ] && [ -n "$DIFF_HASH" ] && [ "$DIFF_SOURCE" = file ] || exit 1
 write_profile_verification || fatal 'profile verification を保存できません'
-cp "$PREP_TMPDIR/input.filtered" "$RUN_DIR/diff/input.filtered.patch" || fatal 'diff を保存できません'
-cp "$PREP_TMPDIR/excluded.txt" "$RUN_DIR/diff/excluded-files.txt" 2>/dev/null || :
-sha256sum "$RUN_DIR/diff/input.filtered.patch" | grep -q "^$DIFF_HASH  " || fatal 'diff hash 検証に失敗しました'
 
 PR_BODY=$(gh pr view "$PR_NUM" --json body -q .body)
 source "$REPO_ROOT/scripts/lib/magi-change-summary.sh"
@@ -148,31 +142,17 @@ SUMMARY=$(truncate_utf8 "$SUMMARY" 300)
 printf '%s' "$SUMMARY" > "$RUN_DIR/change-summary.txt"
 ```
 
-prune の失敗は warning に留めるが、現 run の作成、入力保存、manifest/policy 書込み失敗は fatal error とする。run 作成後、現在の `$RUN_DIR` を除外して一度だけ prune する。
+`DIFF_HASH` は filter 適用後、splitter に渡す raw bytes の SHA-256 であり、同じ bytes が `$RUN_DIR/diff/input.filtered.patch` に保存される。hard では `diff/`、`results/`、`status/` に加えて `audit/`、`plan/`、`isolated/` も、setup script が non-symlink directory として mode 700 で作成する。filter の excluded list がある場合は `$RUN_DIR/diff/excluded-files.txt` に保存される。
+
+run ID の排他的作成、canonical path の検証、14日超過および全 diff-hash 横断で 20 run を超える古い run の安全な prune は `magi-run-setup.py` が行う。warning は stderr に限定され、stdout は JSON receipt だけである。run 作成後、現在の `$RUN_DIR` を除外して一度だけ prune する。
+
+prune の失敗は warning に留めるが、現 run の作成、入力保存、manifest/policy 書込み失敗は fatal error とする。
 
 ## ステップ 2: manifest と hard 用 run-policy の生成
 
-JSON は `$RUN_DIR` 内の tmp file から atomic rename で書く。manifest は実行順と ID prefix を次で固定する。
-
-```json
-{"schema_version":"persona-manifest/v1","personas":[
-  {"ordinal":1,"key":"melchior","name":"MELCHIOR","id_prefix":"MEL"},
-  {"ordinal":2,"key":"balthasar","name":"BALTHASAR","id_prefix":"BAL"},
-  {"ordinal":3,"key":"casper","name":"CASPER","id_prefix":"CAS"},
-  {"ordinal":4,"key":"metatron","name":"METATRON","id_prefix":"MET"},
-  {"ordinal":5,"key":"sandalphon","name":"SANDALPHON","id_prefix":"SAN"}
-]}
-```
-
-`run-policy.json` は次の固定値で生成する。`head_sha` は検証済みの40桁 hex、`diff_source.kind` は `file` である。
-
-```json
-{"schema_version":"magi-run-policy/v1","workflow":"hard","gate_basis":"raw","gate_severity":"HIGH","audit_enabled":true,"audit_severities":["HIGH","MEDIUM"],"false_positive_policy":"annotate","needs_human_policy":"label_and_block","dedupe_enabled":true,"renderer":"github","locale":"ja","anchor_policy":"pr","completion_policy":{"require_marker":true,"zero_findings_requires_no_findings":true},"diff_source":{"kind":"file"},"head_sha":"<40 lowercase hex>"}
-```
+`manifest.json` と `run-policy.json` は Step 1 の `magi-run-setup.py` 呼び出しが `$RUN_DIR` 内の tmp file から atomic rename で生成する。`head_sha` は検証済みの40桁 hex、`diff_source.kind` は `file` である。manifest は MELCHIOR、BALTHASAR、CASPER、METATRON、SANDALPHON の5体を固定順で含む。
 
 `require_marker:true` は marker 出力を期待するという意味であり、marker 欠落時でも Assessment 構造完全性を満たせば `chunk_complete` として受理する（#314 の OR 緩和）という parser の実際の受理条件とは独立である。markerless fallback は `magi-aggregate.py` 側の別条件として動作する。
-
-manifest と policy は一時ファイルを `mv` して atomic に保存し、失敗時は fatal とする。
 
 ## ステップ 3: 5体の直列 sink 実行
 

@@ -29,7 +29,8 @@ cd "$REPO_ROOT"
 AGGREGATE="$REPO_ROOT/scripts/magi-aggregate.py"
 FILTER="$REPO_ROOT/scripts/magi-diff-filter.sh"
 SPLITTER="$REPO_ROOT/scripts/magi-split-hunk.sh"
-[ -f "$AGGREGATE" ] && [ -f "$FILTER" ] && [ -f "$SPLITTER" ] || {
+SETUP="$REPO_ROOT/scripts/magi-run-setup.py"
+[ -f "$AGGREGATE" ] && [ -f "$FILTER" ] && [ -f "$SPLITTER" ] && [ -f "$SETUP" ] || {
   echo 'MAGI-FAST: required MAGI scripts are unavailable'
   exit 1
 }
@@ -50,179 +51,40 @@ fi
 
 ## ステップ 1: filter 済み入力、diff-hash、run dir の準備
 
-staged diff を優先し、空なら `HEAD` diff を raw file に一度だけ保存する。diff をコマンド置換やシェル変数へ入れず、filter の stdout を候補 file に保存する。filter 済み入力が空なら「MAGI-FAST: レビュー対象の差分がありません」と表示し、run dir を作らずに正常終了する。
+staged diff を優先し、空なら `HEAD` diff を使う。raw diff 取得、filter 適用、diff hash 算出、run dir 作成、input 保存、安全な prune は `scripts/magi-run-setup.py` に集約する。filter 済み入力が空なら「MAGI-FAST: レビュー対象の差分がありません」と表示し、run dir を作らずに正常終了する。
 
 ```bash
 umask 077
-PREP_TMPDIR=$(mktemp -d)
-trap 'rm -rf "$PREP_TMPDIR"' EXIT
-DIFF_SOURCE=staged
-git diff --staged > "$PREP_TMPDIR/input.raw"
-if [ ! -s "$PREP_TMPDIR/input.raw" ]; then
-  DIFF_SOURCE=head
-  git diff HEAD > "$PREP_TMPDIR/input.raw"
-fi
-bash "$FILTER" < "$PREP_TMPDIR/input.raw" > "$PREP_TMPDIR/input.filtered"
-if [ ! -s "$PREP_TMPDIR/input.filtered" ]; then
+SETUP_TMPDIR=$(mktemp -d)
+trap 'rm -rf "$SETUP_TMPDIR"' EXIT
+cat > "$SETUP_TMPDIR/manifest.json" <<'JSON'
+{"schema_version":"persona-manifest/v1","personas":[
+  {"ordinal":1,"key":"melchior","name":"MELCHIOR","id_prefix":"MEL"},
+  {"ordinal":2,"key":"balthasar","name":"BALTHASAR","id_prefix":"BAL"},
+  {"ordinal":3,"key":"casper","name":"CASPER","id_prefix":"CAS"}
+]}
+JSON
+jq -n --argjson audit_enabled "$AUDIT_MODE" '{"schema_version":"magi-run-policy/v1","workflow":"fast","gate_basis":"raw","gate_severity":"HIGH","audit_enabled":$audit_enabled,"audit_severities":["HIGH","MEDIUM"],"false_positive_policy":"annotate","needs_human_policy":"label_and_block","dedupe_enabled":true,"renderer":"terminal","locale":"ja","anchor_policy":"none","completion_policy":{"require_marker":true,"zero_findings_requires_no_findings":true},"diff_source":{"kind":"staged"},"head_sha":null}' > "$SETUP_TMPDIR/run-policy.json"
+SETUP_JSON=$(python3 "$SETUP" \
+  --workflow fast \
+  --repo-root "$REPO_ROOT" \
+  --manifest-file "$SETUP_TMPDIR/manifest.json" \
+  --policy-template-file "$SETUP_TMPDIR/run-policy.json" \
+  --audit-enabled "$AUDIT_MODE") || exit $?
+SETUP_STATUS=$(jq -r '.status' <<<"$SETUP_JSON") || exit 1
+if [ "$SETUP_STATUS" = empty ]; then
   echo 'MAGI-FAST: レビュー対象の差分がありません'
   exit 0
 fi
-DIFF_HASH=$(sha256sum "$PREP_TMPDIR/input.filtered" | awk '{print $1}')
+[ "$SETUP_STATUS" = ready ] || { echo 'MAGI-FAST: setup failed'; exit 1; }
+RUN_DIR=$(jq -r '.run_dir' <<<"$SETUP_JSON")
+RUN_ID=$(jq -r '.run_id' <<<"$SETUP_JSON")
+DIFF_HASH=$(jq -r '.diff_hash' <<<"$SETUP_JSON")
+DIFF_SOURCE=$(jq -r '.diff_source.kind' <<<"$SETUP_JSON")
+[ -n "$RUN_DIR" ] && [ -n "$DIFF_HASH" ] && [ -n "$DIFF_SOURCE" ] || exit 1
 ```
 
-`DIFF_HASH` は **filter 適用後、splitter に渡す raw bytes の SHA-256** である。改行正規化、`$(cat ...)`、再 filter、別入力の hash は禁止する。同じ bytes を `$RUN_DIR/diff/input.filtered.patch` に保存する。
-
-run ID は UTC timestamp + PID + 乱数とし、`mkdir` の成功を排他的取得として衝突時だけ生成し直す。再試行は最大 5 回である。`mkdir` が失敗したとき、`[ -e "$RUN_DIR" ]` の既存 entry がある場合だけ衝突として再試行し、それ以外は fatal とする。`mkdir -p` で既存 run を採用してはならない。作成後、`${HOME}/.cache/magi/runs/<diff-hash>/<run-id>/`、`diff/`、`results/`、`status/` が regular non-symlink directory であることを確認する。
-
-```bash
-fatal() { echo "MAGI-FAST: $*" >&2; exit 1; }
-reject_symlink() { [ ! -L "$1" ] || fatal "symlink は許可しません: $1"; }
-verify_dir() { [ -d "$1" ] && [ ! -L "$1" ] || fatal "non-symlink directory ではありません: $1"; }
-
-HOME_CANONICAL=$(realpath "$HOME") || fatal 'HOME を canonical 化できません'
-RUNS_BASE="$HOME_CANONICAL/.cache/magi"
-RUNS_ROOT="$RUNS_BASE/runs"
-DIFF_RUNS_DIR="$RUNS_ROOT/$DIFF_HASH"
-EXPECTED_RUNS_ROOT="$HOME_CANONICAL/.cache/magi/runs"
-EXPECTED_DIFF_RUNS_DIR="$EXPECTED_RUNS_ROOT/$DIFF_HASH"
-
-# 各 component は作成前に symlink を拒否する。未作成は許可する。
-for path in "$HOME_CANONICAL/.cache" "$RUNS_BASE" "$RUNS_ROOT" "$DIFF_RUNS_DIR"; do
-  reject_symlink "$path"
-done
-mkdir -p -m 700 "$DIFF_RUNS_DIR" || fatal 'run root を作成できません'
-verify_dir "$HOME_CANONICAL/.cache"
-verify_dir "$RUNS_BASE"
-verify_dir "$RUNS_ROOT"
-verify_dir "$DIFF_RUNS_DIR"
-[ "$(realpath -e "$RUNS_ROOT")" = "$EXPECTED_RUNS_ROOT" ] || fatal 'runs root が期待領域外です'
-[ "$(realpath -e "$DIFF_RUNS_DIR")" = "$EXPECTED_DIFF_RUNS_DIR" ] || fatal 'diff-hash dir が期待領域外です'
-
-RUN_DIR_CREATED=false
-for attempt in 1 2 3 4 5; do
-  RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$-$(od -An -N4 -tx4 /dev/urandom | tr -d ' \n')"
-  RUN_DIR="$DIFF_RUNS_DIR/$RUN_ID"
-  reject_symlink "$RUN_DIR"
-  if mkdir -m 700 "$RUN_DIR" 2>/dev/null; then
-    RUN_DIR_CREATED=true
-    break
-  fi
-  [ -e "$RUN_DIR" ] || fatal "run dir を作成できません: $RUN_DIR"
-done
-[ "$RUN_DIR_CREATED" = true ] || fatal 'run ID の衝突が継続したため run dir を作成できません'
-EXPECTED_RUN_DIR="$EXPECTED_DIFF_RUNS_DIR/$RUN_ID"
-verify_dir "$RUN_DIR"
-[ "$(realpath -e "$RUN_DIR")" = "$EXPECTED_RUN_DIR" ] || fatal 'run dir が期待領域外です'
-for path in "$RUN_DIR/diff" "$RUN_DIR/results" "$RUN_DIR/status"; do
-  reject_symlink "$path"
-  if stat -c '%F' -- "$path" >/dev/null 2>&1; then
-    fatal "run subdirectory が既に存在します: $path"
-  fi
-  mkdir -m 700 "$path" || fatal "run subdirectory を作成できません: $path"
-done
-verify_dir "$RUN_DIR/diff"
-verify_dir "$RUN_DIR/results"
-verify_dir "$RUN_DIR/status"
-[ "$(realpath -e "$RUN_DIR/diff")" = "$EXPECTED_RUN_DIR/diff" ] || fatal 'diff dir が期待領域外です'
-[ "$(realpath -e "$RUN_DIR/results")" = "$EXPECTED_RUN_DIR/results" ] || fatal 'results dir が期待領域外です'
-[ "$(realpath -e "$RUN_DIR/status")" = "$EXPECTED_RUN_DIR/status" ] || fatal 'status dir が期待領域外です'
-# input の親を物理 cwd に固定してから、相対パスを noclobber で作成する。
-# 保存後に bytes と SHA-256 を再検証し、filter 済み入力と同一であることを確認する。
-DIFF_BYTES=$(wc -c < "$PREP_TMPDIR/input.filtered" | tr -d '[:space:]')
-(
-  cd -P "$RUN_DIR/diff" || exit 1
-  [ "$(pwd -P)" = "$EXPECTED_RUN_DIR/diff" ] || exit 1
-  umask 077
-  set -C
-  cat "$PREP_TMPDIR/input.filtered" > input.filtered.patch || exit 1
-  [ "$(wc -c < input.filtered.patch | tr -d '[:space:]')" = "$DIFF_BYTES" ] || exit 1
-  [ "$(sha256sum input.filtered.patch | awk '{print $1}')" = "$DIFF_HASH" ] || exit 1
-) || fatal 'filter 済み入力を排他的に保存または検証できません'
-```
-
-caller は本 run だけを `$RUN_DIR` に所有させ、persona 実行前に `results/<persona>.md`、`status/<persona>.json`、および同名 tmp/staging が存在しないことを確認する。run 作成後に、現在の `$RUN_DIR` を除外して prune を一度だけ行う。14 日超過 run と、全 diff-hash 配下で新しいものを残して 20 run を超える古い run を候補にする。候補の列挙と削除は次の検証を通ったものだけに限定する。`find ... -delete` のような無検証一括削除は禁止する。
-
-```bash
-RUNS_ROOT_CANONICAL=$(realpath -e "$RUNS_ROOT") || fatal 'runs root を canonical 化できません'
-RUN_DIR_CANONICAL=$(realpath -e "$RUN_DIR") || fatal 'run dir を canonical 化できません'
-
-# runs root の物理 cwd から候補の列挙、選定、隔離、削除を完結させる。
-# cwd は kernel が保持する directory に固定されるため、runs root の path component 差し替えの影響を受けない。
-(
-  cd -P "$RUNS_ROOT" || exit 1
-  [ "$(pwd -P)" = "$RUNS_ROOT_CANONICAL" ] || exit 1
-  CURRENT_RUN_RELATIVE=${RUN_DIR_CANONICAL#"$RUNS_ROOT_CANONICAL/"}
-  [ "$CURRENT_RUN_RELATIVE" != "$RUN_DIR_CANONICAL" ] || exit 1
-
-  # depth 2 の non-symlink directory を mtime 降順に並べる。現 run も順位には含める。
-  mapfile -d '' -t ALL_RUNS < <(
-    while IFS= read -r -d '' entry; do
-      relative=${entry#./}
-      diff_component=${relative%%/*}
-      run_component=${relative#*/}
-      [ "${run_component#*/}" = "$run_component" ] || continue
-      [[ "$diff_component" =~ ^[0-9a-f]{64}$ ]] || continue
-      [[ "$run_component" =~ ^[0-9]{8}T[0-9]{6}Z-[0-9]+-[0-9a-f]{8}$ ]] || {
-        echo "MAGI-FAST: prune warning: run ID 形式外の entry を残します: $relative" >&2
-        continue
-      }
-      [ "$(stat -c '%F' -- "$relative")" = directory ] || continue
-      printf '%s\t%s\0' "$(stat -c '%Y' -- "$relative")" "$relative"
-    done < <(find -P . -mindepth 2 -maxdepth 2 -type d ! -type l -print0)
-  )
-  mapfile -d '' -t ALL_RUNS < <(printf '%s\0' "${ALL_RUNS[@]}" | sort -z -t $'\t' -k1,1nr)
-
-  PRUNE_CANDIDATES=()
-  cutoff=$(( $(date +%s) - 14 * 24 * 60 * 60 ))
-  rank=0
-  for record in "${ALL_RUNS[@]}"; do
-    rank=$((rank + 1))
-    mtime=${record%%$'\t'*}
-    relative=${record#*$'\t'}
-    [ "$relative" = "$CURRENT_RUN_RELATIVE" ] && continue
-    if [ "$mtime" -lt "$cutoff" ] || [ "$rank" -gt 20 ]; then
-      PRUNE_CANDIDATES+=("$relative")
-    fi
-  done
-
-  # 各候補を相対 path で lstat 検証してから、runs root 直下へ相対 rename で隔離して削除する。
-  for relative in "${PRUNE_CANDIDATES[@]}"; do
-    diff_component=${relative%%/*}
-    run_component=${relative#*/}
-    case "$relative" in */*/* | /* | . | .. | '')
-      echo "MAGI-FAST: prune warning: unsafe candidate を拒否: $relative" >&2
-      continue
-      ;;
-    esac
-    [[ "$diff_component" =~ ^[0-9a-f]{64}$ ]] && [[ "$run_component" =~ ^[0-9]{8}T[0-9]{6}Z-[0-9]+-[0-9a-f]{8}$ ]] || {
-      echo "MAGI-FAST: prune warning: unsafe candidate を拒否: $relative" >&2
-      continue
-    }
-    [ "$(stat -c '%F' -- "$relative" 2>/dev/null)" = directory ] && [ ! -L "$relative" ] || {
-      echo "MAGI-FAST: prune warning: unsafe candidate を拒否: $relative" >&2
-      continue
-    }
-    candidate_canonical=$(realpath -e -- "$relative") || {
-      echo "MAGI-FAST: prune warning: canonical 化できません: $relative" >&2
-      continue
-    }
-    [ "$candidate_canonical" = "$RUNS_ROOT_CANONICAL/$relative" ] || {
-      echo "MAGI-FAST: prune warning: unsafe candidate を拒否: $relative" >&2
-      continue
-    }
-
-    quarantine=".prune-${RUN_ID}-${RANDOM}-${run_component}"
-    [ ! -e "$quarantine" ] && [ ! -L "$quarantine" ] || {
-      echo "MAGI-FAST: prune warning: quarantine が衝突: $relative" >&2
-      continue
-    }
-    mv -T -- "$relative" "$quarantine" && rm -rf -- "$quarantine" \
-      || echo "MAGI-FAST: prune warning: $relative" >&2
-  done
-) || echo 'MAGI-FAST: prune warning: runs root を固定できません' >&2
-```
-
-prune 失敗は warning に留めるが、現 run の作成、入力保存、manifest/policy 書込み失敗は fatal error とする。
+`DIFF_HASH` は **filter 適用後、splitter に渡す raw bytes の SHA-256** であり、同じ bytes が `$RUN_DIR/diff/input.filtered.patch` に保存される。`magi-run-setup.py` は `${HOME}/.cache/magi/runs/<diff-hash>/<run-id>`、`diff/`、`results/`、`status/` を non-symlink directory として排他的に作成し、現在の `$RUN_DIR` を除外して 14 日超過または全 diff-hash 横断で 20 run を超える古い run だけを安全に prune する。warning は stderr に限定され、stdout は JSON receipt だけである。
 
 dev-flow から変更意図要約テキストが渡された場合、Claude が Write tool で `$RUN_DIR/change-summary.txt` へそのテキストを直接書き込む（bash コマンドは経由しない）。dev-flow を介さない単体起動時はこのファイルを作成しない。
 
@@ -230,37 +92,7 @@ dev-flow から plan-receipt/v1 テキストが渡された場合、Claude が W
 
 ## ステップ 2: manifest と fast 用 run-policy の生成
 
-JSON は `$RUN_DIR` 内の tmp file から atomic rename で書く。集約器へはこの実パスだけを渡す。manifest は実行順と ID prefix を次で固定する。
-
-```json
-{"schema_version":"persona-manifest/v1","personas":[
-  {"ordinal":1,"key":"melchior","name":"MELCHIOR","id_prefix":"MEL"},
-  {"ordinal":2,"key":"balthasar","name":"BALTHASAR","id_prefix":"BAL"},
-  {"ordinal":3,"key":"casper","name":"CASPER","id_prefix":"CAS"}
-]}
-```
-
-`run-policy.json` は `magi-aggregate.py` の `validate_policy` が要求する field を全て書く。`audit_enabled` だけを `AUDIT_MODE` の boolean にし、`diff_source.kind` はステップ 1 で実際に使った `staged` または `head` とする。
-
-```json
-{
-  "schema_version":"magi-run-policy/v1",
-  "workflow":"fast",
-  "gate_basis":"raw",
-  "gate_severity":"HIGH",
-  "audit_enabled":true,
-  "audit_severities":["HIGH","MEDIUM"],
-  "false_positive_policy":"annotate",
-  "needs_human_policy":"label_and_block",
-  "dedupe_enabled":true,
-  "renderer":"terminal",
-  "locale":"ja",
-  "anchor_policy":"none",
-  "completion_policy":{"require_marker":true,"zero_findings_requires_no_findings":true},
-  "diff_source":{"kind":"staged"},
-  "head_sha":null
-}
-```
+`manifest.json` と `run-policy.json` は Step 1 の `magi-run-setup.py` 呼び出しが `$RUN_DIR` 内の tmp file から atomic rename で生成する。集約器へは `$RUN_DIR/manifest.json` と `$RUN_DIR/run-policy.json` の実パスだけを渡す。`run-policy.json` の `audit_enabled` は `AUDIT_MODE`、`diff_source.kind` は setup script が実際に使った `staged` または `head` である。
 
 `require_marker:true` は marker 出力を期待するという意味であり、marker 欠落時でも Assessment 構造完全性を満たせば `chunk_complete` として受理する（#314 の OR 緩和）という parser の実際の受理条件とは独立である。markerless fallback は `magi-aggregate.py` 側の別条件として動作する。
 
