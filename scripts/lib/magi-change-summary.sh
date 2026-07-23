@@ -7,7 +7,7 @@ extract_pr_summary() {
   local pr_body="$1"
 
   printf '%s' "$pr_body" | awk '
-    /^##[[:space:]]+Summary[[:space:]]*$/ {
+    /^##[[:space:]]+(Summary|概要)[[:space:]]*$/ {
       in_summary = 1
       next
     }

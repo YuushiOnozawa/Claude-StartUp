@@ -43,6 +43,15 @@ extracts_first_two_summary_lines() {
   [ "$output" = $'first line\nsecond line' ]
 }
 
+extracts_first_two_japanese_summary_lines() {
+  local body
+  local output
+
+  body=$'## 概要\n\nfirst line\n\nsecond line\nthird line\n## Test plan\nnot part of summary'
+  output=$(extract_pr_summary "$body")
+  [ "$output" = $'first line\nsecond line' ]
+}
+
 returns_empty_without_summary_heading() {
   local output
 
@@ -96,6 +105,7 @@ bash_syntax() {
 }
 
 run_test "Summary の先頭2行を抽出" extracts_first_two_summary_lines
+run_test "概要 の先頭2行を抽出" extracts_first_two_japanese_summary_lines
 run_test "Summary 見出しなしは空文字列" returns_empty_without_summary_heading
 run_test "次の ## セクションで抽出を停止" stops_at_next_section
 run_test "未信頼な注入文字列をそのまま保持" preserves_untrusted_injection_text
