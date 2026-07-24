@@ -9,6 +9,8 @@ SETUP_SCRIPT="$SCRIPT_DIR/../setup/402-knowledge-rag-mcp-config.sh"
 AUTO_PROMOTE_SCRIPT="$SCRIPT_DIR/../hooks/knowledge-auto-promote.sh"
 PRUNE_SCRIPT="$SCRIPT_DIR/../hooks/knowledge-prune.sh"
 CHECK_QUEUE_SCRIPT="$SCRIPT_DIR/../hooks/check-queue.sh"
+KNOWLEDGE_DISTILL_SCRIPT="$SCRIPT_DIR/../hooks/knowledge-distill.sh"
+LESSONS_LEARNED_DISTILL_SCRIPT="$SCRIPT_DIR/../hooks/lessons-learned-distill.sh"
 REMEMBER_SKILL="$SCRIPT_DIR/../skills/remember/SKILL.md"
 BASH_BIN="$(command -v bash)"
 
@@ -147,7 +149,7 @@ setup_generates_local_documents_dir() {
 
   [ "$status" -eq 0 ] &&
     [ -f "$CONFIG_PATH" ] &&
-    grep -Fq "documents_dir: \"${FIXTURE_DIR}/.local/share/knowledge-rag\"" "$CONFIG_PATH" &&
+    grep -Fq "documents_dir: \"${FIXTURE_DIR}/.local/share/knowledge-rag/documents\"" "$CONFIG_PATH" &&
     ! grep -Fq '/pcloud/obsidian' "$CONFIG_PATH"
 }
 
@@ -161,7 +163,7 @@ setup_replaces_existing_absolute_documents_dir_only() {
   create_fixture
   old_path="${FIXTURE_DIR}/pcloud/obsidian"
   original_content=$(printf '# keep this comment\npaths:\n    documents_dir: "%s"\n    data_dir: "./data" # keep this setting\ncategory_mappings:\n    "sessions": "sessions"\n    "knowledge": "knowledge"\n    "lessons-learned": "lessons-learned"\n' "$old_path")
-  expected_content=$(printf '# keep this comment\npaths:\n    documents_dir: "%s"\n    data_dir: "./data" # keep this setting\ncategory_mappings:\n    "sessions": "sessions"\n    "knowledge": "knowledge"\n    "lessons-learned": "lessons-learned"\n' "${FIXTURE_DIR}/.local/share/knowledge-rag")
+  expected_content=$(printf '# keep this comment\npaths:\n    documents_dir: "%s"\n    data_dir: "./data" # keep this setting\ncategory_mappings:\n    "sessions": "sessions"\n    "knowledge": "knowledge"\n    "lessons-learned": "lessons-learned"\n' "${FIXTURE_DIR}/.local/share/knowledge-rag/documents")
   write_config "$original_content"
 
   run_setup output status
@@ -178,7 +180,7 @@ setup_replaces_existing_tilde_documents_dir_only() {
 
   create_fixture
   original_content=$(printf '# tilde path comment\npaths:\n  documents_dir: "~/pcloud/obsidian"\n  data_dir: "./data"\ncategory_mappings:\n  "sessions": "sessions"\n  "knowledge": "knowledge"\n  "lessons-learned": "lessons-learned"\n')
-  expected_content=$(printf '# tilde path comment\npaths:\n  documents_dir: "%s"\n  data_dir: "./data"\ncategory_mappings:\n  "sessions": "sessions"\n  "knowledge": "knowledge"\n  "lessons-learned": "lessons-learned"\n' "${FIXTURE_DIR}/.local/share/knowledge-rag")
+  expected_content=$(printf '# tilde path comment\npaths:\n  documents_dir: "%s"\n  data_dir: "./data"\ncategory_mappings:\n  "sessions": "sessions"\n  "knowledge": "knowledge"\n  "lessons-learned": "lessons-learned"\n' "${FIXTURE_DIR}/.local/share/knowledge-rag/documents")
   write_config "$original_content"
 
   run_setup output status
@@ -207,7 +209,7 @@ setup_adds_category_mappings_when_missing() {
   local status
 
   create_fixture
-  write_config "$(printf '# category mapping comment\npaths:\n  documents_dir: \"%s\"\n' "${FIXTURE_DIR}/.local/share/knowledge-rag")"
+  write_config "$(printf '# category mapping comment\npaths:\n  documents_dir: \"%s\"\n' "${FIXTURE_DIR}/.local/share/knowledge-rag/documents")"
 
   run_setup output status
 
@@ -222,7 +224,7 @@ setup_expands_empty_category_mappings_to_three_keys() {
   local status
 
   create_fixture
-  write_config "$(printf 'paths:\n  documents_dir: \"%s\"\ncategory_mappings: {}\n' "${FIXTURE_DIR}/.local/share/knowledge-rag")"
+  write_config "$(printf 'paths:\n  documents_dir: \"%s\"\ncategory_mappings: {}\n' "${FIXTURE_DIR}/.local/share/knowledge-rag/documents")"
 
   run_setup output status
 
@@ -238,7 +240,7 @@ setup_preserves_nonempty_category_mapping_and_adds_missing_keys() {
   local status
 
   create_fixture
-  write_config "$(printf 'paths:\n  documents_dir: \"%s\"\ncategory_mappings:\n    "custom": "custom"\n    "knowledge": "legacy-knowledge"\n' "${FIXTURE_DIR}/.local/share/knowledge-rag")"
+  write_config "$(printf 'paths:\n  documents_dir: \"%s\"\ncategory_mappings:\n    "custom": "custom"\n    "knowledge": "legacy-knowledge"\n' "${FIXTURE_DIR}/.local/share/knowledge-rag/documents")"
 
   run_setup output status
 
@@ -269,7 +271,7 @@ setup_is_idempotent_and_preserves_yaml_layout() {
 
   [ "$status" -eq 0 ] &&
     [ "$(<"$CONFIG_PATH")" = "$first_content" ] &&
-    grep -Fq "documents_dir: \"${FIXTURE_DIR}/.local/share/knowledge-rag\"" "$CONFIG_PATH" &&
+    grep -Fq "documents_dir: \"${FIXTURE_DIR}/.local/share/knowledge-rag/documents\"" "$CONFIG_PATH" &&
     grep -Fq '# keep layout and comments' "$CONFIG_PATH" &&
     grep -Fq 'data_dir: "./data" # preserve inline comment' "$CONFIG_PATH" &&
     grep -Fq '# mapping comment' "$CONFIG_PATH" &&
@@ -351,7 +353,7 @@ auto_promote_copies_and_registers_in_local_knowledge_dir() {
   create_fixture
   make_fake_llm
   session_file="$FIXTURE_DIR/session-to-promote.md"
-  destination="$FIXTURE_DIR/.local/share/knowledge-rag/knowledge/session-to-promote.md"
+  destination="$FIXTURE_DIR/.local/share/knowledge-rag/documents/knowledge/session-to-promote.md"
   printf '%s\n' '# promoted session' 'knowledge body' >"$session_file"
 
   run_auto_promote output status "$session_file" 'sessions/similar.md'
@@ -384,6 +386,17 @@ run_prune() {
   printf -v "$status_var" '%s' "$result_status"
 }
 
+make_fake_curl_down() {
+  local curl_path="$FIXTURE_DIR/bin/curl"
+
+  mkdir -p "$(dirname "$curl_path")"
+  printf '%s\n' \
+    "#!$BASH_BIN" \
+    'exit 1' \
+    >"$curl_path"
+  chmod +x "$curl_path"
+}
+
 prune_processes_local_documents_without_pcloud_queue() {
   local output
   local status
@@ -392,7 +405,7 @@ prune_processes_local_documents_without_pcloud_queue() {
   local archive_dir
 
   create_fixture
-  docs_dir="$FIXTURE_DIR/.local/share/knowledge-rag/sessions"
+  docs_dir="$FIXTURE_DIR/.local/share/knowledge-rag/documents/sessions"
   archive_dir="$FIXTURE_DIR/.local/share/knowledge-rag/archive/sessions"
   old_file="$docs_dir/old-session.md"
   mkdir -p "$docs_dir"
@@ -406,6 +419,116 @@ prune_processes_local_documents_without_pcloud_queue() {
     find "$archive_dir" -maxdepth 1 -type f -name '*-old-session.md' -print -quit | grep -q . &&
     [ ! -e "$FIXTURE_DIR/pcloud" ] &&
     [ ! -d "$FIXTURE_DIR/.claude/hooks/queue/knowledge-prune" ]
+}
+
+write_distill_transcript() {
+  local transcript_file="$1"
+
+  printf '%s\n' \
+    '{"type":"user","content":"Please remember that local documents are stored under knowledge-rag."}' \
+    '{"type":"assistant","content":"Recorded the local documents path decision."}' \
+    >"$transcript_file"
+}
+
+run_knowledge_distill() {
+  local output_var="$1"
+  local status_var="$2"
+  local transcript_file="$3"
+  local result_output
+  local result_status
+  local input
+
+  input=$(jq -n \
+    --arg transcript_path "$transcript_file" \
+    --arg cwd "$FIXTURE_DIR/project" \
+    '{"transcript_path":$transcript_path,"cwd":$cwd}')
+
+  if result_output=$(
+    HOME="$FIXTURE_DIR" \
+    PATH="$FIXTURE_DIR/bin:$PATH" \
+    "$BASH_BIN" "$KNOWLEDGE_DISTILL_SCRIPT" <<<"$input" 2>&1
+  ); then
+    result_status=0
+  else
+    result_status=$?
+  fi
+
+  printf -v "$output_var" '%s' "$result_output"
+  printf -v "$status_var" '%s' "$result_status"
+}
+
+knowledge_distill_uses_local_sessions_without_pcloud_mount() {
+  local output
+  local status
+  local transcript_file
+  local queue_file
+
+  create_fixture
+  make_fake_curl_down
+  mkdir -p "$FIXTURE_DIR/project"
+  transcript_file="$FIXTURE_DIR/transcript.jsonl"
+  write_distill_transcript "$transcript_file"
+
+  run_knowledge_distill output status "$transcript_file"
+  queue_file=$(find "$FIXTURE_DIR/.claude/hooks/queue/knowledge-distill" -maxdepth 1 -type f -name '*.json' -print -quit 2>/dev/null || true)
+
+  [ "$status" -eq 0 ] &&
+    [ -d "$FIXTURE_DIR/.local/share/knowledge-rag/documents/sessions" ] &&
+    [ -d "$FIXTURE_DIR/.local/share/knowledge-rag/documents/sessions/raw" ] &&
+    [ ! -e "$FIXTURE_DIR/pcloud" ] &&
+    [ -n "$queue_file" ] &&
+    jq -e '.reason == "ollama"' "$queue_file" >/dev/null &&
+    ! grep -Fq 'pCloud 未マウント' <<<"$output"
+}
+
+run_lessons_learned_distill() {
+  local output_var="$1"
+  local status_var="$2"
+  local transcript_file="$3"
+  local result_output
+  local result_status
+  local input
+
+  input=$(jq -n \
+    --arg transcript_path "$transcript_file" \
+    --arg cwd "$FIXTURE_DIR/project" \
+    '{"transcript_path":$transcript_path,"cwd":$cwd}')
+
+  if result_output=$(
+    HOME="$FIXTURE_DIR" \
+    PATH="$FIXTURE_DIR/bin:$PATH" \
+    "$BASH_BIN" "$LESSONS_LEARNED_DISTILL_SCRIPT" <<<"$input" 2>&1
+  ); then
+    result_status=0
+  else
+    result_status=$?
+  fi
+
+  printf -v "$output_var" '%s' "$result_output"
+  printf -v "$status_var" '%s' "$result_status"
+}
+
+lessons_learned_distill_uses_local_documents_without_pcloud_mount() {
+  local output
+  local status
+  local transcript_file
+  local queue_file
+
+  create_fixture
+  make_fake_curl_down
+  mkdir -p "$FIXTURE_DIR/project"
+  transcript_file="$FIXTURE_DIR/transcript.jsonl"
+  write_distill_transcript "$transcript_file"
+
+  run_lessons_learned_distill output status "$transcript_file"
+  queue_file=$(find "$FIXTURE_DIR/.claude/hooks/queue/lessons-learned" -maxdepth 1 -type f -name '*.json' -print -quit 2>/dev/null || true)
+
+  [ "$status" -eq 0 ] &&
+    [ -d "$FIXTURE_DIR/.local/share/knowledge-rag/documents/lessons-learned" ] &&
+    [ ! -e "$FIXTURE_DIR/pcloud" ] &&
+    [ -n "$queue_file" ] &&
+    jq -e '.reason == "ollama"' "$queue_file" >/dev/null &&
+    ! grep -Fq 'pCloud 未マウント' <<<"$output"
 }
 
 install_bash_probe() {
@@ -472,7 +595,9 @@ bash_syntax() {
     "$SETUP_SCRIPT" \
     "$AUTO_PROMOTE_SCRIPT" \
     "$PRUNE_SCRIPT" \
-    "$CHECK_QUEUE_SCRIPT"
+    "$CHECK_QUEUE_SCRIPT" \
+    "$KNOWLEDGE_DISTILL_SCRIPT" \
+    "$LESSONS_LEARNED_DISTILL_SCRIPT"
 }
 
 shellcheck_pass() {
@@ -488,8 +613,8 @@ remember_has_no_pcloud_documents_path() {
 }
 
 remember_uses_local_output_and_completion_path() {
-  grep -Fq 'OUTPUT="$HOME/.local/share/knowledge-rag/knowledge/{filename}.md"' "$REMEMBER_SKILL" &&
-    grep -Fq '例: $HOME/.local/share/knowledge-rag/knowledge/{filename}.md に保存・登録しました。' "$REMEMBER_SKILL"
+  grep -Fq 'OUTPUT="$HOME/.local/share/knowledge-rag/documents/knowledge/{filename}.md"' "$REMEMBER_SKILL" &&
+    grep -Fq '例: $HOME/.local/share/knowledge-rag/documents/knowledge/{filename}.md に保存・登録しました。' "$REMEMBER_SKILL"
 }
 
 changed_scripts_do_not_create_pcloud_paths() {
@@ -511,6 +636,14 @@ changed_scripts_do_not_create_pcloud_paths() {
   run_prune output status
   [ "$status" -eq 0 ] && [ ! -e "$FIXTURE_DIR/pcloud" ] || return 1
 
+  make_fake_curl_down
+  write_distill_transcript "$session_file"
+  run_knowledge_distill output status "$session_file"
+  [ "$status" -eq 0 ] && [ ! -e "$FIXTURE_DIR/pcloud" ] || return 1
+
+  run_lessons_learned_distill output status "$session_file"
+  [ "$status" -eq 0 ] && [ ! -e "$FIXTURE_DIR/pcloud" ] || return 1
+
   run_check_queue output status
   [ "$status" -eq 0 ] && [ ! -e "$FIXTURE_DIR/pcloud" ]
 }
@@ -530,6 +663,8 @@ run_jq_test "setup の再実行が冪等で YAML のインデントとコメン�
 run_jq_test "auto-promote が pCloud 未マウントでも早期スキップしない" auto_promote_does_not_skip_when_pcloud_is_unmounted
 run_jq_test "auto-promote のコピー先・登録先がローカル knowledge-rag" auto_promote_copies_and_registers_in_local_knowledge_dir
 run_jq_test "pCloud 未マウントでも prune がローカル documents を TTL 処理しキューを作らない" prune_processes_local_documents_without_pcloud_queue
+run_jq_test "pCloud 未マウントでも knowledge-distill がローカル sessions を使い pCloud 保留にしない" knowledge_distill_uses_local_sessions_without_pcloud_mount
+run_jq_test "pCloud 未マウントでも lessons-learned がローカル documents を使い pCloud 保留にしない" lessons_learned_distill_uses_local_documents_without_pcloud_mount
 run_jq_test "pCloud 未マウントでも check-queue が knowledge-distill drain を起動" check_queue_starts_distill_drain_without_mount_gate
 
 run_test "remember SKILL.md に旧 pCloud 保存先が残っていない" remember_has_no_pcloud_documents_path

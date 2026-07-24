@@ -97,10 +97,10 @@ if [[ -f "$KRAG_CONFIG" ]]; then
 elif [[ -f "$KRAG_CONFIG_EXAMPLE" ]]; then
   echo "  → config.yaml を生成: $KRAG_CONFIG"
   mkdir -p "$(dirname "$KRAG_CONFIG")"
-  if sed "s|documents_dir: \"./documents\"|documents_dir: \"${HOME}/.local/share/knowledge-rag\"|" \
+  if sed "s|documents_dir: \"./documents\"|documents_dir: \"${HOME}/.local/share/knowledge-rag/documents\"|" \
     "$KRAG_CONFIG_EXAMPLE" > "$KRAG_CONFIG" && \
-    grep -q "documents_dir: \"${HOME}/.local/share/knowledge-rag\"" "$KRAG_CONFIG"; then
-    ok "config.yaml (documents_dir=${HOME}/.local/share/knowledge-rag)"
+    grep -q "documents_dir: \"${HOME}/.local/share/knowledge-rag/documents\"" "$KRAG_CONFIG"; then
+    ok "config.yaml (documents_dir=${HOME}/.local/share/knowledge-rag/documents)"
   else
     fail "config.yaml  →  sed 置換失敗"
     rm -f "$KRAG_CONFIG"
@@ -114,7 +114,7 @@ fi
 # 既存 config.yaml の documents_dir を旧 pCloud パスからローカルパスへ移行する。
 # documents_dir の値行だけを対象にし、カスタム値や複雑な設定は変更しない。
 if [[ -f "$KRAG_CONFIG" ]]; then
-  _KRAG_LOCAL_DOCS_DIR="$HOME/.local/share/knowledge-rag"
+  _KRAG_LOCAL_DOCS_DIR="$HOME/.local/share/knowledge-rag/documents"
   if ! _KRAG_DOCS_SUMMARY="$(awk \
     -v old_abs="$HOME/pcloud/obsidian" \
     -v old_tilde="~/pcloud/obsidian" \

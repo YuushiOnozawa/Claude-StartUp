@@ -14,7 +14,7 @@ SESSION_FILE="${1:-}"
 [[ -z "$SESSION_FILE" ]] && { log_info "引数なし、スキップ"; exit 0; }
 [[ -f "$SESSION_FILE" ]] || { log_info "セッションファイル未存在: $SESSION_FILE"; exit 0; }
 
-KNOWLEDGE_DIR="$HOME/.local/share/knowledge-rag/knowledge"
+KNOWLEDGE_DIR="$HOME/.local/share/knowledge-rag/documents/knowledge"
 LLM="$HOME/.local/share/knowledge-rag/venv/bin/llm"
 NOTIFY_FILE="$HOME/.claude/hooks/promote-notifications.jsonl"
 _MODEL_FILE="$HOME/.local/share/knowledge-rag/model"

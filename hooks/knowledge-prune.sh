@@ -13,7 +13,7 @@ HOOK_DIR="$(dirname "$0")"
 # shellcheck source=lib/logging.sh
 source "${HOOK_DIR}/lib/logging.sh"
 
-DOCS_DIR="$HOME/.local/share/knowledge-rag"
+DOCS_DIR="$HOME/.local/share/knowledge-rag/documents"
 ARCHIVE_DIR="$HOME/.local/share/knowledge-rag/archive"
 
 # カテゴリ別 TTL（日数）。-1 は永続保持。
