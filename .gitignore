@@ -30,6 +30,9 @@ plans/
 # git worktree（並行作業用、追跡不要）
 /worktree/
 
+# dev-flow test gate 実行時の診断artifact（追跡不要）
+/test-gate/
+
 # RTK 生成物（rtk init -g が各マシンで再生成）
 RTK.md
 

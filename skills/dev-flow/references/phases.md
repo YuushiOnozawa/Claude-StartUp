@@ -167,6 +167,14 @@ Fall back to direct implementation only if Codex is unavailable.
 - Run `git status` to verify changed files
 - Display a diff summary with `git diff`
 
+### Step 3: Test Gate
+
+`$PLAN_RECEIPT_JSON` が非空の場合、Claude が Write tool で Phase 4 の中で `$PLAN_RECEIPT_JSON` の内容を `$WORKTREE_PATH` 配下の実ファイル（例: `$WORKTREE_PATH/test-gate/plan-receipt.json`）へ直接書き込む（bash コマンド文字列へは埋め込まない）。その上で `scripts/dev-flow-test-gate.py --repo-root $WORKTREE_PATH --plan-receipt <plan-receipt.jsonのパス>` を実行する。
+
+receipt.json の `status` が `pass` でなければ Phase 5 (magi-fast) に進まない。`scope_violation`/`regression`/`unavailable` 等の内容に応じて修正し、最大3回まで再試行する。3回試行しても解消しない場合は、診断artifact（`$WORKTREE_PATH/test-gate/attempt-<N>/`）を添えてユーザーへエスカレーションする。
+
+`status=skip`（review_route=codex による skip）の場合は、そのまま Phase 5 へ進んでよい。
+
 Proceed to Phase 5.
 
 ## Phase 5: REVIEW → FIX Loop
@@ -177,11 +185,13 @@ Proceed to Phase 5.
 
 Execute `/magi-fast`.
 
-`/magi-fast` が `review_route=codex` で route skip した場合、または `review_route=manual_confirm` から「Codex fallback」/「中止」になった場合、MAGI の raw gate は未評価であり commit gate として機能しない。現時点でこれを代替する自動ゲートは存在せず、commit 判断は人手の確認に委ねる（既知のギャップ。将来 Issue #331 の決定論的テストゲートが導入されれば解消予定）。
+Phase 4 Step 3 の test gate（`scripts/dev-flow-test-gate.py`）は `review_route=codex` の場合のみ skip され、`review_route=manual_confirm` では実行される。`/magi-fast` の raw gate が route skip 等により未評価になった場合でも、Phase 4 Step 3 の test gate の `status=pass` は既に確認済みである。commit へ進む条件は「Phase 4 Step 3 の test gate が `pass`（または `skip`）」かつ「`/magi-fast` の `COMMIT_GATE=true`」の AND 条件とする。
 
 ### If `COMMIT_GATE=true` → proceed to Phase 6
 
 `/magi-fast` が出力した commit gate を正本とする。進行条件は raw HIGH が 0、全 persona の `parse_status=ok`、かつ `needs_human` がないこと。Codex の `false_positive` 注記や duplicate 統合は raw gate を緩和しない。
+
+Phase 6 へ進むには、Phase 4 Step 3 の test gate が `pass`（または `skip`）であることも同時に満たす必要がある。
 
 ### If `COMMIT_GATE=false` → review/fix or resolve incompleteness
 
