@@ -177,7 +177,7 @@ Proceed to Phase 5.
 
 Execute `/magi-fast`.
 
-`/magi-fast` が `review_route=codex` で route skip した場合、MAGI の raw gate は未評価であり commit gate として機能しない。この場合の品質担保は Issue #331 の決定論的テストゲート、または別途の確認に委ねる。
+`/magi-fast` が `review_route=codex` で route skip した場合、または `review_route=manual_confirm` から「Codex fallback」/「中止」になった場合、MAGI の raw gate は未評価であり commit gate として機能しない。現時点でこれを代替する自動ゲートは存在せず、commit 判断は人手の確認に委ねる（既知のギャップ。将来 Issue #331 の決定論的テストゲートが導入されれば解消予定）。
 
 ### If `COMMIT_GATE=true` → proceed to Phase 6
 

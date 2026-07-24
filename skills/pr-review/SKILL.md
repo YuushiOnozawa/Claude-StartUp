@@ -37,7 +37,7 @@ magi-hard は以下を担う：
 - pre-triage、2段階 aggregate、Codex annotation
 - `review-plan.json` と summary JSON の生成、poster による GitHub への冪等投稿
 
-ただし `/magi-hard` が `review_route=magi` 以外で route skip した場合は、GitHub 投稿済みレビューとはみなさない。
+ただし `/magi-hard` が `review_route=magi` 以外で route skip した場合は、GitHub 投稿済みレビューとはみなさない。この場合 MAGI の raw gate は未評価であり、現時点でこれを代替する自動ゲートは存在しない。マージ判断は人手の確認に委ねる（既知のギャップ。将来 Issue #331 の決定論的テストゲートが導入されれば解消予定）。
 
 ## ステップ 3: 次のアクション判定
 
