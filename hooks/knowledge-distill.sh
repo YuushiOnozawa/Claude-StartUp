@@ -20,7 +20,7 @@ _OLLAMA_UP=0
 ollama_is_up && _OLLAMA_UP=1 || true
 
 # キュー drain（リトライ実行時はスキップして無限ループを防ぐ）
-if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
+if [[ "${KRAG_DISTILL_RETRY:-0}" != "1" ]]; then
   _distill_retry_callback() {
     local item_file="$1"
     t=$(jq -e -r '.transcript_path // empty' "$item_file" 2>/dev/null) || { log_error "failed to read transcript_path from $item_file (null or missing)"; return 1; }
@@ -87,21 +87,8 @@ DATE=$(date +%Y-%m-%d)
 # TRANSCRIPT_BASE: transcript ファイル名（拡張子除く）を基準にする
 # → 初回実行・リトライで同一のファイル名が保証され、raw と distilled が対応する
 TRANSCRIPT_BASE="${TRANSCRIPT_PATH##*/}"; TRANSCRIPT_BASE="${TRANSCRIPT_BASE%.*}"
-OUTPUT_DIR="$HOME/pcloud/obsidian/sessions"
+OUTPUT_DIR="$HOME/.local/share/knowledge-rag/documents/sessions"
 OUTPUT_FILE="${OUTPUT_DIR}/${DATE}-${TRANSCRIPT_BASE}-${PROJECT}.md"
-
-# pCloud マウント確認（マウント管理は systemd サービスの責務）
-if ! mountpoint -q "$HOME/pcloud"; then
-  log_error "pCloud not mounted at $HOME/pcloud"
-  echo "  ⏳ knowledge-distill: pCloud 未マウント → 保留 ($PROJECT)" >&2
-  if queue_push "$HOOK_NAME" "pcloud" "$TRANSCRIPT_PATH" "$PROJECT_CWD"; then
-    log_info "queued for retry: $TRANSCRIPT_PATH"
-    queue_notify_send "knowledge-distill" "pCloud 未マウントのため保留中 ($PROJECT)"
-  else
-    log_error "queue_push failed"
-  fi
-  exit 0
-fi
 
 mkdir -p "$OUTPUT_DIR"
 

@@ -20,7 +20,7 @@ _OLLAMA_UP=0
 ollama_is_up && _OLLAMA_UP=1 || true
 
 # キュードレイン（リトライ実行時はスキップして無限ループを防ぐ）
-if [[ "${KRAG_LL_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
+if [[ "${KRAG_LL_RETRY:-0}" != "1" ]]; then
   _ll_retry_callback() {
     local item_file="$1"
     local t c
@@ -71,19 +71,7 @@ fi
 PROJECT_CWD=$(echo "$INPUT" | jq -r '.cwd // "unknown"' 2>/dev/null)
 PROJECT=$(basename "$PROJECT_CWD" 2>/dev/null || echo "unknown")
 DATE=$(date +%Y-%m-%d)
-OUTPUT_DIR="$HOME/pcloud/obsidian"
-
-# pCloud マウント確認
-if ! mountpoint -q "$HOME/pcloud"; then
-  log_error "pCloud not mounted"
-  echo "  ⏳ lessons-learned: pCloud 未マウント → 保留 ($PROJECT)" >&2
-  if queue_push "$HOOK_NAME" "pcloud" "$TRANSCRIPT_PATH" "$PROJECT_CWD"; then
-    log_info "queued for retry: $TRANSCRIPT_PATH"
-  else
-    log_error "queue_push failed"
-  fi
-  exit 0
-fi
+OUTPUT_DIR="$HOME/.local/share/knowledge-rag/documents"
 
 mkdir -p "${OUTPUT_DIR}/lessons-learned"
 
