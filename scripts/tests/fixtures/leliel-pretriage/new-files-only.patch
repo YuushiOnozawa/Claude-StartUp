@@ -1,6 +1,0 @@
-diff --git a/src/new.py b/src/new.py
-new file mode 100644
---- /dev/null
-+++ b/src/new.py
-@@ -0,0 +1 @@
-+def public_api(value):

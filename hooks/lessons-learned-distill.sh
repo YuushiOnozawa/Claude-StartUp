@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # lessons-learned-distill: SessionEnd hook — orchestrator
-# Detects mistakes in session transcripts via Ollama and saves to local staging (~/.local/share/knowledge-rag/lessons-learned).
-# pCloud transfer is delegated to pcloud-sync.sh (core-01).
+# Detects mistakes in session transcripts via Ollama and saves to Obsidian.
 set -euo pipefail
 # 終了コード方針（カテゴリ B / Issue #51）:
-#   exit 0 — 想定内スキップ（transcript なし・会話内容なし）、またはキュー追加（Ollama 条件・成否問わず）
+#   exit 0 — 想定内スキップ（transcript なし・会話内容なし）、またはキュー追加（pCloud/Ollama 条件・成否問わず）
 #   非ゼロ  — 想定外エラー（set -euo pipefail による自動終了。Claude Code ログに記録）
 
 HOOK_DIR="$(dirname "$0")"
@@ -21,8 +20,7 @@ _OLLAMA_UP=0
 ollama_is_up && _OLLAMA_UP=1 || true
 
 # キュードレイン（リトライ実行時はスキップして無限ループを防ぐ）
-# 蒸留は Ollama 必須のため、停止中に drain すると retry_count を空費し dead-letter 化する
-if [[ "${KRAG_LL_RETRY:-0}" != "1" ]] && [[ $_OLLAMA_UP -eq 1 ]]; then
+if [[ "${KRAG_LL_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
   _ll_retry_callback() {
     local item_file="$1"
     local t c
@@ -73,7 +71,19 @@ fi
 PROJECT_CWD=$(echo "$INPUT" | jq -r '.cwd // "unknown"' 2>/dev/null)
 PROJECT=$(basename "$PROJECT_CWD" 2>/dev/null || echo "unknown")
 DATE=$(date +%Y-%m-%d)
-OUTPUT_DIR="$HOME/.local/share/knowledge-rag"
+OUTPUT_DIR="$HOME/pcloud/obsidian"
+
+# pCloud マウント確認
+if ! mountpoint -q "$HOME/pcloud"; then
+  log_error "pCloud not mounted"
+  echo "  ⏳ lessons-learned: pCloud 未マウント → 保留 ($PROJECT)" >&2
+  if queue_push "$HOOK_NAME" "pcloud" "$TRANSCRIPT_PATH" "$PROJECT_CWD"; then
+    log_info "queued for retry: $TRANSCRIPT_PATH"
+  else
+    log_error "queue_push failed"
+  fi
+  exit 0
+fi
 
 mkdir -p "${OUTPUT_DIR}/lessons-learned"
 

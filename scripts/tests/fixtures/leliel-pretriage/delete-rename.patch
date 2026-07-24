@@ -1,6 +1,0 @@
-diff --git a/src/api.py b/src/api.py
-deleted file mode 100644
---- a/src/api.py
-+++ /dev/null
-@@ -1 +0,0 @@
--def removed_api(value):

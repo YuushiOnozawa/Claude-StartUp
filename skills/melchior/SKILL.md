@@ -14,6 +14,7 @@ Ollama `qwen2.5-coder:7b` が利用可能な場合はそちらを使い、なけ
 |-----|---|
 | OLLAMA_MODEL | `qwen2.5-coder:7b` |
 | PERSONA_NAME | `MELCHIOR` |
+| エージェント定義 | `agents/melchior.md`（repo 内）または `/home/<user>/.claude/agents/melchior.md` |
 
 ## 参照ファイル
 

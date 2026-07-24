@@ -1,11 +1,12 @@
 ---
 name: pr-review
-description: PR レビュースキル。magi-hard（MAGI 6体）でレビューを実行する。summary JSON を基準に判定し、GitHub 投稿は F7 poster に委譲する。HIGH/MEDIUM 指摘があれば /pr-review-respond と交互に回して LGTM まで到達させる。Trigger: "PRレビュー", "pr-review", "レビューして", "コードレビュー", "review PR", "MAGIにレビューさせて", "PRをレビューして"
+description: PR レビュースキル。magi-hard（MAGI 5体）でレビューを実行し GitHub にコメント投稿する。HIGH/MEDIUM 指摘があれば /pr-review-respond と交互に回して LGTM まで到達させる。Trigger: "PRレビュー", "pr-review", "レビューして", "コードレビュー", "review PR", "MAGIにレビューさせて", "PRをレビューして"
 ---
 
 # PR Review Skill
 
-PR に対して `/magi-hard` を実行し、MAGI 6体（MELCHIOR→BALTHASAR→CASPER→METATRON→SANDALPHON→LELIEL）のレビュー結果を summary JSON 基準で判定する。指摘は magi-hard の poster が GitHub に冪等投稿する（正本は run dir の `review-plan.json`）。
+PR に対して `/magi-hard` を実行し、MAGI 5体によるレビュー結果を GitHub に投稿する。
+HIGH/MEDIUM 指摘がある場合は `/pr-review-respond` で対応し、このスキルを再実行する——LGTM まで繰り返す。
 
 ## 事前条件
 
@@ -30,36 +31,35 @@ gh pr view --json number,headRefName,baseRefName,url,state
 
 ## ステップ 2: magi-hard の実行
 
-`/magi-hard` スキルを実行する。完了後に出力された `$RUN_DIR/review-plan.json` と canonical summary を正本として扱う。
+`/magi-hard` スキルを実行する。
 
 magi-hard は以下を担う：
-- MELCHIOR→BALTHASAR→CASPER→METATRON→SANDALPHON→LELIEL の順次 sink 実行
-- pre-triage、2段階 aggregate、Codex annotation
-- `review-plan.json` と summary JSON の生成、poster による GitHub への冪等投稿
-
-ただし `/magi-hard` が `review_route=magi` 以外で route skip した場合は、GitHub 投稿済みレビューとはみなさない。この場合 MAGI の raw gate は未評価であり、現時点でこれを代替する自動ゲートは存在しない。マージ判断は人手の確認に委ねる（既知のギャップ。将来 Issue #331 の決定論的テストゲートが導入されれば解消予定）。
+- MELCHIOR→BALTHASAR→CASPER→METATRON→SANDALPHON の順次実行
+- 行番号＋種別フラグの共有による重複排除
+- PR にサマリコメント投稿（先行）→ HIGH/MEDIUM 指摘をインラインコメントとして投稿
 
 ## ステップ 3: 次のアクション判定
 
-Claude の目視カウント、raw persona artifact の全文再表示、全文の再集計は禁止する。magi-hard 完了後、`review_route` が `magi` 以外、または setup status が `routed` の場合は `review-plan.json` を読まず、MAGI未実行・GitHub投稿なし・`REVIEW_GATE=false` として停止する。
-
-`review_route=magi` の通常完了時だけ、`$RUN_DIR/review-plan.json` の summary と canonical summary だけを読む。
-
-- persona の `parse_status != ok` が1件でもあれば「レビュー不完全 — LGTM 禁止、/magi-hard を再実行」と表示する。
-- `needs_human > 0` なら「要人判断 N 件 — 解決まで LGTM 対象外」と表示する。
-- raw HIGH または raw MEDIUM が1件でもあれば `/pr-review-respond` へ進む。指摘詳細は `$RUN_DIR/review-plan.json` と magi-hard の terminal 表示を参照する。
-- 上記いずれもなく、UNKNOWN を含め raw counts が全てゼロなら LGTM と表示する。
+magi-hard の完了後、以下の基準でユーザーに報告する：
 
 ```
 ## PR レビュー完了
 
-判定: レビュー不完全 / 要人判断 / 指摘対応 / LGTM
-参照: $RUN_DIR/review-plan.json
+| ペルソナ | HIGH | MEDIUM | LOW |
+|---------|------|--------|-----|
+| MELCHIOR（コード品質・バグ） | N | M | K |
+| BALTHASAR（設計・アーキテクチャ） | N | M | K |
+| CASPER（ルール遵守） | N | M | K |
+| METATRON（セキュリティ） | N | M | K |
+| SANDALPHON（実行環境・デプロイ） | N | M | K |
 ```
+
+### 次のアクション
+
+- **HIGH/MEDIUM 指摘あり** → `/pr-review-respond` で対応 → 対応完了後に再度 `/pr-review` を実行
+- **HIGH/MEDIUM 指摘なし** → LGTM（マージ準備完了）
 
 ## 注意事項
 
 - レビュー結果の修正対応は `/pr-review-respond` スキルで行う
-- GitHub へのサマリ・インラインコメント投稿は magi-hard の poster の責務である
-- `false_positive` 除外や annotation unavailable は raw 基準の gate を緩和しない
 - `pr-review ↔ pr-review-respond` のループで LGTM まで到達させる
