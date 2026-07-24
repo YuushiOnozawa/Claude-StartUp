@@ -7,14 +7,15 @@ argument-hint: "<ファイルパス または差分>"
 
 MAGI LELIEL（影の守護者）の観点でコードをレビューする。
 変更が既存コードの呼び出し元に与える実際の影響をコールグラフ証拠で実証する。
-Ollama `llama3.1:8b` が利用可能な場合はそちらを使い、なければ Haiku にフォールバックする。
+Ollama `deepseek-r1:8b` が利用可能な場合はそちらを使い、なければ Haiku にフォールバックする。
 
 ## ペルソナ固有設定
 
 | 項目 | 値 |
 |-----|---|
-| OLLAMA_MODEL | `llama3.1:8b` |
+| OLLAMA_MODEL | `deepseek-r1:8b` |
 | PERSONA_NAME | `LELIEL` |
+| エージェント定義 | `agents/leliel.md`（repo 内）または `/home/<user>/.claude/agents/leliel.md` |
 
 ## 参照ファイル
 

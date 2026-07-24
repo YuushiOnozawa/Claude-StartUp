@@ -9,101 +9,70 @@ MAX_LINES="${1:-200}"
 
 awk -v max_lines="$MAX_LINES" '
 BEGIN {
-  file_count = 0
-  file_lines = 0
-  pack_buf = ""
-  pack_lines = 0
-  pack_files = 0
+  file_header = ""
+  chunk_lines = 0
+  chunk_buf   = ""
+  chunk_n     = 0
+  path        = ""
 }
 
-function clear_file(   i) {
-  for (i = 1; i <= file_lines; i++) delete current[i]
-  file_lines = 0
-}
-
-function flush_pack(   label) {
-  if (pack_buf == "") return
-  label = "=== CHUNK: " pack_path
-  if (pack_files > 1) label = label " +" (pack_files - 1) " files"
-  label = label " (1) ==="
+function flush_chunk(   label) {
+  if (chunk_buf == "") return
+  chunk_n++
+  label = "=== CHUNK: " path " (" chunk_n ") ==="
   print label
-  printf "%s", pack_buf
+  printf "%s", file_header
+  printf "%s", chunk_buf
   print ""
-  pack_buf = ""
-  pack_lines = 0
-  pack_files = 0
+  chunk_buf   = ""
+  chunk_lines = 0
 }
 
-function emit_large(   i, line, header, body, body_lines, chunk_n) {
-  flush_pack()
-  header = ""
-  body = ""
-  body_lines = 0
-  chunk_n = 0
-  for (i = 1; i <= file_lines; i++) {
-    line = current[i]
-    if (line ~ /^@@/) {
-      if (body_lines > 0 && body_lines >= max_lines) {
-        chunk_n++
-        print "=== CHUNK: " file_path " (" chunk_n ") ==="
-        printf "%s", header
-        printf "%s", body
-        print ""
-        body = ""
-        body_lines = 0
-      }
-      body = body line "\n"
-      body_lines++
-    } else if (body_lines == 0 &&
-               (line ~ /^diff --git a\// || line ~ /^(new|deleted) file mode / ||
-                line ~ /^index / || line ~ /^similarity / || line ~ /^rename / ||
-                line ~ /^Binary / || line ~ /^--- / || line ~ /^\+\+\+ /)) {
-      header = header line "\n"
-    } else {
-      body = body line "\n"
-      body_lines++
-    }
-  }
-  if (body != "") {
-    chunk_n++
-    print "=== CHUNK: " file_path " (" chunk_n ") ==="
-    printf "%s", header
-    printf "%s", body
-    print ""
-  }
-}
-
-function finish_file(   i, raw, total) {
-  if (file_lines == 0) return
-  raw = ""
-  for (i = 1; i <= file_lines; i++) raw = raw current[i] "\n"
-  total = file_lines
-  if (total <= max_lines) {
-    if (pack_buf != "" && pack_lines + total > max_lines) flush_pack()
-    if (pack_buf == "") pack_path = file_path
-    pack_buf = pack_buf raw
-    pack_lines += total
-    pack_files++
-  } else {
-    emit_large()
-  }
-  clear_file()
-}
-
+# ファイルヘッダー行: diff --git a/... b/...
 /^diff --git a\// && / b\// {
-  finish_file()
-  file_path = $NF
-  sub(/^b\//, "", file_path)
-  current[++file_lines] = $0
+  flush_chunk()
+  chunk_n   = 0
+  path      = $NF; sub(/^b\//, "", path)
+  file_header = $0 "\n"
   next
 }
 
-{
-  if (file_lines > 0) current[++file_lines] = $0
+# ファイルメタ行（new/deleted file mode, index, similarity 等）はヘッダーに追記
+/^(new|deleted) file mode / || /^index / || /^similarity / || /^rename / || /^Binary / {
+  file_header = file_header $0 "\n"
+  next
 }
 
-END {
-  finish_file()
-  flush_pack()
+# --- / +++ 行はファイルヘッダーに追記（hunk 開始前のみ）
+/^--- / || /^\+\+\+ / {
+  if (chunk_lines == 0) {
+    file_header = file_header $0 "\n"
+  } else {
+    chunk_buf   = chunk_buf $0 "\n"
+    chunk_lines++
+  }
+  next
 }
+
+# hunk ヘッダー: @@ ... @@
+/^@@/ {
+  # 現在の chunk が max_lines 行以上なら flush してから新 hunk 開始
+  # （chunk_lines >= max_lines のとき flush: hunk 単位で切るため途中分割しない）
+  if (chunk_lines > 0 && chunk_lines >= max_lines) {
+    flush_chunk()
+  }
+  chunk_buf   = chunk_buf $0 "\n"
+  chunk_lines++
+  next
+}
+
+# その他の行（コンテキスト・追加・削除）
+{
+  chunk_buf   = chunk_buf $0 "\n"
+  chunk_lines++
+  # 上限超えかつ hunk ヘッダー手前で flush するため、ここでは flush しない
+  # （hunk の途中でチャンクを切ると LLM に渡しにくいため）
+}
+
+END { flush_chunk() }
 '

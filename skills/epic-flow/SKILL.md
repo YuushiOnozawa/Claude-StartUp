@@ -7,11 +7,6 @@ description: This skill should be used when the user expresses intent to build o
 
 Scale-aware development workflow that routes to the appropriate workflow automatically.
 
-**Phase 0 の前に（再開チェック）**:
-`$(git rev-parse --git-common-dir)/epic-state.md` が**存在する場合（status 問わず）**、
-または引数が `#M` 形式（数字のみ）の場合は、SCALE ASSESSMENT を行わず
-`references/phases.md` の「再開手順」（Phase 4 冒頭）へ進む。
-
 ## Phase 0: SCALE ASSESSMENT
 
 Assess the user's requirements using these criteria:

@@ -18,12 +18,8 @@
 #                       16384 に変更。LELIEL など長い diff を扱う場合は環境変数で上書きすること。
 #                       例: OLLAMA_NUM_CTX=65536 bash ollama-run.sh <model> system.txt < prompt.txt
 #   OLLAMA_TEMPERATURE  サンプリング温度（デフォルト: 0.1）
-#   MAGI レビュー呼び出しで推奨: OLLAMA_REPEAT_PENALTY=1.3 OLLAMA_NUM_PREDICT=4096（#314 実測）
 #   OLLAMA_BASE_URL     Ollama ベース URL（デフォルト: WSL2 は自動検出、それ以外は http://localhost:11434）
 #                       例: OLLAMA_BASE_URL=http://172.17.96.1:11434 bash ollama-run.sh <model>
-#   OLLAMA_THINK        think パラメータ（デフォルト: false で thinking chain を無効化）
-#                       thinking chain が必要な場合は OLLAMA_THINK=true で上書き可能
-#                       "false" のみ正式サポート。非対応モデルはこのパラメータを無視する。
 
 set -euo pipefail
 
@@ -40,9 +36,6 @@ LOCK="${OLLAMA_LOCK_DIR:-/tmp}/ollama.lock"
 TIMEOUT="${OLLAMA_TIMEOUT:-1800}"
 CONTEXT_SIZE="${OLLAMA_NUM_CTX:-16384}"
 TEMPERATURE="${OLLAMA_TEMPERATURE:-0.1}"
-REPEAT_PENALTY="${OLLAMA_REPEAT_PENALTY:-}"
-NUM_PREDICT="${OLLAMA_NUM_PREDICT:-}"
-THINK_OPT="${OLLAMA_THINK:-false}"
 
 # system プロンプトファイルの読み込み（省略可）
 SYSTEM_FILE="${2:-}"
@@ -124,19 +117,6 @@ else
     '{"model":$model,"prompt":$prompt,"stream":false,"keep_alive":0,"options":{"num_ctx":$num_ctx,"temperature":$temperature}}')"
 fi
 
-if [[ -n "$REPEAT_PENALTY" ]]; then
-  JSON="$(printf '%s\n' "$JSON" | jq --argjson repeat_penalty "$REPEAT_PENALTY" \
-    '.options.repeat_penalty = $repeat_penalty')"
-fi
-if [[ -n "$NUM_PREDICT" ]]; then
-  JSON="$(printf '%s\n' "$JSON" | jq --argjson num_predict "$NUM_PREDICT" \
-    '.options.num_predict = $num_predict')"
-fi
-
-if [[ "$THINK_OPT" == "false" ]]; then
-  JSON="$(printf '%s\n' "$JSON" | jq '. + {"think": false}')"
-fi
-
 _RESP="$(mktemp)"
 curl -sf --max-time "$TIMEOUT" "$OLLAMA_URL" \
   -H 'Content-Type: application/json' \
@@ -152,16 +132,7 @@ if [[ "$_curl_status" -ne 0 ]]; then
   exit "$_curl_status"
 fi
 
-RAW_RESP="$(jq -r '.response // empty' "$_RESP")"
+jq -r '.response // empty' "$_RESP" \
+  | perl -0777 -pe 's/<think>.*?<\/think>\n?//gs'
 rm -f "$_RESP"
 _RESP=""
-
-# 未閉じ <think> 検出（think:false 非対応環境・他 reasoning model の安全弁）
-if printf '%s' "$RAW_RESP" | grep -q '<think>' && \
-   ! printf '%s' "$RAW_RESP" | grep -q '</think>'; then
-  printf '⚠ <think> タグが未閉じで終了しました。OLLAMA_NUM_CTX=%s が不足している可能性があります。OLLAMA_NUM_CTX を増やして再実行してください。\n' \
-    "$CONTEXT_SIZE" >&2
-  exit 1
-fi
-
-printf '%s\n' "$RAW_RESP" | perl -0777 -pe 's/<think>.*?<\/think>\n?//gs'

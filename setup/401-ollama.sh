@@ -1,5 +1,6 @@
 # setup/401-ollama.sh — Ollama インストール
 # Requires: ok, fail, MISSING_CMDS (append-only)
+# Note: モデルのダウンロードは 800-ollama-models.sh で行う
 
 [[ "${BASH_SOURCE[0]}" == "$0" ]] && { echo "ERROR: setup.sh から source してください" >&2; exit 1; }
 

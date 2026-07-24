@@ -31,18 +31,11 @@
 - 「以前調べた」「既知のはず」と感じたら必ず `search_knowledge` で確認してから回答すること
 
 ## lessons-learned の記録
-- 作業中に自分のミスに気づいたら `$HOME/.local/share/knowledge-rag/lessons-learned/YYYY-MM-DD-HHMMSS-<要約>.md` にファイルを保存すること
-- 手動保存はローカル記録のみ（knowledge-rag への登録は行われない）。transcript からの自動抽出分は `lessons-learned-distill.sh` が保存・登録を担う
+- 作業中に自分のミスに気づいたら `mcp__knowledge-rag__add_document` を直接呼び出して登録すること
+- filepath: `lessons-learned/YYYY-MM-DD-HHMMSS-<要約>.md`、category: `lessons-learned`
 - フォーマット: 状況 / ミス / 原因 / 解決 / 防止策
 
-## モデル委譲（コスト最適化）
-- メイン会話（Sonnet）は判断・統合に専念する。
-- 設計判断で確信が持てない時や影響の大きい決定の前など、必要と判断した場合は `/advisor` を活用する。
-- トークンを多く消費する読み取り専用の調査（コード検索・Web調査・大量ファイルの読み取り/要約）は `researcher` エージェント（`.claude/agents/researcher.md`、Haiku）に委譲する。
-- 例外: 誤りが致命的な調査（セキュリティ・本番影響）と、メインが既に把握しているコンテキストの続きの小作業は委譲しない（後者は再説明分で逆に高くつく）。
-
 ## Skill 実行
-- ユーザーの指示がスキルのトリガーに合致する場合、作業前に必ず Skill ツールを呼び出してロードする（記憶・過去コンテキストから手順を実行しない）
 - Skill の手順は必ず全て遵守する。省略・バイパス・ショートカット禁止（確認ステップ含む）
 - コマンド出力を `head` 等で切り捨てない（全件確認してから判断する）
 
