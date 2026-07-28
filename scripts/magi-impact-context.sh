@@ -150,21 +150,23 @@ done
 CHANGED_PATHS=$(printf '%s\n' "$DIFF" | grep '^diff --git' | awk '{print $NF}' | sed 's|^b/||' | sort -u) || true
 
 PATH_SECTION=""
-for CHANGED in $CHANGED_PATHS; do
-  BASE=$(basename "$CHANGED")
-  # 自ファイル内の行は呼び出し元ではないので除外する
-  REFS=$(_search "$BASE" 0 $((MAX_PATH_REFS + 4)) \
-          | grep -v ":.*${CHANGED}:" | grep -v "/${CHANGED}:" | head -"$MAX_PATH_REFS") || true
-  [ -z "$REFS" ] && continue
-  PATH_SECTION="${PATH_SECTION}### ${CHANGED} の被参照"
-  PATH_SECTION="${PATH_SECTION}"$'\n'
-  PATH_SECTION="${PATH_SECTION}\`\`\`"
-  PATH_SECTION="${PATH_SECTION}"$'\n'
-  PATH_SECTION="${PATH_SECTION}${REFS}"
-  PATH_SECTION="${PATH_SECTION}"$'\n'
-  PATH_SECTION="${PATH_SECTION}\`\`\`"
-  PATH_SECTION="${PATH_SECTION}"$'\n'
-done
+if [ -n "$CHANGED_PATHS" ]; then
+  while IFS= read -r CHANGED; do
+    BASE=$(basename "$CHANGED")
+    # 自ファイル内の行は呼び出し元ではないので除外する
+    REFS=$(_search "$BASE" 0 $((MAX_PATH_REFS + 4)) \
+            | grep -v ":.*${CHANGED}:" | grep -v "/${CHANGED}:" | head -"$MAX_PATH_REFS") || true
+    [ -z "$REFS" ] && continue
+    PATH_SECTION="${PATH_SECTION}### ${CHANGED} の被参照"
+    PATH_SECTION="${PATH_SECTION}"$'\n'
+    PATH_SECTION="${PATH_SECTION}\`\`\`"
+    PATH_SECTION="${PATH_SECTION}"$'\n'
+    PATH_SECTION="${PATH_SECTION}${REFS}"
+    PATH_SECTION="${PATH_SECTION}"$'\n'
+    PATH_SECTION="${PATH_SECTION}\`\`\`"
+    PATH_SECTION="${PATH_SECTION}"$'\n'
+  done <<< "$CHANGED_PATHS"
+fi
 
 if [ -n "$PATH_SECTION" ]; then
   OUTPUT="${OUTPUT}## 変更ファイルの被参照（配置・登録・起動元）"

@@ -30,7 +30,7 @@ _ripgrep_is_installed() {
 if ! _ripgrep_is_installed; then
   echo "  → ripgrep が未導入。バイナリをダウンロード中..."
   _install_ripgrep() {
-    local version os arch target url
+    local version os arch target url checksum_url
     version=$(curl -fsSL "https://api.github.com/repos/BurntSushi/ripgrep/releases/latest" \
               | grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/' | head -1)
     [[ -z "$version" ]] && return 1
@@ -47,7 +47,8 @@ if ! _ripgrep_is_installed; then
       *) fail "ripgrep: 未対応 OS/arch: $os/$arch"; return 1 ;;
     esac
     url="https://github.com/BurntSushi/ripgrep/releases/download/${version}/ripgrep-${version}-${target}.tar.gz"
-    _install_binary_tar "rg" "$url" "rg"
+    checksum_url="${url}.sha256"
+    _install_binary_tar "rg" "$url" "rg" "$checksum_url"
   }
   if _install_ripgrep; then
     ok "ripgrep (バイナリ自動インストール完了)"
