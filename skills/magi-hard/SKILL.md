@@ -79,6 +79,49 @@ IMPACT_CONTEXT=$(bash scripts/magi-impact-context.sh "$DIFF" 2>/dev/null || true
 `MAGI_IMPACT_CONTEXT="$IMPACT_CONTEXT"` を設定して `/leliel` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
 実行が**完全に完了**した後、結果を `$LELIEL_RESULT` として保持してからステップ 4 に進む。
 
+## ステップ 3.7: 指摘の正規化
+
+6体の結果から**指摘ではない見出しを除外**する。以降のステップ（カウント・Codex 監査・投稿）はすべて除外後の結果を使う。
+
+### 除外 1: `No findings` 見出し
+
+見出しの本文が `No findings` のもの（例: `### [HIGH] No findings`）は指摘として扱わない。
+
+ローカルLLMは「指摘がなければ No findings と明記せよ」という指示を、Assessment ではなく各重大度見出しに適用することがある。除外しないとサマリの件数が水増しされ、「No findings」というインラインコメントが PR に投稿される。
+
+### 除外 2: few-shot 例文の引き写し
+
+弱いモデルは `skills/<persona>/references/task-instruction.md` の `<EXAMPLES>` に置かれた
+見本をそのまま出力することがある（実測: `llama3.1:8b` で 14/14 件が例文のコピー）。
+
+**headline の一致だけを条件にしてはならない。** 各ペルソナの例文見出しは
+`command injection via unquoted user input` のように**本物の脆弱性でも自然に出る**文言であり、
+このステップは Codex 監査より前にあるため、ここで消すと監査にも人間にも渡らない。
+
+除外するのは次の**両方**を満たす指摘に限る。
+
+1. headline（`— ` 以降）が、担当ペルソナの `<EXAMPLES>` 内の見出しと一致する
+   （ファイルパスと行番号は当然異なるので比較対象にしない。正規化して比較する）
+2. **かつ** 次のいずれか
+   - 指摘の本文が例文の本文を引き写している
+   - `filepath` が例文の `filepath` と一致する（例: METATRON が `scripts/run.sh` や
+     `config/settings.py` をそのまま出している）
+
+参考: 各ペルソナの例文 filepath
+
+| ペルソナ | 例文の filepath |
+|---|---|
+| MELCHIOR | `scripts/deploy.sh` / `lib/utils.sh` |
+| BALTHASAR | `src/service.py` / `lib/db.py` |
+| CASPER | `scripts/deploy.sh` / `scripts/build.sh` |
+| METATRON | `scripts/run.sh` / `config/settings.py` |
+| SANDALPHON | `migrations/001_drop_table.sql` / `scripts/start.sh` |
+| LELIEL | `scripts/ollama-run.sh` |
+
+> **「`filepath` が diff に存在しない」を除外根拠にしてはならない。**
+> `magi-hard` は差分外の行を通常 PR コメントへフォールバックする設計を持っており（ステップ 6 の 422 フォールバック）、
+> diff 外の path はそれだけでは誤りではない。
+
 ## ステップ 4: Codex 監査
 
 6体の結果から HIGH/MEDIUM 指摘に finding ID を付与し、Codex で妥当性を検証する。
