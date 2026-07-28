@@ -31,10 +31,10 @@ fi
 OLLAMA_MODELS="$(printf '%s' "$OLLAMA_TAGS_JSON" | jq -r '.models[]?.name' 2>/dev/null || true)"
 
 # CASPER は Ollama を使わず Haiku を標準モデルとするため含めない（skills/casper/SKILL.md）
+# METATRON は Ollama を使わず Codex を標準モデルとするため含めない（skills/metatron/SKILL.md）
 declare -A PERSONAS=(
   [melchior]="qwen2.5-coder:7b"
   [balthasar]="gemma4:e4b-it-qat"
-  [metatron]="devstral:latest"
   [sandalphon]="granite3.3:8b"
   [leliel]="lfm2.5:8b"
 )

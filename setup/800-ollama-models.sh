@@ -18,7 +18,8 @@ source "$_om_ollama_sh"
 _om_base_url="$(ollama_base_url)"
 
 # --- モデルリスト ---
-# CASPER は Ollama を使わず Haiku を標準モデルとする（skills/casper/SKILL.md）ため、
+# CASPER は Ollama を使わず Haiku を標準モデルとし（skills/casper/SKILL.md）、
+# METATRON は Ollama を使わず Codex を標準モデルとする（skills/metatron/SKILL.md）ため、
 # ローカルモデルの pull 対象に含めない。
 
 # Fast/Hard 共用（7B、コード特化）
@@ -29,7 +30,6 @@ _om_shared=(
 # Hard 専用（高品質・重め）
 _om_hard=(
   "gemma4:e4b-it-qat"  # BALTHASAR用
-  "devstral:latest"    # METATRON用
   "granite3.3:8b"      # SANDALPHON用
   "lfm2.5:8b"          # LELIEL用 (構造化出力安定・低幻覚率) https://ollama.com/library/lfm2.5
   "qwen3:8b"           # generate-obsidian-index 等で使用
