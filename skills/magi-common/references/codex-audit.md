@@ -37,11 +37,14 @@ node "$CODEX_COMPANION" status 2>/dev/null | grep -q "Session runtime"
 echo "AUDIT_SKIPPED: Codex が利用できません"
 ```
 
-## ステップ 2: Finding ID の付与
+## ステップ 2: `$FINDING_LIST` の受け取り
 
-Codex を呼び出す前に、MAGI 結果の `HIGH` / `MEDIUM` finding に `M-001`, `M-002`, ... の ID を付与する。
+**`$FINDING_LIST` は呼び出し元が作る。この手順で採番し直してはならない。**
+呼び出し元は正規化（例文コピーの除外など）を済ませたうえで ID を振っている。
+ここで raw な集約結果から再採番すると、除外済みの finding が戻り、順序がずれ、
+それでも監査 JSON は再採番後のリストと一致してしまうため、契約が静かに壊れる。
 
-集約済み MAGI findings から、次の形式の番号付きリストを作る。
+呼び出し元から次の形式の plain text 変数として渡される（JSON ではない）。
 
 ```text
 M-001: [HIGH] MELCHIOR — filepath:line — headline
@@ -49,7 +52,7 @@ M-002: [MEDIUM] BALTHASAR — filepath:line — headline
 ...
 ```
 
-このリストは `$FINDING_LIST` に保持する。`$FINDING_LIST` は JSON ではなく plain text 変数とする。
+`$FINDING_LIST` が空の場合は Codex を呼び出さず、呼び出し元に制御を戻す。
 
 ## ステップ 3: 入力の準備
 
@@ -96,7 +99,7 @@ Codex の出力は JSON array のみとし、`$MAGI_TMPDIR/codex-audit.json` に
 prompt は先に `$MAGI_TMPDIR/audit-prompt.txt` に書き込む。heredoc を変数内で扱う shell escaping 問題を避けるため、prompt ファイル経由で渡す。
 
 ```bash
-node "$CODEX_COMPANION" task "$(cat $MAGI_TMPDIR/audit-prompt.txt)" > "$MAGI_TMPDIR/codex-audit-raw.txt" 2>/dev/null
+node "$CODEX_COMPANION" task "$(cat "$MAGI_TMPDIR/audit-prompt.txt")" > "$MAGI_TMPDIR/codex-audit-raw.txt" 2>/dev/null
 ```
 
 `--write` flag は使わない。
@@ -157,7 +160,7 @@ fi
 
 ```bash
 _audit_valid() {
-  local f="$1" expected actual
+  local f="$1" expected
   [ -s "$f" ] || return 1
   jq -e '
     type == "array" and length > 0
@@ -167,10 +170,14 @@ _audit_valid() {
           and (.verdict? | type) == "string"
           and (.verdict | IN("valid", "false_positive", "needs_human")))
   ' "$f" >/dev/null 2>&1 || return 1
-  # finding ID を過不足なくカバーしているか
+  # finding ID を過不足なく、かつ重複なくカバーしているか。
+  # 同一 ID が複数回現れると矛盾する verdict が同時に成立するため、集合一致だけでは足りない。
+  local all uniq
+  all=$(jq -r '.[].id' "$f" 2>/dev/null | sort)
+  uniq=$(printf '%s\n' "$all" | uniq)
+  [ "$all" = "$uniq" ] || return 1
   expected=$(printf '%s\n' "$FINDING_LIST" | sed -nE 's/^(M-[0-9]+):.*/\1/p' | sort -u)
-  actual=$(jq -r '.[].id' "$f" 2>/dev/null | sort -u)
-  [ "$expected" = "$actual" ]
+  [ "$expected" = "$uniq" ]
 }
 
 ADOPTED=""
