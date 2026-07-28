@@ -152,11 +152,62 @@ MAGI_TMPDIR=$(mktemp -d)
 
 ### 4-3. 結果の判定
 
-`$MAGI_TMPDIR/codex-audit.json` の内容に基づき、投稿対象を確定する：
+**監査は保険ではなく中核部品**。実測では最良のモデルでも指摘の 55% が誤検知であり、監査結果を
+失ったまま投稿すると PR が誤検知で埋まる。**監査結果を信頼できないときはインライン投稿を行わない**
+（fail-soft）。「監査が通った」と「監査結果が読めなかった」を区別せずに投稿するのは fail-open であり、
+これを禁止する。
 
-- **`AUDIT_SKIPPED`**（ファイル不在）: 全件投稿対象扱い。`$AUDIT_NOTE="Codex audit skipped"` を設定
-- **`AUDIT_ERROR`**（`{"error":"AUDIT_ERROR",...}`）: 全件投稿対象扱い。`$AUDIT_NOTE` にエラー旨を設定
-- **成功時**: `verdict == "false_positive"` の finding ID を `$FALSE_POSITIVE_IDS` に収集する。それ以外（`valid` / `needs_human`）は投稿対象。`$AUDIT_NOTE` は空
+`$MAGI_TMPDIR/codex-audit.json` を検証し、`$POST_INLINE` を**必ず明示的に設定する**。
+
+```bash
+AUDIT_JSON="$MAGI_TMPDIR/codex-audit.json"
+POST_INLINE=true
+AUDIT_NOTE=""
+FALSE_POSITIVE_IDS=""
+
+if [ ! -f "$AUDIT_JSON" ]; then
+  POST_INLINE=false
+  AUDIT_NOTE="AUDIT_SKIPPED（監査結果ファイルが存在しない）"
+elif jq -e 'type == "object" and has("error")' "$AUDIT_JSON" >/dev/null 2>&1; then
+  POST_INLINE=false
+  AUDIT_NOTE="AUDIT_ERROR（$(jq -r '.error // "unknown"' "$AUDIT_JSON" 2>/dev/null)）"
+elif ! jq -e '
+        type == "array" and length > 0
+        and all(.[];
+              type == "object"
+              and (.id? | type) == "string"
+              and (.verdict? | type) == "string"
+              and (.verdict | IN("valid", "false_positive", "needs_human")))
+      ' "$AUDIT_JSON" >/dev/null 2>&1; then
+  POST_INLINE=false
+  AUDIT_NOTE="AUDIT_ERROR（監査結果が期待する形式ではない）"
+else
+  # finding ID を過不足なくカバーしているか照合する。取りこぼした ID は
+  # false_positive 判定を受けていないため、そのまま投稿すると監査を通さずに素通りする。
+  EXPECTED_IDS=$(printf '%s\n' "$FINDING_LIST" | sed -nE 's/^(M-[0-9]+):.*/\1/p' | sort -u)
+  ACTUAL_IDS=$(jq -r '.[].id' "$AUDIT_JSON" 2>/dev/null | sort -u)
+  if [ "$EXPECTED_IDS" != "$ACTUAL_IDS" ]; then
+    POST_INLINE=false
+    AUDIT_NOTE="AUDIT_ERROR（finding ID が一致しない: 期待 $(printf '%s\n' "$EXPECTED_IDS" | grep -c . ) 件 / 実際 $(printf '%s\n' "$ACTUAL_IDS" | grep -c . ) 件）"
+  else
+    FALSE_POSITIVE_IDS=$(jq -r '.[] | select(.verdict == "false_positive") | .id' "$AUDIT_JSON" 2>/dev/null)
+  fi
+fi
+```
+
+判定の意味：
+
+| `$POST_INLINE` | 条件 | ステップ 6 の動作 |
+|---|---|---|
+| `false` | ファイル不在（`AUDIT_SKIPPED`） | インライン投稿しない |
+| `false` | `{"error":...}`（`AUDIT_ERROR`） | インライン投稿しない |
+| `false` | 非空の JSON 配列でない（**空ファイルを含む**） | インライン投稿しない |
+| `false` | 要素が object でない / `id` または `verdict` を欠く | インライン投稿しない |
+| `false` | `verdict` が `valid` / `false_positive` / `needs_human` 以外 | インライン投稿しない |
+| `false` | `$FINDING_LIST` の finding ID を過不足なくカバーしていない | インライン投稿しない |
+| `true` | 上記すべてを満たす | `$FALSE_POSITIVE_IDS` を除いて投稿 |
+
+`needs_human` は `valid` と同じく**投稿対象**とする（人間が判断できる形で PR に出す）。
 
 ステップ 5 に進む。
 
@@ -189,7 +240,30 @@ Codex 監査で `false_positive` 除外が発生した場合は以下を追記�
   --jq '.html_url')
 ```
 
+### `$POST_INLINE` が `false` の場合
+
+サマリ本文の末尾に以下を追記する。**指摘を捨てるのではなく、人間が取捨選択できる形で本文に載せる。**
+
+```markdown
+> ⚠ Codex 監査が実行できなかったため指摘は投稿せず以下に一覧表示する（理由: `$AUDIT_NOTE`）
+
+<details><summary>未監査の指摘一覧（HIGH/MEDIUM）</summary>
+
+M-001: [HIGH] MELCHIOR — filepath:line — headline
+M-002: [MEDIUM] BALTHASAR — filepath:line — headline
+...
+
+</details>
+```
+
+一覧は `$FINDING_LIST` をそのまま使う。実測で指摘の 55% が誤検知であるため、
+監査を経ていない指摘をインラインコメントとして PR に撒くことはしない。
+
 ## ステップ 6: GitHub インラインコメント投稿
+
+**`$POST_INLINE` が `false` の場合はこのステップを丸ごとスキップし、ステップ 7 に進む。**
+指摘はステップ 5 のサマリ本文に一覧表示済みであり、失われない。
+`$AUDIT_NOTE` だけを付けて投稿を続けると、監査結果が無い状態で全件投稿する fail-open になる。
 
 6体の結果から HIGH/MEDIUM 指摘を抽出し、**指摘ごとに個別の PR インラインコメント**として投稿する。
 `$FALSE_POSITIVE_IDS` に含まれる finding ID（`false_positive` 判定済み）は投稿をスキップする。
@@ -255,4 +329,13 @@ rm -rf "$MAGI_TMPDIR"
 次のアクション:
 - 指摘への対応・返信: `/pr-review-respond` を実行
 - 指摘なし・軽微な場合: マージ準備完了
+```
+
+`$POST_INLINE` が `false` の場合は「インラインコメント: N件投稿」の代わりに以下を表示する。
+**監査が失敗したことを黙って成功として報告しない。**
+
+```
+インラインコメント: 投稿なし（⚠ Codex 監査が実行できなかったため）
+  理由: $AUDIT_NOTE
+  未監査の指摘 N 件はサマリコメント本文に一覧表示済み
 ```
