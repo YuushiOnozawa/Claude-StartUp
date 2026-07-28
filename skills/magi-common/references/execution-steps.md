@@ -35,6 +35,39 @@ CLAUDE_RULES=$(cat ~/.claude/CLAUDE.md 2>/dev/null; cat "$ROOT/CLAUDE.md" 2>/dev
    各実行結果をチャンクヘッダー付きで `$RESULT` に追記する。
    全チャンク処理後、`$RESULT` 全体をステップ 3 の出力として使用する。
 
+6. **全チャンクの処理が終わったら、モデルを明示的に解放する（必須）:**
+   ```bash
+   bash ~/.claude/scripts/ollama-run.sh --unload "$OLLAMA_MODEL"
+   ```
+   ステップ 2 の各呼び出しは `OLLAMA_KEEP_ALIVE=5m` を付けてモデルを保持する。
+   保持しないとチャンクごとにモデルのロードが発生し、実測で cold 41s / warm 4s の差が
+   チャンク数だけ積み上がる。その代わり、**ループを抜けた時点で解放しなければ
+   モデルが VRAM を占有し続ける**。
+   途中でレビューを中止する場合も、中止を報告する前にこの解放を実行する。
+
+   > **この項目は Ollama パスを実行した場合にのみ行う。**
+   > ステップ 2 で Haiku パス（フォールバック、および CASPER のように Ollama を使わない設定）に
+   > 入った場合は**実行しない**。CASPER には `$OLLAMA_MODEL` が定義されておらず、
+   > 空の値で `--unload` を呼ぶと usage エラーになる。ロード済みのモデルも存在しない。
+
+   > **`--unload` は失敗しても終了コード 0 を返す。**
+   > 未ロードのモデルや存在しないモデル名でも正常終了する契約のため（`/api/generate` は
+   > 未知のモデルに 404 を返す）、終了コードで解放の成否は判定できない。
+   > 失敗時は stderr に `Warning: unload request failed for model: <名前>` が出るので、
+   > **警告が出たときは `$(ollama_base_url)/api/ps` で常駐状況を確認する**。
+   > 確認しない場合でも `5m` の自己失効が残るが、それまで VRAM は占有されたままになる。
+
+> ⚠ **解放を `trap` で自動化しようとしないこと。**
+> このチャンクループはシェルのループではなく、1チャンクにつき Bash 呼び出しが 1 回の
+> **エージェント駆動のループ**である。ある呼び出しで張った `trap` はその呼び出しの終了時に発火し、
+> 次のチャンクには残らない（環境変数も同様に持続しない）。
+> したがって解放の担保は次の三層で行う:
+> 1. **呼び出し単位のシグナル**（INT / TERM）は `ollama-run.sh` 自身が処理する。
+>    `keep_alive` の値に関わらず必ず unload される
+> 2. **ループ終了後の明示 unload**（上記の項目 6、およびステップ 2 の失敗分岐）
+> 3. **`5m` の自己失効**。1・2 の両方が飛んだ場合（セッションごと落ちた等）でも
+>    5分で自動的に解放される。無期限保持にしてはならないのはこのため
+
 ---
 
 ## ステップ 2: Ollama 可否チェックと起動
@@ -94,12 +127,16 @@ curl -sf --max-time 5 "${_magi_base_url:-http://localhost:11434}/api/tags" 2>/de
 
 3. 一時ファイルを Ollama に渡す:
    ```bash
-   bash ~/.claude/scripts/ollama-run.sh "$OLLAMA_MODEL" "$MAGI_TMPDIR/system.txt" < "$MAGI_TMPDIR/prompt.txt" || {
+   OLLAMA_KEEP_ALIVE=5m bash ~/.claude/scripts/ollama-run.sh "$OLLAMA_MODEL" "$MAGI_TMPDIR/system.txt" < "$MAGI_TMPDIR/prompt.txt" || {
      echo "⚠ Ollama 排他ロック取得失敗。ollama プロセスを確認してください。"
-     rm -rf "$MAGI_TMPDIR"; exit 1
+     rm -rf "$MAGI_TMPDIR"
+     bash ~/.claude/scripts/ollama-run.sh --unload "$OLLAMA_MODEL"
+     exit 1
    }
    rm -rf "$MAGI_TMPDIR"
    ```
+   `OLLAMA_KEEP_ALIVE=5m` は次のチャンクでモデルを再ロードしないための保持指定。
+   `$MAGI_TMPDIR` の作成と削除は**チャンク単位**のまま変更しない（モデルの解放とは責務が別）。
 
 ### Ollama が使えない場合（Haiku fallback）
 

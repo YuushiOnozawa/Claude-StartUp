@@ -5,6 +5,7 @@
 #
 # 使用法: bash ollama-run.sh <model> < prompt.txt
 #       または: bash ollama-run.sh <model> system.txt < prompt.txt
+#       または: bash ollama-run.sh --unload <model>
 #
 # 引数:
 #   $1  MODEL        Ollama モデル名（必須）
@@ -18,6 +19,11 @@
 #                       16384 に変更。LELIEL など長い diff を扱う場合は環境変数で上書きすること。
 #                       例: OLLAMA_NUM_CTX=65536 bash ollama-run.sh <model> system.txt < prompt.txt
 #   OLLAMA_TEMPERATURE  サンプリング温度（デフォルト: 0.1）
+#   OLLAMA_KEEP_ALIVE   モデル保持時間（デフォルト: 0 = 即時解放）
+#                       例: OLLAMA_KEEP_ALIVE=5m bash ollama-run.sh <model> < prompt.txt
+#                       duration 文字列（5m, 30s など）を指定するとモデルを保持する。
+#                       無期限保持を避けるため、負値は受け付けない。
+#                       無効値は警告を出して 0 にフォールバックする。
 #   OLLAMA_BASE_URL     Ollama ベース URL（デフォルト: WSL2 は自動検出、それ以外は http://localhost:11434）
 #                       例: OLLAMA_BASE_URL=http://172.17.96.1:11434 bash ollama-run.sh <model>
 
@@ -30,12 +36,48 @@ _OLLAMA_SH="$_SCRIPT_DIR/../hooks/lib/ollama.sh"
 [[ -f "$_OLLAMA_SH" ]] || { echo "Error: ollama.sh not found: $_OLLAMA_SH" >&2; exit 1; }
 source "$_OLLAMA_SH"
 OLLAMA_URL="$(ollama_base_url)/api/generate"
+LOCK="${OLLAMA_LOCK_DIR:-/tmp}/ollama.lock"
+
+# モデルアンロード用ヘルパー（keep_alive:0 で使用後即時解放）
+_unload_model() {
+  [[ -n "${MODEL:-}" ]] || return 0
+  local unload_json
+  unload_json="$(jq -n --arg model "$MODEL" '{"model":$model,"keep_alive":0}')"
+  curl -sf --max-time 10 "$OLLAMA_URL" \
+    -H 'Content-Type: application/json' \
+    -d "$unload_json" >/dev/null 2>&1
+}
+
+if [[ "${1:-}" == "--unload" ]]; then
+  MODEL="${2:?Usage: $(basename "$0") --unload <model>}"
+  mkdir -p "$(dirname "$LOCK")"
+  exec 9>"$LOCK"
+  if ! flock -w 5 9; then
+    echo "Warning: could not acquire Ollama lock within 5s; unloading without lock" >&2
+  fi
+  if ! _unload_model; then
+    echo "Warning: unload request failed for model: $MODEL" >&2
+  fi
+  exec 9>&- 2>/dev/null || true
+  exit 0
+fi
 
 MODEL="${1:?Usage: $(basename "$0") <model> [system_file]}"
-LOCK="${OLLAMA_LOCK_DIR:-/tmp}/ollama.lock"
 TIMEOUT="${OLLAMA_TIMEOUT:-1800}"
 CONTEXT_SIZE="${OLLAMA_NUM_CTX:-16384}"
 TEMPERATURE="${OLLAMA_TEMPERATURE:-0.1}"
+KEEP_ALIVE="${OLLAMA_KEEP_ALIVE:-0}"
+if [[ -v OLLAMA_KEEP_ALIVE && -z "$OLLAMA_KEEP_ALIVE" ]]; then
+  echo "Warning: invalid OLLAMA_KEEP_ALIVE value: empty string (falling back to 0)" >&2
+  KEEP_ALIVE_JSON=0
+elif [[ "$KEEP_ALIVE" =~ ^[0-9]+$ ]]; then
+  KEEP_ALIVE_JSON="$(jq -n --arg v "$KEEP_ALIVE" '$v|tonumber')"
+elif [[ "$KEEP_ALIVE" =~ ^[0-9]+(\.[0-9]+)?(ns|us|ms|s|m|h)$ ]]; then
+  KEEP_ALIVE_JSON="$(jq -n --arg v "$KEEP_ALIVE" '$v')"
+else
+  echo "Warning: invalid OLLAMA_KEEP_ALIVE value: $KEEP_ALIVE (negative values mean indefinite retention and are not accepted; falling back to 0)" >&2
+  KEEP_ALIVE_JSON=0
+fi
 
 # system プロンプトファイルの読み込み（省略可）
 SYSTEM_FILE="${2:-}"
@@ -52,21 +94,12 @@ fi
 # stdin を先に読む（flock 取得前に行う）
 PROMPT="$(cat)"
 
-# モデルアンロード用ヘルパー（keep_alive:0 で使用後即時解放）
-_unload_model() {
-  [[ -n "${MODEL:-}" ]] || return 0
-  local unload_json
-  unload_json="$(jq -n --arg model "$MODEL" '{"model":$model,"keep_alive":0}')"
-  curl -sf --max-time 10 "$OLLAMA_URL" \
-    -H 'Content-Type: application/json' \
-    -d "$unload_json" >/dev/null 2>&1 || true
-}
-
 # シグナルハンドリング: curl kill → モデルアンロード → ロック解放
 _CURL_PID=""
 _RESP=""
 _CLEANED_UP=0
 _cleanup() {
+  local _reason="${1:-exit}"
   [[ "$_CLEANED_UP" -eq 1 ]] && return 0
   _CLEANED_UP=1
   if [[ -n "${_CURL_PID:-}" ]]; then
@@ -74,13 +107,17 @@ _cleanup() {
     wait "$_CURL_PID" 2>/dev/null || true
     _CURL_PID=""
   fi
-  [[ -n "${MODEL:-}" ]] && _unload_model
+  if [[ "$_reason" == "signal" ]] || [[ "$_reason" == "exit" && "$KEEP_ALIVE_JSON" == "0" ]]; then
+    if [[ -n "${MODEL:-}" ]]; then
+      _unload_model || true
+    fi
+  fi
   exec 9>&- 2>/dev/null || true
   [[ -n "${_RESP:-}" ]] && rm -f "$_RESP" || true
 }
-trap '_cleanup; trap - EXIT; exit 130' INT
-trap '_cleanup; trap - EXIT; exit 143' TERM
-trap '_cleanup' EXIT
+trap '_cleanup signal; trap - EXIT; exit 130' INT
+trap '_cleanup signal; trap - EXIT; exit 143' TERM
+trap '_cleanup exit' EXIT
 
 # stale lock チェック（flock ホルダープロセスが死んでいる場合はロックを解放）
 # pgrep -x ollama では ollama サーバーの生死しか判定できず、flock ホルダーである
@@ -107,14 +144,16 @@ if [[ -n "$SYSTEM" ]]; then
     --arg prompt "$PROMPT" \
     --argjson num_ctx "$CONTEXT_SIZE" \
     --argjson temperature "$TEMPERATURE" \
-    '{"model":$model,"system":$system,"prompt":$prompt,"stream":false,"keep_alive":0,"options":{"num_ctx":$num_ctx,"temperature":$temperature}}')"
+    --argjson keep_alive "$KEEP_ALIVE_JSON" \
+    '{"model":$model,"system":$system,"prompt":$prompt,"stream":false,"keep_alive":$keep_alive,"options":{"num_ctx":$num_ctx,"temperature":$temperature}}')"
 else
   JSON="$(jq -n \
     --arg model "$MODEL" \
     --arg prompt "$PROMPT" \
     --argjson num_ctx "$CONTEXT_SIZE" \
     --argjson temperature "$TEMPERATURE" \
-    '{"model":$model,"prompt":$prompt,"stream":false,"keep_alive":0,"options":{"num_ctx":$num_ctx,"temperature":$temperature}}')"
+    --argjson keep_alive "$KEEP_ALIVE_JSON" \
+    '{"model":$model,"prompt":$prompt,"stream":false,"keep_alive":$keep_alive,"options":{"num_ctx":$num_ctx,"temperature":$temperature}}')"
 fi
 
 _RESP="$(mktemp)"
