@@ -76,7 +76,7 @@ fi
 
 `magi-hard` はステップ 1 の直後に `$MAGI_RUN_DIR` を作る。**その場合はここで作らない。**
 `magi-hard` 経由では PR 全体で使い回すディレクトリなので、
-**このスキルが削除してはならない**（`magi-hard` ステップ 7 が片付ける）。
+**このスキルが削除してはならない**（`magi-hard` ステップ 8 が片付ける）。
 
 > ⚠ **`$MAGI_TMPDIR` を流用してはならない。**
 > `$MAGI_TMPDIR` は `execution-steps.md` が**チャンクごとに `mktemp -d` して `rm -rf` する**変数で、
