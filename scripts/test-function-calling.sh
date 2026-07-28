@@ -16,12 +16,13 @@ MODE="${1:-text}"
 PR_NUM="${2:-181}"
 TIMEOUT="${OLLAMA_TIMEOUT:-300}"
 
+# CASPER は Ollama を使わず Haiku を標準モデルとするため含めない（skills/casper/SKILL.md）
 declare -A PERSONAS=(
   [melchior]="qwen2.5-coder:7b"
-  [balthasar]="phi4:latest"
-  [casper]="llama3.1:8b"
+  [balthasar]="gemma4:e4b-it-qat"
   [metatron]="devstral:latest"
-  [sandalphon]="lfm2.5:8b"
+  [sandalphon]="granite3.3:8b"
+  [leliel]="lfm2.5:8b"
 )
 
 echo "=== MAGI function calling 検証 (mode: $MODE) ==="

@@ -17,26 +17,27 @@ if ! ollama list &>/dev/null; then
 fi
 
 # --- モデルリスト ---
+# CASPER は Ollama を使わず Haiku を標準モデルとする（skills/casper/SKILL.md）ため、
+# ローカルモデルの pull 対象に含めない。
+
 # Fast/Hard 共用（7B、コード特化）
 _om_shared=(
   "qwen2.5-coder:7b"   # MELCHIOR用
-  "llama3.1:8b"        # CASPER用
 )
 
 # Hard 専用（高品質・重め）
 _om_hard=(
-  "phi4:latest"        # BALTHASAR用
+  "gemma4:e4b-it-qat"  # BALTHASAR用
   "devstral:latest"    # METATRON用
+  "granite3.3:8b"      # SANDALPHON用
+  "lfm2.5:8b"          # LELIEL用 (構造化出力安定・低幻覚率) https://ollama.com/library/lfm2.5
   "qwen3:8b"           # generate-obsidian-index 等で使用
-  "lfm2.5:8b"          # SANDALPHON用 (構造化出力安定・低幻覚率) https://ollama.com/library/lfm2.5
 )
 
 # codegen スキル専用（Claude が計画・gemma4:12b が実装）
 _om_codegen=(
   "gemma4:12b"
 )
-
-# CASPER用: granite4:7b-a1b-h → llama3.1:8b に変更（Issue #137: granite4が指示追従不可）
 
 # knowledge-rag 蒸留用（OLLAMA_TIER=low: 3b のみ / high: 3b + 7b）
 # OLLAMA_TIER=low  → デフォルト（現PC向け）

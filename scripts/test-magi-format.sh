@@ -13,12 +13,13 @@ fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # ペルソナ定義: name model
+# CASPER は Ollama を使わず Haiku を標準モデルとするため含めない（skills/casper/SKILL.md）
 declare -A PERSONAS=(
   [melchior]="qwen2.5-coder:7b"
-  [balthasar]="phi4:latest"
-  [casper]="llama3.1:8b"
+  [balthasar]="gemma4:e4b-it-qat"
   [metatron]="devstral:latest"
-  [sandalphon]="lfm2.5:8b"
+  [sandalphon]="granite3.3:8b"
+  [leliel]="lfm2.5:8b"
 )
 
 # サンプル差分（意図的なバグを含む）
