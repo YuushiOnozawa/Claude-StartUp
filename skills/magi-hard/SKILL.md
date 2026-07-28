@@ -79,6 +79,58 @@ IMPACT_CONTEXT=$(bash scripts/magi-impact-context.sh "$DIFF" 2>/dev/null || true
 `MAGI_IMPACT_CONTEXT="$IMPACT_CONTEXT"` を設定して `/leliel` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
 実行が**完全に完了**した後、結果を `$LELIEL_RESULT` として保持してからステップ 4 に進む。
 
+## ステップ 3.7: 指摘の正規化
+
+6体の結果から**指摘ではない見出しを除外**する。以降のステップ（カウント・Codex 監査・投稿）はすべて除外後の結果を使う。
+
+### 除外 1: `No findings` 見出し
+
+見出しの本文が `No findings` のもの（例: `### [HIGH] No findings`）は指摘として扱わない。
+
+ローカルLLMは「指摘がなければ No findings と明記せよ」という指示を、Assessment ではなく各重大度見出しに適用することがある。除外しないとサマリの件数が水増しされ、「No findings」というインラインコメントが PR に投稿される。
+
+### 除外 2: few-shot 例文の引き写し
+
+弱いモデルは `skills/<persona>/references/task-instruction.md` の `<EXAMPLES>` に置かれた
+見本をそのまま出力することがある（実測: `llama3.1:8b` で 14/14 件が例文のコピー）。
+
+**headline の一致だけを条件にしてはならない。** 各ペルソナの例文見出しは
+`command injection via unquoted user input` のように**本物の脆弱性でも自然に出る**文言であり、
+このステップは Codex 監査より前にあるため、ここで消すと監査にも人間にも渡らない。
+
+除外するのは次の**両方**を満たす指摘に限る。
+
+1. headline（`— ` 以降）が、担当ペルソナの `<EXAMPLES>` 内の見出しと一致する
+   （ファイルパスと行番号は当然異なるので比較対象にしない。正規化して比較する）
+2. **かつ** 次のいずれか
+   - 指摘の本文が例文の本文を引き写している
+   - `filepath` が例文の `filepath` と一致し、**かつその `filepath` が今回の diff に存在しない**
+
+2つ目の条件で diff 不在を要求するのは、**例文の filepath が実在しうる**ため。
+METATRON の例文は `scripts/run.sh:23 — command injection via unquoted user input` だが、
+diff が本当に `scripts/run.sh` に `eval $USER_INPUT` を追加したなら、同じ headline の
+妥当な HIGH が出る。filepath 一致だけを根拠にすると、この本物を Codex 監査より前に消す。
+
+> headline を例文からコピーしつつ filepath を diff 内のものに差し替え、本文を言い換えた
+> ケースは、この条件では除外されず投稿経路に残る。**これは意図的な判断**で、
+> 本物の指摘を消すより Codex 監査に判定を委ねるほうが安全なため。
+
+参考: 各ペルソナの例文 filepath
+
+| ペルソナ | 例文の filepath |
+|---|---|
+| MELCHIOR | `scripts/deploy.sh` / `lib/utils.sh` |
+| BALTHASAR | `src/service.py` / `lib/db.py` |
+| CASPER | `scripts/deploy.sh` / `scripts/build.sh` |
+| METATRON | `scripts/run.sh` / `config/settings.py` |
+| SANDALPHON | `migrations/001_drop_table.sql` / `scripts/start.sh` |
+| LELIEL | `scripts/ollama-run.sh` |
+
+> **「`filepath` が diff に存在しない」を単独の除外根拠にしてはならない。**
+> `magi-hard` は差分外の行を通常 PR コメントへフォールバックする設計を持っており（ステップ 6 の 422 フォールバック）、
+> diff 外の path はそれだけでは誤りではない。上記の条件 2 で diff 不在を使うのは、
+> 「headline が例文と一致」「filepath が例文と一致」と**併せて**判定するためであり、単独では使わない。
+
 ## ステップ 4: Codex 監査
 
 6体の結果から HIGH/MEDIUM 指摘に finding ID を付与し、Codex で妥当性を検証する。
@@ -94,7 +146,19 @@ M-002: [MEDIUM] BALTHASAR — filepath:line — headline
 ```
 
 このリストを `$FINDING_LIST` として保持する（plain text）。
+**ステップ 6 が投稿するのはこのリストの各エントリであり、6体の raw 結果ではない。**
+ここで ID を振ったものだけが監査を通り、投稿対象になる。
+
 HIGH/MEDIUM 指摘が 0 件の場合は Codex 監査をスキップしてステップ 5 に進む。
+このとき次を**明示的に設定する**。未設定のままステップ 6 に到達すると、
+`$POST_INLINE` が `false` でないため投稿処理が走る解釈が残る。
+
+```bash
+POST_INLINE=true      # 監査失敗ではない。投稿対象が 0 件なだけ
+AUDIT_NOTE=""
+FALSE_POSITIVE_IDS=""
+FINDING_LIST=""
+```
 
 ### 4-2. Codex 監査の実行
 
@@ -109,11 +173,68 @@ MAGI_TMPDIR=$(mktemp -d)
 
 ### 4-3. 結果の判定
 
-`$MAGI_TMPDIR/codex-audit.json` の内容に基づき、投稿対象を確定する：
+**監査は保険ではなく中核部品**。実測では最良のモデルでも指摘の 55% が誤検知であり、監査結果を
+失ったまま投稿すると PR が誤検知で埋まる。**監査結果を信頼できないときはインライン投稿を行わない**
+（fail-soft）。「監査が通った」と「監査結果が読めなかった」を区別せずに投稿するのは fail-open であり、
+これを禁止する。
 
-- **`AUDIT_SKIPPED`**（ファイル不在）: 全件投稿対象扱い。`$AUDIT_NOTE="Codex audit skipped"` を設定
-- **`AUDIT_ERROR`**（`{"error":"AUDIT_ERROR",...}`）: 全件投稿対象扱い。`$AUDIT_NOTE` にエラー旨を設定
-- **成功時**: `verdict == "false_positive"` の finding ID を `$FALSE_POSITIVE_IDS` に収集する。それ以外（`valid` / `needs_human`）は投稿対象。`$AUDIT_NOTE` は空
+`$MAGI_TMPDIR/codex-audit.json` を検証し、`$POST_INLINE` を**必ず明示的に設定する**。
+
+```bash
+AUDIT_JSON="$MAGI_TMPDIR/codex-audit.json"
+POST_INLINE=true
+AUDIT_NOTE=""
+FALSE_POSITIVE_IDS=""
+
+if [ ! -f "$AUDIT_JSON" ]; then
+  POST_INLINE=false
+  AUDIT_NOTE="AUDIT_SKIPPED（監査結果ファイルが存在しない）"
+elif jq -e 'type == "object" and has("error")' "$AUDIT_JSON" >/dev/null 2>&1; then
+  POST_INLINE=false
+  AUDIT_NOTE="AUDIT_ERROR（$(jq -r '.error // "unknown"' "$AUDIT_JSON" 2>/dev/null)）"
+elif ! jq -e '
+        type == "array" and length > 0
+        and all(.[];
+              type == "object"
+              and (.id? | type) == "string"
+              and (.verdict? | type) == "string"
+              and (.verdict | IN("valid", "false_positive", "needs_human")))
+      ' "$AUDIT_JSON" >/dev/null 2>&1; then
+  POST_INLINE=false
+  AUDIT_NOTE="AUDIT_ERROR（監査結果が期待する形式ではない）"
+else
+  # finding ID を過不足なくカバーしているか照合する。取りこぼした ID は
+  # false_positive 判定を受けていないため、そのまま投稿すると監査を通さずに素通りする。
+  EXPECTED_IDS=$(printf '%s\n' "$FINDING_LIST" | sed -nE 's/^(M-[0-9]+):.*/\1/p' | sort -u)
+  ACTUAL_IDS_ALL=$(jq -r '.[].id' "$AUDIT_JSON" 2>/dev/null | sort)
+  ACTUAL_IDS=$(printf '%s\n' "$ACTUAL_IDS_ALL" | uniq)
+  if [ "$ACTUAL_IDS_ALL" != "$ACTUAL_IDS" ]; then
+    # 同一 ID が複数回現れると、矛盾する verdict（valid と false_positive）が同時に成立し、
+    # どちらを採用したかで投稿結果が変わる。集合として一致していても成功にしない。
+    POST_INLINE=false
+    AUDIT_NOTE="AUDIT_ERROR（finding ID が重複している）"
+  elif [ "$EXPECTED_IDS" != "$ACTUAL_IDS" ]; then
+    POST_INLINE=false
+    AUDIT_NOTE="AUDIT_ERROR（finding ID が一致しない: 期待 $(printf '%s\n' "$EXPECTED_IDS" | grep -c . ) 件 / 実際 $(printf '%s\n' "$ACTUAL_IDS" | grep -c . ) 件）"
+  else
+    FALSE_POSITIVE_IDS=$(jq -r '.[] | select(.verdict == "false_positive") | .id' "$AUDIT_JSON" 2>/dev/null)
+  fi
+fi
+```
+
+判定の意味：
+
+| `$POST_INLINE` | 条件 | ステップ 6 の動作 |
+|---|---|---|
+| `false` | ファイル不在（`AUDIT_SKIPPED`） | インライン投稿しない |
+| `false` | `{"error":...}`（`AUDIT_ERROR`） | インライン投稿しない |
+| `false` | 非空の JSON 配列でない（**空ファイルを含む**） | インライン投稿しない |
+| `false` | 要素が object でない / `id` または `verdict` を欠く | インライン投稿しない |
+| `false` | `verdict` が `valid` / `false_positive` / `needs_human` 以外 | インライン投稿しない |
+| `false` | `$FINDING_LIST` の finding ID を過不足なくカバーしていない | インライン投稿しない |
+| `true` | 上記すべてを満たす | `$FALSE_POSITIVE_IDS` を除いて投稿 |
+
+`needs_human` は `valid` と同じく**投稿対象**とする（人間が判断できる形で PR に出す）。
 
 ステップ 5 に進む。
 
@@ -146,9 +267,44 @@ Codex 監査で `false_positive` 除外が発生した場合は以下を追記�
   --jq '.html_url')
 ```
 
+### `$POST_INLINE` が `false` の場合
+
+**上記の `-f body=` に渡す文字列の末尾へ、以下を組み込んでから投稿する。**
+別コメントとして後から投稿するのではなく、同じサマリコメントの本文に含める。
+これを忘れるとステップ 6 がスキップされる一方で本文にも指摘が入らず、**指摘が PR から消える**。
+
+指摘を捨てるのではなく、人間が取捨選択できる形で本文に載せる。
+
+```markdown
+> ⚠ Codex 監査が実行できなかったため指摘は投稿せず以下に一覧表示する（理由: `$AUDIT_NOTE`）
+
+<details><summary>未監査の指摘一覧（HIGH/MEDIUM）</summary>
+
+M-001: [HIGH] MELCHIOR — filepath:line — headline
+M-002: [MEDIUM] BALTHASAR — filepath:line — headline
+...
+
+</details>
+```
+
+一覧は `$FINDING_LIST` をそのまま使う。実測で指摘の 55% が誤検知であるため、
+監査を経ていない指摘をインラインコメントとして PR に撒くことはしない。
+
 ## ステップ 6: GitHub インラインコメント投稿
 
-6体の結果から HIGH/MEDIUM 指摘を抽出し、**指摘ごとに個別の PR インラインコメント**として投稿する。
+**`$POST_INLINE` が `false` の場合はこのステップを丸ごとスキップし、ステップ 7 に進む。**
+指摘はステップ 5 のサマリ本文に一覧表示済みであり、失われない。
+`$AUDIT_NOTE` だけを付けて投稿を続けると、監査結果が無い状態で全件投稿する fail-open になる。
+
+**投稿対象は `$FINDING_LIST` の各エントリである。6体の raw 結果を再走査してはならない。**
+raw 結果から抽出し直すと、ステップ 3.7 で除外した指摘が戻り、finding ID も対応付かないため
+`$FALSE_POSITIVE_IDS` による除外が効かなくなる。
+
+`$FINDING_LIST` の各行は `M-001: [HIGH] MELCHIOR — filepath:line — headline` の形式で、
+finding ID・重大度・ペルソナ・path・line・見出しをすべて持つ。指摘の本文は 6体の結果から
+対応する見出しを引いて使う。
+
+各エントリを**個別の PR インラインコメント**として投稿する。
 `$FALSE_POSITIVE_IDS` に含まれる finding ID（`false_positive` 判定済み）は投稿をスキップする。
 > ⚠ ローカルLLMが英語で出力した場合は、コメント本文に使用する前に日本語に翻訳する。
 
@@ -189,7 +345,10 @@ gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
 ## ステップ 7: 結果のサマリ表示
 
 ```bash
-rm -rf "$MAGI_TMPDIR"
+# 監査が失敗した場合は raw 出力を確認できるよう $MAGI_TMPDIR を残す
+if [ "$POST_INLINE" = "true" ]; then
+  rm -rf "$MAGI_TMPDIR"
+fi
 ```
 
 ユーザーに以下を表示する：
@@ -212,4 +371,13 @@ rm -rf "$MAGI_TMPDIR"
 次のアクション:
 - 指摘への対応・返信: `/pr-review-respond` を実行
 - 指摘なし・軽微な場合: マージ準備完了
+```
+
+`$POST_INLINE` が `false` の場合は「インラインコメント: N件投稿」の代わりに以下を表示する。
+**監査が失敗したことを黙って成功として報告しない。**
+
+```
+インラインコメント: 投稿なし（⚠ Codex 監査が実行できなかったため）
+  理由: $AUDIT_NOTE
+  未監査の指摘 N 件はサマリコメント本文に一覧表示済み
 ```

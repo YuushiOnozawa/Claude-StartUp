@@ -61,7 +61,7 @@ pip_install_hint() { echo "pip3 install $*"; }
 
 # バイナリダウンロード用 OS/arch 検出（GitHub releases 命名規則に合わせた正規化）
 # _detect_os  → stdout に "linux"/"darwin" など
-# _detect_arch <style>  → style=github: x64/arm64、style=jq: amd64/arm64
+# _detect_arch <style>  → style=github: x64/arm64、style=jq: amd64/arm64、style=rust: x86_64/aarch64
 _detect_os()   { uname -s | tr '[:upper:]' '[:lower:]'; }
 _detect_arch() {
   local style="${1:-github}"
@@ -79,16 +79,86 @@ _detect_arch() {
         aarch64) echo "arm64" ;;
         *) fail "_detect_arch: 未対応アーキテクチャ: $raw"; return 1 ;;
       esac ;;
+    rust)
+      case "$raw" in
+        x86_64)  echo "x86_64" ;;
+        aarch64) echo "aarch64" ;;
+        arm64)   echo "aarch64" ;;
+        *) fail "_detect_arch: 未対応アーキテクチャ: $raw"; return 1 ;;
+      esac ;;
     *) fail "_detect_arch: 未対応スタイル: $style"; return 1 ;;
   esac
 }
 
 # GitHub バイナリ共通インストール（tar.gz 内バイナリ抽出用）
 _install_binary_tar() {
-  local name="$1" url="$2"
+  local name="$1" url="$2" member_glob="${3:-}" checksum_url="${4:-}"
   local bin_dir="$HOME/.local/bin"
+  local tmp="" checksum_tmp="" exact_member expected actual
   mkdir -p "$bin_dir"
-  curl -fsSL "$url" | tar -xz -C "$bin_dir" "$name"
+  if [[ -z "$member_glob" && -z "$checksum_url" ]]; then
+    curl -fsSL "$url" | tar -xz -C "$bin_dir" "$name"
+  else
+    tmp="$(mktemp)" || return 1
+    if ! curl -fsSL "$url" -o "$tmp"; then
+      rm -f "$tmp"
+      return 1
+    fi
+    if [[ -n "$checksum_url" ]]; then
+      checksum_tmp="$(mktemp)" || { rm -f "$tmp"; return 1; }
+      if ! curl -fsSL "$checksum_url" -o "$checksum_tmp"; then
+        rm -f "$tmp" "$checksum_tmp"
+        return 1
+      fi
+      expected=$(awk '{print $1; exit}' "$checksum_tmp")
+      if [[ ! "$expected" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+        fail "$name: checksum 形式が不正です"
+        rm -f "$tmp" "$checksum_tmp"
+        return 1
+      fi
+      if command -v sha256sum >/dev/null 2>&1; then
+        actual=$(sha256sum "$tmp" | awk '{print $1; exit}')
+      elif command -v shasum >/dev/null 2>&1; then
+        actual=$(shasum -a 256 "$tmp" | awk '{print $1; exit}')
+      else
+        fail "$name: checksum 検証に sha256sum または shasum が必要です"
+        rm -f "$tmp" "$checksum_tmp"
+        return 1
+      fi
+      expected=$(printf '%s' "$expected" | tr 'A-F' 'a-f')
+      actual=$(printf '%s' "$actual" | tr 'A-F' 'a-f')
+      if [[ "$expected" != "$actual" ]]; then
+        fail "$name: checksum 検証に失敗しました"
+        rm -f "$tmp" "$checksum_tmp"
+        return 1
+      fi
+    fi
+    if [[ -z "$member_glob" ]]; then
+      if ! tar -xzf "$tmp" -C "$bin_dir" "$name"; then
+        rm -f "$tmp" "$checksum_tmp"
+        return 1
+      fi
+    else
+      if ! exact_member=$(tar -tzf "$tmp" | awk -v suffix="/$member_glob" '
+        length($0) >= length(suffix) && substr($0, length($0) - length(suffix) + 1) == suffix {
+          found = $0
+          count++
+        }
+        END {
+          if (count == 1) print found
+          else exit 1
+        }
+      '); then
+        rm -f "$tmp" "$checksum_tmp"
+        return 1
+      fi
+      if ! tar -xzf "$tmp" -C "$bin_dir" --strip-components=1 "$exact_member"; then
+        rm -f "$tmp" "$checksum_tmp"
+        return 1
+      fi
+    fi
+    rm -f "$tmp" "$checksum_tmp"
+  fi
   chmod +x "$bin_dir/$name"
 }
 

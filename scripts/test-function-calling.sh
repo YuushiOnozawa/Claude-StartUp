@@ -16,12 +16,27 @@ MODE="${1:-text}"
 PR_NUM="${2:-181}"
 TIMEOUT="${OLLAMA_TIMEOUT:-300}"
 
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_OLLAMA_SH="$_SCRIPT_DIR/../hooks/lib/ollama.sh"
+# shellcheck source=../hooks/lib/ollama.sh
+[[ -f "$_OLLAMA_SH" ]] || { echo "Error: ollama.sh not found: $_OLLAMA_SH" >&2; exit 1; }
+source "$_OLLAMA_SH"
+OLLAMA_BASE_URL="$(ollama_base_url)"
+
+OLLAMA_TAGS_JSON=""
+if ! OLLAMA_TAGS_JSON="$(curl -sf --max-time 5 "${OLLAMA_BASE_URL}/api/tags" 2>/dev/null)"; then
+  echo "SKIP: Ollama is not running. Skipping function calling test."
+  exit 0
+fi
+OLLAMA_MODELS="$(printf '%s' "$OLLAMA_TAGS_JSON" | jq -r '.models[]?.name' 2>/dev/null || true)"
+
+# CASPER は Ollama を使わず Haiku を標準モデルとするため含めない（skills/casper/SKILL.md）
 declare -A PERSONAS=(
   [melchior]="qwen2.5-coder:7b"
-  [balthasar]="phi4:latest"
-  [casper]="llama3.1:8b"
+  [balthasar]="gemma4:e4b-it-qat"
   [metatron]="devstral:latest"
-  [sandalphon]="lfm2.5:8b"
+  [sandalphon]="granite3.3:8b"
+  [leliel]="lfm2.5:8b"
 )
 
 echo "=== MAGI function calling 検証 (mode: $MODE) ==="
@@ -35,7 +50,7 @@ test_native() {
   payload=$(jq -n --arg model "$model" --arg pr_num "$PR_NUM" \
     '{"model":$model,"messages":[{"role":"user","content":"Review PR #\($pr_num). Use get_pr_diff tool first."}],"tools":[{"type":"function","function":{"name":"get_pr_diff","description":"Get PR diff","parameters":{"type":"object","properties":{"pr_number":{"type":"integer"}},"required":["pr_number"]}}}],"stream":false}')
   local resp
-  resp=$(curl -s --max-time "$TIMEOUT" http://localhost:11434/api/chat \
+  resp=$(curl -s --max-time "$TIMEOUT" "${OLLAMA_BASE_URL}/api/chat" \
     -H 'Content-Type: application/json' -d "$payload")
   local err tool_count
   err=$(printf '%s' "$resp" | jq -r '.error // empty')
@@ -70,7 +85,7 @@ EOF
 )
   prompt="${prompt//__PR__/$PR_NUM}"
   local resp
-  resp=$(curl -s --max-time "$TIMEOUT" http://localhost:11434/api/generate \
+  resp=$(curl -s --max-time "$TIMEOUT" "${OLLAMA_BASE_URL}/api/generate" \
     -H 'Content-Type: application/json' \
     -d "$(jq -n --arg model "$model" --arg prompt "$prompt" \
       '{"model":$model,"prompt":$prompt,"stream":false}')" \
@@ -95,11 +110,11 @@ EOF
   return 1
 }
 
-for persona in melchior balthasar casper metatron sandalphon; do
+for persona in "${!PERSONAS[@]}"; do
   model="${PERSONAS[$persona]}"
   printf "%-12s %-25s " "[$persona]" "$model"
 
-  if ! ollama list 2>/dev/null | grep -Fq -- "${model}"; then
+  if ! printf '%s\n' "$OLLAMA_MODELS" | grep -Fxq -- "$model"; then
     echo "SKIP: model not found"
     ((SKIP++)) || true
     continue

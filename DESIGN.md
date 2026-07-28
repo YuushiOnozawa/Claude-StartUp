@@ -22,14 +22,16 @@
 
 ## ローカル LLM モデル選定方針
 
-codegen スキル（Claude → ローカル LLM への委譲）および Obsidian インデックス生成に Ollama を使用する。
+MAGI レビューおよび Obsidian インデックス生成に Ollama を使用する。
+codegen スキルは Codex に委譲する設計に変わったため、Ollama を使用しない。
 
 | 用途 | モデル | 備考 |
 |------|--------|------|
-| codegen（コード生成委譲） | `gemma4:12b` | VRAM ~8GB。現状の最適解 |
+| MAGI レビュー | SKILLS.md のモデル割り当て表を参照 | 1モデル1ロール |
 | knowledge-rag / Obsidian index | `qwen3:8b` | `~/.local/share/knowledge-rag/model` で管理 |
 
-`gemma4:26b` は VRAM 約 17GB を要求するため、現環境では実用的でない。
+Ollama は Windows ホスト側で動作する構成が標準。WSL2 側は
+`hooks/lib/ollama.sh` の `ollama_base_url()` で到達先を解決する。
 
 ### llm-checker の推薦について
 

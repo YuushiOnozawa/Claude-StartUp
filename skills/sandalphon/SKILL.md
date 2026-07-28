@@ -6,13 +6,13 @@ argument-hint: "<ファイルパス または差分>"
 # SANDALPHON スキル
 
 MAGI SANDALPHON（実行環境の番人）の観点でコードをレビューする。
-Ollama `phi4:latest` が利用可能な場合はそちらを使い、なければ Haiku にフォールバックする。
+Ollama `granite3.3:8b` が利用可能な場合はそちらを使い、なければ Haiku にフォールバックする。
 
 ## ペルソナ固有設定
 
 | 項目 | 値 |
 |-----|---|
-| OLLAMA_MODEL | `phi4:latest` |
+| OLLAMA_MODEL | `granite3.3:8b` |
 | PERSONA_NAME | `SANDALPHON` |
 | エージェント定義 | `agents/sandalphon.md`（repo 内）または `/home/<user>/.claude/agents/sandalphon.md` |
 

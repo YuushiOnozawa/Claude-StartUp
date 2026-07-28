@@ -1,11 +1,11 @@
 ---
 name: pr-review
-description: PR レビュースキル。magi-hard（MAGI 5体）でレビューを実行し GitHub にコメント投稿する。HIGH/MEDIUM 指摘があれば /pr-review-respond と交互に回して LGTM まで到達させる。Trigger: "PRレビュー", "pr-review", "レビューして", "コードレビュー", "review PR", "MAGIにレビューさせて", "PRをレビューして"
+description: PR レビュースキル。magi-hard（MAGI 6体）でレビューを実行し GitHub にコメント投稿する。HIGH/MEDIUM 指摘があれば /pr-review-respond と交互に回して LGTM まで到達させる。Trigger: "PRレビュー", "pr-review", "レビューして", "コードレビュー", "review PR", "MAGIにレビューさせて", "PRをレビューして"
 ---
 
 # PR Review Skill
 
-PR に対して `/magi-hard` を実行し、MAGI 5体によるレビュー結果を GitHub に投稿する。
+PR に対して `/magi-hard` を実行し、MAGI 6体によるレビュー結果を GitHub に投稿する。
 HIGH/MEDIUM 指摘がある場合は `/pr-review-respond` で対応し、このスキルを再実行する——LGTM まで繰り返す。
 
 ## 事前条件
