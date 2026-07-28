@@ -1,4 +1,4 @@
-# setup/800-ollama-models.sh — MAGI / codegen 用 Ollama モデルの確認と案内
+# setup/800-ollama-models.sh — MAGI 用 Ollama モデルの確認と案内
 # Requires: ok
 #
 # Ollama は Windows ホスト側で動作する構成が標準のため、WSL2 側から pull しない。
@@ -33,11 +33,6 @@ _om_hard=(
   "granite3.3:8b"      # SANDALPHON用
   "lfm2.5:8b"          # LELIEL用 (構造化出力安定・低幻覚率) https://ollama.com/library/lfm2.5
   "qwen3:8b"           # generate-obsidian-index 等で使用
-)
-
-# codegen スキル専用（Claude が計画・gemma4:12b が実装）
-_om_codegen=(
-  "gemma4:12b"
 )
 
 # knowledge-rag 蒸留用（OLLAMA_TIER=low: 3b のみ / high: 3b + 7b）
@@ -87,9 +82,6 @@ if [[ "$_om_ollama_up" -eq 1 ]]; then
   echo "  === Hard 専用モデル ==="
   for _om_m in "${_om_hard[@]}"; do _om_check "$_om_m"; done
 
-  echo "  === codegen スキル用モデル ==="
-  for _om_m in "${_om_codegen[@]}"; do _om_check "$_om_m"; done
-
   echo "  === knowledge-rag 蒸留用モデル ==="
   for _om_m in "${_om_knowledge[@]}"; do _om_check "$_om_m"; done
 fi
@@ -103,5 +95,5 @@ ok "knowledge-rag primary model → ${_om_primary}"
 ok "ollama models"
 
 unset -f _om_model_installed _om_check
-unset _om_shared _om_hard _om_codegen _om_knowledge _om_m _om_primary
+unset _om_shared _om_hard _om_knowledge _om_m _om_primary
 unset _om_script_dir _om_ollama_sh _om_base_url _om_tags_json _om_models _om_ollama_up

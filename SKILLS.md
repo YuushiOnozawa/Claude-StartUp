@@ -11,7 +11,7 @@
 |--------|------|
 | `/dev-flow` | 単一機能の開発サイクル（設計 → BALTHASAR レビュー → 承認 → 実装 → MAGI → PR） |
 | `/epic-flow` | 大規模機能の開発。規模を評価し、単一なら `/dev-flow`、複数なら Issue 分解してループ実行 |
-| `/codegen` | コード生成を **gemma4:12b**（Ollama）に委譲。Claude が仕様書を書き、ローカル LLM が実装する |
+| `/codegen` | コード生成を **Codex** に委譲。Claude が仕様書を書き、Codex が実装する（Codex 不可時は Haiku にフォールバック） |
 | `/commit` | Conventional Commits 形式で安全にコミット。main/master への直接コミットは拒否 |
 | `/worktree` | Git worktree の管理。`new <branch>` / `done <branch>` / `list` サブコマンド |
 
@@ -61,7 +61,6 @@ MAGI は6体のレビューエージェント群。各体は **Ollama（ロー�
 
 | モデル | 用途 | VRAM 目安 |
 |--------|------|----------|
-| `gemma4:12b` | codegen（コード生成） | ~8GB |
 | `qwen2.5-coder:7b` | MELCHIOR（コード品質） | ~5GB |
 | `gemma4:e4b-it-qat` | BALTHASAR（設計） | ~4GB |
 | `devstral:latest` | METATRON（セキュリティ） | ~14GB |

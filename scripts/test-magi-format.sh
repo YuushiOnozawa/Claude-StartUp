@@ -20,6 +20,18 @@ OLLAMA_MODELS="$(printf '%s' "$OLLAMA_TAGS_JSON" | jq -r '.models[]?.name' 2>/de
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+OLLAMA_RUN=""
+for f in \
+  "$ROOT/scripts/ollama-run.sh" \
+  "$HOME/.claude/scripts/ollama-run.sh"
+do
+  [ -f "$f" ] && OLLAMA_RUN="$f" && break
+done
+if [ -z "$OLLAMA_RUN" ]; then
+  echo "Error: ollama-run.sh not found" >&2
+  exit 2
+fi
+
 # ペルソナ定義: name model
 # CASPER は Ollama を使わず Haiku を標準モデルとするため含めない（skills/casper/SKILL.md）
 declare -A PERSONAS=(
@@ -46,6 +58,9 @@ index 0000000..1234567 100644
 PASS=0
 FAIL=0
 SKIP=0
+
+# IMPACT_CONTEXT は repo 全体を検索するため、必要有無にかかわらず一度だけ生成する。
+IMPACT_CONTEXT="$(bash "$ROOT/scripts/magi-impact-context.sh" "$SAMPLE_DIFF" 2>/dev/null || true)"
 
 for persona in "${!PERSONAS[@]}"; do
   model="${PERSONAS[$persona]}"
@@ -91,20 +106,34 @@ for persona in "${!PERSONAS[@]}"; do
     [ -f "$f" ] && FORMAT=$(cat "$f") && break
   done
 
+  IMPACT_BLOCK=""
+  if grep -q "IMPACT_CONTEXT" <<< "$TASK_INST"; then
+    if [ -z "$IMPACT_CONTEXT" ]; then
+      echo "SKIP [$persona]: IMPACT_CONTEXT not generated"
+      ((SKIP++)) || true
+      continue
+    fi
+    IMPACT_BLOCK="
+<IMPACT_CONTEXT>
+${IMPACT_CONTEXT}
+</IMPACT_CONTEXT>
+"
+  fi
+
   PROMPT="${TASK_BASE}
 
 ${TASK_INST}
 
 ${CRITERIA}
 
-${FORMAT}
+${FORMAT}${IMPACT_BLOCK}
 
 ---レビュー対象---
 ${SAMPLE_DIFF}"
 
   echo -n "Testing [$persona] ($model)... "
 
-  OUTPUT=$(printf '%s' "$PROMPT" | bash "$HOME/.claude/scripts/ollama-run.sh" "$model" 2>/dev/null || true)
+  OUTPUT=$(printf '%s' "$PROMPT" | bash "$OLLAMA_RUN" "$model" 2>/dev/null || true)
 
   if echo "$OUTPUT" | grep -qE '###\s+\[(HIGH|MEDIUM|LOW)\]'; then
     echo "PASS"
