@@ -36,6 +36,24 @@ DIFF=$(printf '%s\n' "$DIFF" | bash scripts/magi-diff-filter.sh)
 
 差分が空の場合は「差分がありません」と報告して終了。
 
+PR 全体で使う作業ディレクトリを作る：
+
+```bash
+MAGI_RUN_DIR=$(mktemp -d)
+MAGI_RUN_DIR_OWNED=0   # このディレクトリは magi-hard が管理する。個々のペルソナに消させない
+```
+
+`$MAGI_RUN_DIR_OWNED=0` を明示するのは、`/metatron` を単独実行した直後の環境で
+フラグが `1` のまま残っていると、**METATRON が magi-hard 管理のディレクトリを削除してしまう**ため
+（`skills/metatron/SKILL.md` ステップ 2・8）。
+
+> ⚠ **`$MAGI_TMPDIR` を PR 全体用に流用してはならない。**
+> `$MAGI_TMPDIR` は 2 つの別用途で使われている変数で、どちらも PR 全体の寿命を持たない：
+> `execution-steps.md` は**チャンクごとに** `mktemp -d` して `rm -rf` し、
+> ステップ 4-2 は**監査用に**別途 `mktemp -d` する。
+> PR 全体で持ち回るファイル（METATRON のプロンプトと raw 出力など）は `$MAGI_RUN_DIR` に置く。
+> **ステップ 4-2 の `$MAGI_TMPDIR` は変更しない。**
+
 ## ステップ 2: $IMPACT_CONTEXT 生成
 
 ```bash
@@ -66,6 +84,10 @@ IMPACT_CONTEXT=$(bash scripts/magi-impact-context.sh "$DIFF" 2>/dev/null || true
 `$CASPER_RESULT` が得られたことを確認してから起動する。
 `/metatron` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
 実行が**完全に完了**した後、結果を `$METATRON_RESULT` として保持してからステップ 3.5 に進む。
+
+> METATRON だけは Ollama ではなく **Codex** を使い、共通手順（`execution-steps.md`）に乗らない。
+> チャンク分割せず 1 回で全差分をレビューする。`$MAGI_RUN_DIR` を使うのはこのため。
+> 呼び出し元から見た `$METATRON_RESULT` の形は他ペルソナと同一なので、ステップ 3.7 以降は変わらない。
 
 ## ステップ 3.5: SANDALPHON 実行（`$METATRON_RESULT` 取得後）
 
@@ -349,7 +371,24 @@ gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
 if [ "$POST_INLINE" = "true" ]; then
   rm -rf "$MAGI_TMPDIR"
 fi
+
+# PR 全体用の作業ディレクトリはここで片付ける（METATRON のプロンプトと raw 出力が入っている）
+rm -rf "$MAGI_RUN_DIR"
+unset MAGI_RUN_DIR MAGI_RUN_DIR_OWNED
 ```
+
+**削除と `unset` は必ずセットで行う。** 変数を残すと、次回の実行や `/metatron` 単独実行が
+**削除済みの stale なパスを引き継ぐ**（`skills/metatron/SKILL.md` ステップ 2 の分岐が
+「呼び出し元所有」と誤判定する）。
+
+**`$MAGI_RUN_DIR` は最後のステップまで消してはならない。** ステップ 3.4 の METATRON が
+プロンプトと raw 出力を置く場所であり、途中で消すと後続の参照が壊れる。
+逆にここで消さないと、PR の差分と検出結果が一時ディレクトリに残り続ける。
+
+METATRON が失敗して Haiku フォールバックにも進めずレビューを中止した場合は、
+`$MAGI_RUN_DIR` を**残してパスをユーザーに提示する**（`$MAGI_TMPDIR` と同じ扱い）。
+**その場合もパス提示後に `unset MAGI_RUN_DIR MAGI_RUN_DIR_OWNED` する**
+（ディレクトリは残すが変数は残さない）。
 
 ユーザーに以下を表示する：
 

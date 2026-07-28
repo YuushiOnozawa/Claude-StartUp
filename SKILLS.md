@@ -19,7 +19,8 @@
 
 ## MAGI レビュー
 
-MAGI は6体のレビューエージェント群。各体は **Ollama（ローカル LLM）優先、Haiku フォールバック** で動作する。
+MAGI は6体のレビューエージェント群。既定は **Ollama（ローカル LLM）優先、Haiku フォールバック**。
+ただし CASPER は Haiku を、METATRON は Codex をそれぞれ標準の実行エンジンとし、Ollama を使わない。
 
 ### モデル割り当て
 
@@ -30,7 +31,7 @@ MAGI は6体のレビューエージェント群。各体は **Ollama（ロー�
 | MELCHIOR | `/melchior` | `qwen2.5-coder:7b` | ○ | コード品質・バグ |
 | BALTHASAR | `/balthasar` | `gemma4:e4b-it-qat` | ○ | 設計・アーキテクチャ |
 | CASPER | `/casper` | なし（Haiku を標準使用） | — | CLAUDE.md ルール遵守 |
-| METATRON | `/metatron` | `devstral:latest` | ○ | セキュリティ・脆弱性 |
+| METATRON | `/metatron` | なし（Codex を使用） | ○ | セキュリティ・脆弱性 |
 | SANDALPHON | `/sandalphon` | `granite3.3:8b` | ○ | デプロイ・実行環境整合性 |
 | LELIEL | `/leliel` | `lfm2.5:8b` | ○ | 既存ソースへの影響 |
 
@@ -63,12 +64,11 @@ MAGI は6体のレビューエージェント群。各体は **Ollama（ロー�
 |--------|------|----------|
 | `qwen2.5-coder:7b` | MELCHIOR（コード品質） | ~5GB |
 | `gemma4:e4b-it-qat` | BALTHASAR（設計） | ~4GB |
-| `devstral:latest` | METATRON（セキュリティ） | ~14GB |
 | `granite3.3:8b` | SANDALPHON（デプロイ） | ~5GB |
 | `lfm2.5:8b` | LELIEL（既存ソース影響） | ~5GB |
 | `qwen3:8b` | knowledge-rag / Obsidian index | ~5GB |
 
-CASPER は Ollama を使わず Haiku を標準モデルとするため、この表に行を持たない。
+CASPER（Haiku を標準使用）と METATRON（Codex を使用）は Ollama を使わないため、この表に行を持たない。
 
 いずれも Ollama が起動していない場合は Haiku にフォールバックする（codegen のみ Haiku に委譲）。
 モデルが不足している場合は `ollama pull <model>` で取得する。
