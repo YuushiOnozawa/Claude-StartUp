@@ -5,10 +5,18 @@
 set -euo pipefail
 
 # Ollama起動チェック
-if ! ollama list 2>/dev/null >/dev/null; then
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_OLLAMA_SH="$_SCRIPT_DIR/../hooks/lib/ollama.sh"
+# shellcheck source=../hooks/lib/ollama.sh
+[[ -f "$_OLLAMA_SH" ]] || { echo "Error: ollama.sh not found: $_OLLAMA_SH" >&2; exit 1; }
+source "$_OLLAMA_SH"
+
+OLLAMA_TAGS_JSON=""
+if ! OLLAMA_TAGS_JSON="$(curl -sf --max-time 5 "$(ollama_base_url)/api/tags" 2>/dev/null)"; then
   echo "SKIP: Ollama is not running. Skipping MAGI format test."
   exit 0
 fi
+OLLAMA_MODELS="$(printf '%s' "$OLLAMA_TAGS_JSON" | jq -r '.models[]?.name' 2>/dev/null || true)"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -43,7 +51,7 @@ for persona in "${!PERSONAS[@]}"; do
   model="${PERSONAS[$persona]}"
 
   # モデル存在チェック
-  if ! ollama list 2>/dev/null | grep -q "^${model}"; then
+  if ! printf '%s\n' "$OLLAMA_MODELS" | grep -Fxq -- "$model"; then
     echo "SKIP [$persona]: model $model not found"
     ((SKIP++)) || true
     continue
