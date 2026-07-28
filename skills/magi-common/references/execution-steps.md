@@ -45,6 +45,18 @@ CLAUDE_RULES=$(cat ~/.claude/CLAUDE.md 2>/dev/null; cat "$ROOT/CLAUDE.md" 2>/dev
    モデルが VRAM を占有し続ける**。
    途中でレビューを中止する場合も、中止を報告する前にこの解放を実行する。
 
+   > **この項目は Ollama パスを実行した場合にのみ行う。**
+   > ステップ 2 で Haiku パス（フォールバック、および CASPER のように Ollama を使わない設定）に
+   > 入った場合は**実行しない**。CASPER には `$OLLAMA_MODEL` が定義されておらず、
+   > 空の値で `--unload` を呼ぶと usage エラーになる。ロード済みのモデルも存在しない。
+
+   > **`--unload` は失敗しても終了コード 0 を返す。**
+   > 未ロードのモデルや存在しないモデル名でも正常終了する契約のため（`/api/generate` は
+   > 未知のモデルに 404 を返す）、終了コードで解放の成否は判定できない。
+   > 失敗時は stderr に `Warning: unload request failed for model: <名前>` が出るので、
+   > **警告が出たときは `$(ollama_base_url)/api/ps` で常駐状況を確認する**。
+   > 確認しない場合でも `5m` の自己失効が残るが、それまで VRAM は占有されたままになる。
+
 > ⚠ **解放を `trap` で自動化しようとしないこと。**
 > このチャンクループはシェルのループではなく、1チャンクにつき Bash 呼び出しが 1 回の
 > **エージェント駆動のループ**である。ある呼び出しで張った `trap` はその呼び出しの終了時に発火し、
@@ -117,8 +129,9 @@ curl -sf --max-time 5 "${_magi_base_url:-http://localhost:11434}/api/tags" 2>/de
    ```bash
    OLLAMA_KEEP_ALIVE=5m bash ~/.claude/scripts/ollama-run.sh "$OLLAMA_MODEL" "$MAGI_TMPDIR/system.txt" < "$MAGI_TMPDIR/prompt.txt" || {
      echo "⚠ Ollama 排他ロック取得失敗。ollama プロセスを確認してください。"
+     rm -rf "$MAGI_TMPDIR"
      bash ~/.claude/scripts/ollama-run.sh --unload "$OLLAMA_MODEL"
-     rm -rf "$MAGI_TMPDIR"; exit 1
+     exit 1
    }
    rm -rf "$MAGI_TMPDIR"
    ```

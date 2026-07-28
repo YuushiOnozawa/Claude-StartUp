@@ -22,6 +22,7 @@
 #   OLLAMA_KEEP_ALIVE   モデル保持時間（デフォルト: 0 = 即時解放）
 #                       例: OLLAMA_KEEP_ALIVE=5m bash ollama-run.sh <model> < prompt.txt
 #                       duration 文字列（5m, 30s など）を指定するとモデルを保持する。
+#                       無期限保持を避けるため、負値は受け付けない。
 #                       無効値は警告を出して 0 にフォールバックする。
 #   OLLAMA_BASE_URL     Ollama ベース URL（デフォルト: WSL2 は自動検出、それ以外は http://localhost:11434）
 #                       例: OLLAMA_BASE_URL=http://172.17.96.1:11434 bash ollama-run.sh <model>
@@ -44,7 +45,7 @@ _unload_model() {
   unload_json="$(jq -n --arg model "$MODEL" '{"model":$model,"keep_alive":0}')"
   curl -sf --max-time 10 "$OLLAMA_URL" \
     -H 'Content-Type: application/json' \
-    -d "$unload_json" >/dev/null 2>&1 || true
+    -d "$unload_json" >/dev/null 2>&1
 }
 
 if [[ "${1:-}" == "--unload" ]]; then
@@ -54,7 +55,9 @@ if [[ "${1:-}" == "--unload" ]]; then
   if ! flock -w 5 9; then
     echo "Warning: could not acquire Ollama lock within 5s; unloading without lock" >&2
   fi
-  _unload_model
+  if ! _unload_model; then
+    echo "Warning: unload request failed for model: $MODEL" >&2
+  fi
   exec 9>&- 2>/dev/null || true
   exit 0
 fi
@@ -65,14 +68,14 @@ CONTEXT_SIZE="${OLLAMA_NUM_CTX:-16384}"
 TEMPERATURE="${OLLAMA_TEMPERATURE:-0.1}"
 KEEP_ALIVE="${OLLAMA_KEEP_ALIVE:-0}"
 if [[ -v OLLAMA_KEEP_ALIVE && -z "$OLLAMA_KEEP_ALIVE" ]]; then
-  echo "Warning: invalid OLLAMA_KEEP_ALIVE value: $OLLAMA_KEEP_ALIVE (falling back to 0)" >&2
+  echo "Warning: invalid OLLAMA_KEEP_ALIVE value: empty string (falling back to 0)" >&2
   KEEP_ALIVE_JSON=0
-elif [[ "$KEEP_ALIVE" =~ ^-?[0-9]+$ ]]; then
+elif [[ "$KEEP_ALIVE" =~ ^[0-9]+$ ]]; then
   KEEP_ALIVE_JSON="$(jq -n --arg v "$KEEP_ALIVE" '$v|tonumber')"
-elif [[ "$KEEP_ALIVE" =~ ^-?[0-9]+(\.[0-9]+)?(ns|us|ms|s|m|h)$ ]]; then
+elif [[ "$KEEP_ALIVE" =~ ^[0-9]+(\.[0-9]+)?(ns|us|ms|s|m|h)$ ]]; then
   KEEP_ALIVE_JSON="$(jq -n --arg v "$KEEP_ALIVE" '$v')"
 else
-  echo "Warning: invalid OLLAMA_KEEP_ALIVE value: $KEEP_ALIVE (falling back to 0)" >&2
+  echo "Warning: invalid OLLAMA_KEEP_ALIVE value: $KEEP_ALIVE (negative values mean indefinite retention and are not accepted; falling back to 0)" >&2
   KEEP_ALIVE_JSON=0
 fi
 
@@ -105,7 +108,9 @@ _cleanup() {
     _CURL_PID=""
   fi
   if [[ "$_reason" == "signal" ]] || [[ "$_reason" == "exit" && "$KEEP_ALIVE_JSON" == "0" ]]; then
-    [[ -n "${MODEL:-}" ]] && _unload_model
+    if [[ -n "${MODEL:-}" ]]; then
+      _unload_model || true
+    fi
   fi
   exec 9>&- 2>/dev/null || true
   [[ -n "${_RESP:-}" ]] && rm -f "$_RESP" || true
