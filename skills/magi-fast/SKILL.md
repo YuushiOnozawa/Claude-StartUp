@@ -138,9 +138,29 @@ MAGI_TMPDIR=$(mktemp -d)
 false_positive: N件（コミット判断はユーザーに委ねる）
 ```
 
-- **`AUDIT_SKIPPED`**（Codex 不可）: 「Codex audit skipped: 監査なし」と表示して終了
-- **`AUDIT_ERROR`**: エラー旨を表示して終了
+監査結果は `codex-audit.md`「呼び出し元への契約」の成功条件を**この側でも検証する**こと。
+検証を省略すると、産出側の変更で監査結果が静かに欠落しても気づけない。
+
+成功条件を満たさない場合は上表を出さず、以下のいずれかを表示する。**監査していないものを
+「監査済み」として見せない。**
+
+```
+---
+## Codex 監査結果
+
+⚠ 監査を実行できませんでした（理由: <AUDIT_SKIPPED / AUDIT_ERROR の別と message>）
+MAGI の指摘は未監査です。誤検知が含まれている可能性を前提に確認してください。
+raw 出力: $MAGI_TMPDIR/codex-audit-raw.txt
+```
+
+| ケース | 表示内容 |
+|---|---|
+| `AUDIT_SKIPPED`（Codex 不可・ファイル不在） | 「Codex audit skipped: 監査なし」+ 未監査である旨 |
+| `AUDIT_ERROR`（error object・抽出/検証失敗） | `message` と raw 出力のパス + 未監査である旨 |
+
+`magi-fast` は投稿経路を持たないため、未監査でも結果表示は続行する。
 
 ```bash
+# 監査が成功した場合のみ削除する。失敗時は raw 出力を確認できるよう残す
 rm -rf "$MAGI_TMPDIR"
 ```

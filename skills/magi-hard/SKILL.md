@@ -306,7 +306,10 @@ gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
 ## ステップ 7: 結果のサマリ表示
 
 ```bash
-rm -rf "$MAGI_TMPDIR"
+# 監査が失敗した場合は raw 出力を確認できるよう $MAGI_TMPDIR を残す
+if [ "$POST_INLINE" = "true" ]; then
+  rm -rf "$MAGI_TMPDIR"
+fi
 ```
 
 ユーザーに以下を表示する：
