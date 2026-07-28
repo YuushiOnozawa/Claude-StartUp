@@ -23,7 +23,7 @@ MAX_CALLERS=5
 CONTEXT_LINES=5
 MAX_SYMBOLS=20      # LLM コンテキスト圧迫防止のための上限（パフォーマンス制限）
 MAX_PATH_REFS=6     # 1ファイルあたりの被参照表示上限
-MAX_BYTES=12000     # 総量上限。OLLAMA_NUM_CTX=16384 を溢れさせないため
+MAX_CHARS=12000     # 総文字数上限。OLLAMA_NUM_CTX=16384 を溢れさせないため
 
 # 検索から除外する: .git と repo 内 worktree の複製。worktree を含めると同一ファイルの
 # コピーが呼び出し元として大量に出て、出力が 60KB 超に膨らみ num_ctx を溢れさせる。
@@ -180,9 +180,9 @@ if [ -z "$OUTPUT" ]; then
   exit 0
 fi
 
-if [ "${#OUTPUT}" -gt "$MAX_BYTES" ]; then
-  echo "warn: magi-impact-context: ${MAX_BYTES} バイト上限で切り詰めました" >&2
-  OUTPUT="${OUTPUT:0:$MAX_BYTES}"$'\n'"...(truncated)"
+if [ "${#OUTPUT}" -gt "$MAX_CHARS" ]; then
+  echo "warn: magi-impact-context: ${MAX_CHARS} 文字上限で切り詰めました" >&2
+  OUTPUT="${OUTPUT:0:$MAX_CHARS}"$'\n'"...(truncated)"
 fi
 
 printf '%s' "$OUTPUT"

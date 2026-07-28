@@ -135,13 +135,22 @@ ${SAMPLE_DIFF}"
 
   OUTPUT=$(printf '%s' "$PROMPT" | bash "$OLLAMA_RUN" "$model" 2>/dev/null || true)
 
-  if echo "$OUTPUT" | grep -qE '###\s+\[(HIGH|MEDIUM|LOW)\]'; then
+  HEADING_RE='^###[[:space:]]+\[(HIGH|MEDIUM|LOW)\][[:space:]]+[^[:space:]]+:[0-9]+(-[0-9]+)?[[:space:]]+—[[:space:]]+.+$'
+  HEADINGS=$(printf '%s\n' "$OUTPUT" | grep '^###' || true)
+  HEADING_COUNT=$(printf '%s\n' "$HEADINGS" | grep -c '^###' || true)
+  VALID_COUNT=$(printf '%s\n' "$HEADINGS" | grep -Ec "$HEADING_RE" || true)
+  INVALID_HEADINGS=$(printf '%s\n' "$HEADINGS" | grep -Ev "$HEADING_RE" || true)
+  INVALID_COUNT=$(printf '%s\n' "$INVALID_HEADINGS" | grep -c '^###' || true)
+
+  if [ "$VALID_COUNT" -gt 0 ] && [ "$INVALID_COUNT" -eq 0 ]; then
     echo "PASS"
     ((PASS++)) || true
   else
-    echo "FAIL (no [HIGH/MEDIUM/LOW] finding found)"
-    echo "--- Output preview (first 10 lines) ---"
-    echo "$OUTPUT" | head -10
+    echo "FAIL (${INVALID_COUNT}/${HEADING_COUNT} invalid ### headings; ${VALID_COUNT} valid)"
+    if [ "$INVALID_COUNT" -gt 0 ]; then
+      echo "--- Invalid ### headings ---"
+      printf '%s\n' "$INVALID_HEADINGS"
+    fi
     echo "---------------------------------------"
     ((FAIL++)) || true
   fi
