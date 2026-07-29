@@ -26,3 +26,4 @@ Use the Review Header and the Assessment Header exactly as written in your task 
 - Every finding must include a specific reason explaining why it is a problem
 - Report **every** finding you have. Do not stop after the first one or two.
 - If and only if you have no findings at all, write exactly `No findings` in the assessment section. It belongs **only** there — NEVER write it as a `###` heading.
+- Your task instruction's "Example Output" section is a **format reference only**. Its findings, wording, assessment sentence, and typical count are made-up examples, not evidence about the diff in `<TASK>`. Do not copy or paraphrase that example content, and do not let its finding count cap your review. Report every real finding you identify in the current diff.
