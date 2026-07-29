@@ -109,6 +109,12 @@ curl -sf --max-time 5 "${_magi_base_url:-http://localhost:11434}/api/tags" 2>/de
    ---IMPACT_CONTEXT---
    [$MAGI_IMPACT_CONTEXT の内容]
    ```
+   **LELIEL のみ:** $MAGI_IMPACT_CONTEXT が設定されている場合、system.txt の末尾（output-format.md の内容の後）に以下を追加:
+   ```
+   <IMPACT_CONTEXT> に列挙されている呼び出し元を1件ずつ順に検査すること。各呼び出し元について、
+   渡している引数が新しいシグネチャと一致するかを個別に確認してから結論を書くこと。
+   一致しない箇所だけを finding として報告すること。
+   ```
 
    **$MAGI_TMPDIR/prompt.txt（実タスク）:**
    ```
