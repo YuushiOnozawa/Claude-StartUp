@@ -34,10 +34,10 @@ fi
 
 # ペルソナ定義: name model
 # CASPER は Ollama を使わず Haiku を標準モデルとするため含めない（skills/casper/SKILL.md）
-# METATRON は Ollama を使わず Codex を標準モデルとするため含めない（skills/metatron/SKILL.md）
 declare -A PERSONAS=(
   [melchior]="qwen2.5-coder:7b"
   [balthasar]="gemma4:e4b-it-qat"
+  [metatron]="devstral:latest"
   [sandalphon]="granite3.3:8b"
   [leliel]="lfm2.5:8b"
 )
@@ -100,8 +100,8 @@ for persona in "${!PERSONAS[@]}"; do
   done
 
   for f in \
-    "$ROOT/skills/${persona}/references/output-format.md" \
-    "$HOME/.claude/skills/${persona}/references/output-format.md"
+    "$ROOT/skills/magi-common/references/output-format.md" \
+    "$HOME/.claude/skills/magi-common/references/output-format.md"
   do
     [ -f "$f" ] && FORMAT=$(cat "$f") && break
   done
