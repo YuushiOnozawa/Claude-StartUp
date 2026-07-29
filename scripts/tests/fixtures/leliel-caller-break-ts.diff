@@ -1,0 +1,120 @@
+diff --git a/src/lib/invoices.ts b/src/lib/invoices.ts
+index 7c52d81..3d9ab4f 100644
+--- a/src/lib/invoices.ts
++++ b/src/lib/invoices.ts
+@@ -1,17 +1,39 @@
+ export interface InvoiceLine {
+   sku: string;
+   quantity: number;
+   unitPrice: number;
+   discountCents?: number;
+ }
+ 
+-export function calculateInvoiceTotal(lines: InvoiceLine[], currency = "USD"): number {
+-  return lines.reduce((sum, line) => {
++export interface Invoice {
++  id: string;
++  customerId: string;
++  currency: string;
++  lines: InvoiceLine[];
++}
++
++export interface CalculateInvoiceOptions {
++  taxRate: number;
++  includeDiscounts: boolean;
++}
++
++export interface InvoiceTotal {
++  subtotalCents: number;
++  taxCents: number;
++  totalCents: number;
++  currency: string;
++}
++
++export function calculateInvoiceTotal(invoice: Invoice, options: CalculateInvoiceOptions): InvoiceTotal {
++  const subtotalCents = invoice.lines.reduce((sum, line) => {
+     const lineTotal = line.quantity * line.unitPrice;
+-    return sum + lineTotal - (line.discountCents ?? 0);
++    const discount = options.includeDiscounts ? line.discountCents ?? 0 : 0;
++    return sum + lineTotal - discount;
+   }, 0);
++  const taxCents = Math.round(subtotalCents * options.taxRate);
++  return { subtotalCents, taxCents, totalCents: subtotalCents + taxCents, currency: invoice.currency };
+ }
+ 
+ export function calculateInvoiceTotalPreview(lines: InvoiceLine[]): string {
+   return `${lines.length} lines`;
+ }
+diff --git a/src/api/invoiceRoutes.ts b/src/api/invoiceRoutes.ts
+index 2bf8a11..8ee2380 100644
+--- a/src/api/invoiceRoutes.ts
++++ b/src/api/invoiceRoutes.ts
+@@ -1,11 +1,15 @@
+-import { calculateInvoiceTotal } from "../lib/invoices";
++import { calculateInvoiceTotal, type Invoice } from "../lib/invoices";
+ import type { Request, Response } from "express";
+ 
+ export async function getInvoiceSummary(req: Request, res: Response) {
+-  const lines = await req.services.invoices.loadLines(req.params.invoiceId);
+-  const total = calculateInvoiceTotal(lines, "USD");
++  const invoice = (await req.services.invoices.loadInvoice(req.params.invoiceId)) as Invoice;
++  const total = calculateInvoiceTotal(invoice, {
++    taxRate: req.services.tax.currentRate(invoice.customerId),
++    includeDiscounts: true,
++  });
+   res.json({
+     invoiceId: req.params.invoiceId,
+-    total,
++    total: total.totalCents,
++    currency: total.currency,
+   });
+ }
+diff --git a/src/cli/printInvoice.ts b/src/cli/printInvoice.ts
+index 9581f63..e71a0d2 100644
+--- a/src/cli/printInvoice.ts
++++ b/src/cli/printInvoice.ts
+@@ -1,7 +1,7 @@
+ import { calculateInvoiceTotal } from "../lib/invoices";
+ import { loadInvoiceFixture } from "./fixtures";
+ 
+ export async function printInvoice(path: string) {
+   const invoice = await loadInvoiceFixture(path);
+-  const total = calculateInvoiceTotal(invoice.lines, invoice.currency);
++  const total = calculateInvoiceTotal(invoice.lines);
+   process.stdout.write(`${invoice.id}: ${total} ${invoice.currency}\n`);
+ }
+diff --git a/src/reports/monthlyRevenue.ts b/src/reports/monthlyRevenue.ts
+index 68e3d90..10b23fa 100644
+--- a/src/reports/monthlyRevenue.ts
++++ b/src/reports/monthlyRevenue.ts
+@@ -1,7 +1,12 @@
+-import { calculateInvoiceTotal } from "../lib/invoices";
++import { calculateInvoiceTotal, type Invoice } from "../lib/invoices";
+ 
+ export function monthlyRevenue(invoices: unknown[]) {
+   return invoices
+-    .map((invoice: any) => calculateInvoiceTotal(invoice.lines, invoice.currency))
+-    .reduce((sum, total) => sum + total, 0);
++    .map((invoice) =>
++      calculateInvoiceTotal(invoice as Invoice, {
++        taxRate: 0,
++        includeDiscounts: true,
++      }).totalCents,
++    )
++    .reduce((sum, total) => sum + total, 0);
+ }
+diff --git a/src/widgets/invoicePreview.ts b/src/widgets/invoicePreview.ts
+index c514aa0..05ed0c8 100644
+--- a/src/widgets/invoicePreview.ts
++++ b/src/widgets/invoicePreview.ts
+@@ -1,8 +1,9 @@
+ import { calculateInvoiceTotalPreview } from "../lib/invoices";
+ 
+ export function renderInvoicePreview(lines: unknown[]) {
++  const previewLabel = calculateInvoiceTotalPreview(lines as never[]);
+   return {
+-    label: calculateInvoiceTotalPreview(lines as never[]),
++    label: previewLabel,
+     compact: true,
+   };
+ }
