@@ -9,6 +9,8 @@
 # - 探索範囲は original_path に限定する。他ファイルの同一文字列へ誤って投稿しないため。
 # - context 行や作業ツリーで見つかっても unanchorable とする。GitHub インラインコメントの
 #   アンカーは PR diff 上の変更行へ張る契約で、diff 外の既存行は通常コメントへ退避させるため。
+# - `evidence`フィールドがある場合はそれを唯一の候補として完全一致で探索し、bodyのバッククォート抽出へは
+#   フォールバックしない（断片化による誤補正を避けるため。unanchorableの方が誤ったcorrectedより安全という既存方針と一貫させる）。
 # - JSON の読み書きは jq に任せる。body は改行・引用符・パイプ等を含むため、手書き連結しない。
 
 usage() {
@@ -24,6 +26,14 @@ json_field() {
   local row="$1"
   local expr="$2"
   printf '%s' "$row" | jq -Rr "@base64d | fromjson | $expr"
+}
+
+trim_text() {
+  awk '{
+    gsub(/^[[:space:]]+/, "", $0)
+    gsub(/[[:space:]]+$/, "", $0)
+    print
+  }'
 }
 
 emit_anchor() {
@@ -102,12 +112,26 @@ find_in_diff_layer() {
   local path="$1"
   local needle="$2"
   local layer="$3"
+  local match_mode="${4:-substring}"
 
-  MAGI_GROUND_TARGET="$path" MAGI_GROUND_NEEDLE="$needle" awk -v layer="$layer" '
+  MAGI_GROUND_TARGET="$path" MAGI_GROUND_NEEDLE="$needle" MAGI_GROUND_MATCH_MODE="$match_mode" awk -v layer="$layer" '
 BEGIN {
   # awk -v は \n 等を解釈して引用候補を壊すため、文字列は環境変数から受け取る。
   target = ENVIRON["MAGI_GROUND_TARGET"]
   needle = ENVIRON["MAGI_GROUND_NEEDLE"]
+  match_mode = ENVIRON["MAGI_GROUND_MATCH_MODE"]
+  if (match_mode == "") match_mode = "substring"
+}
+
+function trim(s) {
+  gsub(/^[[:space:]]+/, "", s)
+  gsub(/[[:space:]]+$/, "", s)
+  return s
+}
+
+function matches(content) {
+  if (match_mode == "exact") return trim(content) == trim(needle)
+  return index(content, needle) > 0
 }
 
 function parse_hunk(line,    rest, parts, oldspec, newspec, oldparts, newparts) {
@@ -179,19 +203,19 @@ function strip_b_path(line,    path) {
   content = substr($0, 2)
 
   if (prefix == "+") {
-    if (layer == "add" && index(content, needle) > 0) remember(new_line)
+    if (layer == "add" && matches(content)) remember(new_line)
     new_line++
     next
   }
 
   if (prefix == "-") {
-    if (layer == "del" && index(content, needle) > 0) remember(old_line)
+    if (layer == "del" && matches(content)) remember(old_line)
     old_line++
     next
   }
 
   if (prefix == " ") {
-    if (layer == "context" && index(content, needle) > 0) remember(new_line)
+    if (layer == "context" && matches(content)) remember(new_line)
     old_line++
     new_line++
   }
@@ -211,10 +235,35 @@ END {
 find_in_worktree() {
   local path="$1"
   local needle="$2"
+  local match_mode="${3:-substring}"
   local file="$REPO_ROOT/$path"
 
   [ -f "$file" ] || return 1
-  grep -F -- "$needle" "$file" >/dev/null 2>&1
+  MAGI_GROUND_NEEDLE="$needle" MAGI_GROUND_MATCH_MODE="$match_mode" awk '
+BEGIN {
+  needle = ENVIRON["MAGI_GROUND_NEEDLE"]
+  match_mode = ENVIRON["MAGI_GROUND_MATCH_MODE"]
+  if (match_mode == "") match_mode = "substring"
+}
+
+function trim(s) {
+  gsub(/^[[:space:]]+/, "", s)
+  gsub(/[[:space:]]+$/, "", s)
+  return s
+}
+
+{
+  if (match_mode == "exact") {
+    if (trim($0) == trim(needle)) found = 1
+  } else if (index($0, needle) > 0) {
+    found = 1
+  }
+}
+
+END {
+  exit found ? 0 : 1
+}
+' "$file"
 }
 
 if [ "$#" -ne 2 ]; then
@@ -238,11 +287,13 @@ if ! jq -e '
   all(.findings[];
     (.id | type == "string" and length > 0)
     and (.body | type == "string")
+    and has("evidence")
+    and (((.evidence | type) == "string" and (.evidence | length) > 0) or (.evidence | type) == "null")
     and (.original_path | type == "string" and length > 0)
     and (.original_line | type == "number")
   )
 ' "$FINDINGS_JSON" >/dev/null 2>&1; then
-  die "each finding must contain required fields: id, body, original_path, original_line"
+  die "each finding must contain required fields: id, body, evidence, original_path, original_line"
 fi
 
 if ! jq -e '
@@ -261,11 +312,19 @@ trap 'rm -rf "$TMP_DIR"' EXIT HUP INT TERM
 while IFS= read -r FINDING_ROW; do
   ID=$(json_field "$FINDING_ROW" '.id // ""')
   BODY=$(json_field "$FINDING_ROW" '.body // ""')
+  EVIDENCE=$(json_field "$FINDING_ROW" '(.evidence // null) | if . == null then "" else . end')
+  EVIDENCE_TRIMMED=$(printf '%s' "$EVIDENCE" | trim_text)
   ORIGINAL_PATH=$(json_field "$FINDING_ROW" '.original_path // ""')
   ORIGINAL_LINE=$(json_field "$FINDING_ROW" '(.original_line // 0 | tonumber? // 0)')
 
   CANDIDATES_TMP="$TMP_DIR/candidates.$$"
-  printf '%s' "$BODY" | extract_candidates > "$CANDIDATES_TMP"
+  MATCH_MODE="substring"
+  if [ -n "$EVIDENCE_TRIMMED" ]; then
+    printf '%s\n' "$EVIDENCE" > "$CANDIDATES_TMP"
+    MATCH_MODE="exact"
+  else
+    printf '%s' "$BODY" | extract_candidates > "$CANDIDATES_TMP"
+  fi
 
   if [ ! -s "$CANDIDATES_TMP" ]; then
     emit_unanchorable "$ID"
@@ -278,7 +337,7 @@ while IFS= read -r FINDING_ROW; do
   for LAYER in add del context worktree; do
     while IFS= read -r CANDIDATE; do
       if [ "$LAYER" = "worktree" ]; then
-        if find_in_worktree "$ORIGINAL_PATH" "$CANDIDATE"; then
+        if find_in_worktree "$ORIGINAL_PATH" "$CANDIDATE" "$MATCH_MODE"; then
           emit_unanchorable "$ID"
           ANCHOR_DONE=1
           break
@@ -286,7 +345,7 @@ while IFS= read -r FINDING_ROW; do
         continue
       fi
 
-      MATCH_RESULT=$(find_in_diff_layer "$ORIGINAL_PATH" "$CANDIDATE" "$LAYER")
+      MATCH_RESULT=$(find_in_diff_layer "$ORIGINAL_PATH" "$CANDIDATE" "$LAYER" "$MATCH_MODE")
       MATCH_STATUS=$?
       if [ "$MATCH_STATUS" -eq 0 ]; then
         if [ "$LAYER" = "context" ]; then

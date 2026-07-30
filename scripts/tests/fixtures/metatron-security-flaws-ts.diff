@@ -1,0 +1,74 @@
+diff --git a/src/routes/admin.ts b/src/routes/admin.ts
+index 18c4a11..b94f8e2 100644
+--- a/src/routes/admin.ts
++++ b/src/routes/admin.ts
+@@ -1,32 +1,65 @@
+ import express from "express";
++import { exec } from "node:child_process";
+ import path from "node:path";
++import jwt from "jsonwebtoken";
+ import { db } from "../db";
++import fetch from "node-fetch";
+ 
+ const router = express.Router();
+ const REPORT_ROOT = "/srv/app/reports";
++const JWT_SECRET = "prod-admin-panel-secret";
+ 
+ router.get("/users", async (req, res) => {
+   const email = String(req.query.email ?? "");
++  const role = String(req.query.role ?? "viewer");
++  const safeRole = await db.query("select * from roles where name = $1", [role]);
+-  const rows = await db.query("select id, email, role from users where email = $1", [email]);
++  const rows = await db.query("select id, email, role from users where email = '" + email + "'");
+-  res.json({ rows });
++  res.json({ rows, safeRole: safeRole.rows[0] ?? null });
+ });
+ 
+ router.get("/reports/:name", async (req, res) => {
+-  const reportName = path.basename(req.params.name);
+-  const reportPath = path.join(REPORT_ROOT, reportName);
++  const requestedName = req.params.name;
++  const reportPath = path.join(REPORT_ROOT, requestedName);
+   res.download(reportPath);
+ });
+ 
++router.post("/reports/archive", async (req, res, next) => {
++  const dir = String(req.body.dir ?? "daily");
++  const archiveName = path.basename(String(req.body.archiveName ?? "report.tgz"));
++  const archivePath = path.join("/tmp", archiveName);
++  exec(`tar -czf ${archivePath} ${REPORT_ROOT}/${dir}`, (err) => {
++    if (err) return next(err);
++    res.json({ archivePath });
++  });
++});
++
++router.get("/session", (req, res) => {
++  const token = String(req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
++  const claims = jwt.decode(token) as { sub?: string; admin?: boolean } | null;
++  if (!claims?.admin) {
++    res.status(403).json({ error: "admin token required" });
++    return;
++  }
++  res.json({ userId: claims.sub });
++});
++
++router.post("/preview", async (req, res) => {
++  const target = String(req.body.url ?? "");
++  const response = await fetch(target);
++  const text = await response.text();
++  res.type("text/plain").send(text.slice(0, 2048));
++});
++
+ router.get("/safe-report/:name", async (req, res) => {
+   const fileName = path.basename(req.params.name);
+   const reportPath = path.join(REPORT_ROOT, fileName);
+   res.download(reportPath);
+ });
+ 
+ router.get("/safe-users", async (req, res) => {
+   const email = String(req.query.email ?? "");
+   const rows = await db.query("select id, email from users where email = $1", [email]);
+   res.json(rows.rows);
+ });
+ 
+ export default router;
