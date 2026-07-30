@@ -9,10 +9,10 @@
 
 `skills/magi-common/references/execution-steps.md` のステップ 2 と同じ組み立てで、METATRON 用の `system.txt` / `prompt.txt` を作る。
 
-- `system.txt`: `skills/metatron/references/task-instruction.md`、`skills/metatron/references/review-criteria.md`、`scripts/tests/fixtures/detection-notes-format.md`
+- `system.txt`: `skills/metatron/references/task-instruction.md`、`skills/metatron/references/review-criteria.md`、`skills/magi-common/references/output-format-v2.md`
 - `prompt.txt`: `skills/magi-common/references/task-base.md` の後に `<TASK>` / `</TASK>` で包んだ `scripts/tests/fixtures/metatron-security-flaws-ts.diff`
 
-**注意:** `skills/magi-common/references/output-format.md`（severity付きの旧フォーマット）は使わない。`detection-notes-format.md` は、`task-instruction.md` に埋め込まれた `### [HIGH]` 形式の Example Output より優先される旨を自身の中で明記しており、それを system.txt の最後に置くことで severity 形式の Example が無効化される設計になっている。
+**注意:** `skills/magi-common/references/output-format.md`（severity付きの旧フォーマット）は使わない。`output-format-v2.md` は、`task-instruction.md` に埋め込まれた `### [HIGH]` 形式の Example Output より優先される旨を自身の中で明記しており、それを system.txt の最後に置くことで severity 形式の Example が無効化される設計になっている。
 
 ## 正解キー表
 

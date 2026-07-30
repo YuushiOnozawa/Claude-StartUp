@@ -62,6 +62,16 @@ IMPACT_CONTEXT=$(bash scripts/magi-impact-context.sh "$DIFF" 2>/dev/null || true
 
 失敗時は空文字で続行（中断しない）。
 
+**この後の全ペルソナ呼び出しで `MAGI_ORCHESTRATED=true` を設定する。**
+これにより v2 契約（MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIEL）のペルソナは
+自分では Normalizer を呼ばず生の結果を返す。`magi-hard` がステップ 3.7 でまとめて
+1 回の Normalizer 呼び出しにバッチ化する（Codex 呼び出し削減のため）。
+CASPER（v1、Normalizer 対象外）にはこの設定は影響しない。
+
+```bash
+MAGI_ORCHESTRATED=true
+```
+
 ## ステップ 3.1: MELCHIOR 実行（最初）
 
 `/melchior` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
@@ -99,7 +109,11 @@ IMPACT_CONTEXT=$(bash scripts/magi-impact-context.sh "$DIFF" 2>/dev/null || true
 
 ## ステップ 3.7: 指摘の正規化
 
-6体の結果から**指摘ではない見出しを除外**する。以降のステップ（カウント・Codex 監査・投稿）はすべて除外後の結果を使う。
+**CASPER（v1、severity付き `### [HIGH]` 形式）と、MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIEL（v2、DETECTION NOTES契約）で正規化の方法が異なる。**
+
+### CASPERの正規化（v1、既存ロジックのまま）
+
+CASPERの結果（`$CASPER_RESULT`）から**指摘ではない見出しを除外**する。以降のステップ（カウント・Codex 監査・投稿）はすべて除外後の結果を使う。
 
 ### 除外 1: `No findings` 見出し
 
@@ -133,25 +147,32 @@ diff が本当に `scripts/run.sh` に `eval $USER_INPUT` を追加したなら�
 > ケースは、この条件では除外されず投稿経路に残る。**これは意図的な判断**で、
 > 本物の指摘を消すより Codex 監査に判定を委ねるほうが安全なため。
 
-参考: 各ペルソナの例文 filepath
+参考: CASPERの例文 filepath（v2化された5ペルソナは`###`見出しを使わないため、この除外機構自体が構造的に無害。参考表からも除外する）
 
 | ペルソナ | 例文の filepath |
 |---|---|
-| MELCHIOR | `scripts/deploy.sh` / `lib/utils.sh` |
-| BALTHASAR | `src/service.py` / `lib/db.py` |
 | CASPER | `scripts/deploy.sh` / `scripts/build.sh` |
-| METATRON | `scripts/run.sh` / `config/settings.py` |
-| SANDALPHON | `migrations/001_drop_table.sql` / `scripts/start.sh` |
-| LELIEL | `scripts/ollama-run.sh` |
 
 > **「`filepath` が diff に存在しない」を単独の除外根拠にしてはならない。**
 > `magi-hard` は差分外の行を通常 PR コメントへフォールバックする設計を持っており（ステップ 7 の退避経路）、
 > diff 外の path はそれだけでは誤りではない。上記の条件 2 で diff 不在を使うのは、
 > 「headline が例文と一致」「filepath が例文と一致」と**併せて**判定するためであり、単独では使わない。
 
+CASPERの除外後の結果を `$MAGI_RUN_DIR/normalized-v1.md` として保持する（v2側の結果と合わせて後述「正規化結果の書き出し」でまとめる）。
+
+### MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIELの正規化（v2、バッチNormalizer）
+
+5体は`$MAGI_ORCHESTRATED=true`で実行済みのため、各自ではNormalizerを呼ばず生の結果（`$MELCHIOR_RESULT`/`$BALTHASAR_RESULT`/`$METATRON_RESULT`/`$SANDALPHON_RESULT`/`$LELIEL_RESULT`、チャンクヘッダー込み）を返している。ここで1回のバッチ呼び出しにまとめてNormalizerへ渡す（Codex呼び出し削減のため）。
+
+1. `MAGI_TMPDIR=$(mktemp -d)` で作業ディレクトリを作成する。
+2. 5体の生結果を、それぞれ `=== PERSONA: <name> / CHUNK: <path> (<n>) ===` ヘッダーを保ったまま連結し、`$NORMALIZE_INPUT` として保持する。
+3. `skills/magi-common/references/normalizer.md`（repo 内）または `~/.claude/skills/magi-common/references/normalizer.md` を Read ツールで読み込み、記載の手順に従ってCodexを呼び出す。
+4. 成功した場合、`$MAGI_TMPDIR/normalizer.json` の内容を `$NORMALIZED_V2_JSON` として `$MAGI_RUN_DIR/normalized-v2.json` にコピーし保持する（`$MAGI_TMPDIR` はチャンク単位ではなくこのバッチ呼び出し専用なので、コピー後に削除してよい）。
+5. 失敗（`NORMALIZE_SKIPPED`/`NORMALIZE_ERROR`）した場合は、`normalizer.md`の契約に従いHaiku fallbackを試みる。それでも失敗する場合は、ステップ4-1の構造検証失敗と同様の扱い（v2分のみ`BLOCK_LAYER=structure`相当とし、v2 5体分は`$NORMALIZED_RESULTS`にraw結果をそのまま出す）とする。CASPER分（v1）は影響を受けず通常通り処理を続ける。
+
 ### 正規化結果の書き出し
 
-除外後の結果を `$MAGI_RUN_DIR/normalized.md` に書き出し、`$NORMALIZED_RESULTS` として保持する。
+CASPERの除外後の結果（`normalized-v1.md`）と、v2 5体分（`normalized-v2.json`を人間可読な箇条書きに変換したもの）を連結し、`$MAGI_RUN_DIR/normalized.md` に書き出し、`$NORMALIZED_RESULTS` として保持する。
 
 ```bash
 NORMALIZED_RESULTS="$MAGI_RUN_DIR/normalized.md"
@@ -162,13 +183,19 @@ NORMALIZED_RESULTS="$MAGI_RUN_DIR/normalized.md"
 **JSON 生成や構造検証が壊れた瞬間に退避元が存在しなくなる**
 （`$FINDINGS_TABLE` も `$FINDING_LIST` も使えないため、設計上ある退避経路が実装時に参照不能になる）。
 
+`$FINDINGS_TABLE`で使うのは`normalized-v2.json`（JSON）側であり、`normalized.md`はステップ6のフォールバック表示・デバッグ用の人間可読ログという位置づけ。
+
 ## ステップ 4: Codex 監査
 
-6体の結果から HIGH/MEDIUM 指摘に finding ID を付与し、Codex で妥当性を検証する。
+6体の結果に finding ID を付与し、Codex で妥当性を検証する。CASPER（v1）とv2の5体で抽出元が異なる。
 
 ### 4-1. Finding ID の付与と `$FINDINGS_TABLE` の生成
 
-6体の結果（`$MELCHIOR_RESULT`〜`$LELIEL_RESULT`）から HIGH/MEDIUM 指摘を抽出し、`M-001`, `M-002`, ... の形式で連番付与する。
+**CASPER（v1）:** 除外後の結果から HIGH/MEDIUM 指摘のみを抽出する（従来通り、LOW対象外）。`severity`は見出しの値（`HIGH`/`MEDIUM`）をそのまま使う。
+
+**v2の5体（MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIEL）:** `normalized-v2.json`（バッチNormalizer出力）の各要素を候補とする。**severityによる事前フィルタはしない**（全候補を採番、recall優先の設計方針。絞り込みは後述ステップ4-4に委ねる）。`severity`は暫定値`"UNRATED"`とする（ステップ4-4でCodexが`importance`を判定した後、`HIGH`/`MEDIUM`/`LOW`で上書きする）。`persona`はNormalizer出力の`persona`フィールドをそのまま使う。`original_path`/`original_line`はNormalizer出力の`path`/`line`（`line`が`null`の場合はそのまま`original_line: null`とする。捏造しない。ステップ5でアンカー不能扱いにする）。
+
+両者を`M-001`, `M-002`, ... の形式で連番付与する（CASPER分とv2分の採番順序は問わない）。
 
 採番と同時に **`$FINDINGS_TABLE` を作る。これが finding に関する唯一の source of truth** であり、
 `$FINDING_LIST` はここから導出する。
@@ -220,7 +247,8 @@ M-002: [MEDIUM] BALTHASAR — filepath:line — headline
 ...
 ```
 
-`filepath:line` には **`original_path`:`original_line`** を使う（常に存在する）。
+`filepath:line` には **`original_path`:`original_line`** を使う（`original_path`は常に存在する）。
+`original_line`が`null`のv2 findingは`filepath:?`のように`line`部分を`?`で表す（数値の`0`は使わない。`0`は「1行目を指す誤った値」との区別がつかなくなるため）。
 形式は変更しない。監査（4-2 / 4-3）の入出力契約・ID 母集合・検証条件も変更しない。
 
 **両者を別々に組み立ててはならない。** 突合による検証では **`body` の取り違えを検出できない**。
@@ -237,7 +265,9 @@ M-002: [MEDIUM] BALTHASAR — filepath:line — headline
 - `id` が重複していないこと
 - 各要素が必須フィールド（`id` / `persona` / `severity` / `headline` / `body` /
   `original_path` / `original_line`）を持ち、型が正しいこと
-  （`original_line` は正の整数、`body` は非空文字列）
+  （`original_line` は正の整数、または`null`——v2 findingでNormalizerがline番号を確信を持って
+  抽出できなかった場合。`null`は「値が無い」ことを表し、`0`等の数値で代用してはならない
+  （`0`は「行1を指す誤った値」と区別できなくなる）。`body` は非空文字列）
 
 ```bash
 jq -e '
@@ -250,8 +280,9 @@ jq -e '
             and (.headline? | type) == "string" and (.headline | length) > 0
             and (.body? | type) == "string" and (.body | length) > 0
             and (.original_path? | type) == "string" and (.original_path | length) > 0
-            and (.original_line? | type) == "number"
-            and (.original_line | floor) == .original_line and .original_line > 0)
+            and ((.original_line? | type) == "null"
+                 or ((.original_line? | type) == "number"
+                     and (.original_line | floor) == .original_line and .original_line > 0)))
     ' "$FINDINGS_TABLE" >/dev/null 2>&1
 ```
 
@@ -269,8 +300,10 @@ POST_INLINE=false
 BLOCK_LAYER=structure
 GROUNDING_NOTE=""
 AUDIT_NOTE=""
+IMPORTANCE_NOTE=""
 FALSE_POSITIVE_IDS=""
 MAGI_TMPDIR=""        # 4-2 を通らないので作られない
+MAGI_TMPDIR_IMPORTANCE=""  # 4-4 を通らないので作られない
 ```
 
 そのうえで次の順に進む。
@@ -291,7 +324,7 @@ MAGI_TMPDIR=""        # 4-2 を通らないので作られない
 > - **表が読めない** → 投稿に必要なデータが無い → `POST_INLINE=false`（サマリのみ）
 > - **表は読めるが grounding が失敗** → 位置情報だけが無い → 全件 `unanchorable`（通常 PR コメント）
 
-#### HIGH/MEDIUM 指摘が 0 件の場合
+#### 指摘が 0 件の場合（CASPERのHIGH/MEDIUM + v2の全候補、合計）
 
 Codex 監査とステップ 5（grounding）をスキップしてステップ 6 に進む。
 このとき次を**明示的に設定する**。未設定のままステップ 7 に到達すると、
@@ -301,10 +334,12 @@ Codex 監査とステップ 5（grounding）をスキップしてステップ 6 
 POST_INLINE=true      # 監査失敗ではない。投稿対象が 0 件なだけ
 BLOCK_LAYER=""
 AUDIT_NOTE=""
+IMPORTANCE_NOTE=""
 GROUNDING_NOTE=""
 FALSE_POSITIVE_IDS=""
 FINDING_LIST=""
 MAGI_TMPDIR=""        # 4-2 を通らないので作られない。ステップ 8 の後片付けが参照する
+MAGI_TMPDIR_IMPORTANCE=""  # 4-4 を通らないので作られない。ステップ 8 の後片付けが参照する
 printf '{"schema_version":"1","findings":[]}\n' > "$FINDINGS_TABLE"
 ```
 
@@ -324,6 +359,8 @@ MAGI_TMPDIR=$(mktemp -d)
 `skills/magi-common/references/codex-audit.md`（repo 内）または `~/.claude/skills/magi-common/references/codex-audit.md` を Read ツールで読み込み、記載の手順に従って Codex を呼び出す。
 
 - 入力: `$FINDING_LIST`（finding-list fence）+ `$DIFF`（diff-block fence）
+- **v2 findingについては`body`（`$FINDINGS_TABLE`の該当行から取得）も`context-block`ラベル付きfenceとして追加で渡す。** v1（CASPER）はheadlineだけでも判定可能だが、v2はProblem/Breakageこそが実質的な指摘内容であり、headlineだけでは判定材料が不足するため。
+- **`severity`が`UNRATED`のv2 findingも、severity不在を理由に除外せず全件監査対象にする**（`$FINDING_LIST`の抽出自体がseverityでフィルタしないため、自然にこの通りになる）。
 - 出力: `$MAGI_TMPDIR/codex-audit.json`
 
 ### 4-3. 結果の判定
@@ -400,6 +437,46 @@ fi
 立て忘れると、ステップ 6 が構造化失敗の文言（`$NORMALIZED_RESULTS` を出す分岐）へ流れる。
 判定ロジックそのものは変更していない。
 
+`$POST_INLINE` が `false` の場合はステップ 4-4 をスキップしてステップ 5（実質的にはステップ 6）へ進む。
+このとき `MAGI_TMPDIR_IMPORTANCE=""`（4-4 を通らないので作られない）と `IMPORTANCE_NOTE=""` を設定する。
+
+### 4-4. Codex 重要度判定（v2 findingのみ）
+
+**「本物の指摘か」（4-2/4-3の妥当性判定）と「投稿する価値があるか」（重要度）は別の問いであり、明示的に別ステップとして分離する。**
+
+**対象:** `$FINDINGS_TABLE`のうち`severity == "UNRATED"`（v2由来）かつステップ4-3で`valid`または`needs_human`と判定されたfindingのみ。CASPER（v1）のfindingはこのステップを通さず、既存の`severity`をそのまま`importance`として扱う（変更不要）。`false_positive`のv2 findingも対象外（無駄なCodex呼び出しを避ける。`severity`は`UNRATED`のまま残るが、ステップ7で`$FALSE_POSITIVE_IDS`により別途除外されるため実害はない）。
+
+対象findingが0件の場合は `MAGI_TMPDIR_IMPORTANCE=""` と `IMPORTANCE_NOTE=""` を設定し、このステップをスキップしてステップ5へ進む。
+
+**`$MAGI_TMPDIR`（4-2で作成済み）を再代入してはならない。** 同じ変数名で `mktemp -d` すると
+4-2で作った監査用tmpdirへの参照が失われ、ステップ8の `rm -rf "$MAGI_TMPDIR"` が
+4-2のtmpdir（`codex-audit.json`等）を永久にリークさせる。**別変数 `$MAGI_TMPDIR_IMPORTANCE` を使う。**
+
+```bash
+MAGI_TMPDIR_IMPORTANCE=$(mktemp -d)
+```
+
+`skills/magi-common/references/codex-importance.md`（repo 内）または `~/.claude/skills/magi-common/references/codex-importance.md` を Read ツールで読み込み、記載の手順に従って Codex を呼び出す（手順中の `$MAGI_TMPDIR` は `$MAGI_TMPDIR_IMPORTANCE` に読み替える）。
+
+- 入力: 対象findingの`id`/`headline`/`body`（`$IMPORTANCE_INPUT`）+ 該当ペルソナの`review-criteria.md`の`## Severity Standards`節（`$SEVERITY_STANDARDS`）
+- 出力: `$MAGI_TMPDIR_IMPORTANCE/codex-importance.json`
+
+**成功した場合:** `$FINDINGS_TABLE`の該当findingの`severity`を、返された`importance`値（`HIGH`/`MEDIUM`/`LOW`）で上書きする。
+
+**失敗した場合（`IMPORTANCE_SKIPPED`/`IMPORTANCE_ERROR`）:** 対象findingの`severity`は`UNRATED`のまま残す。`BLOCK_LAYER=importance`を設定する（`$POST_INLINE`自体は`true`のまま変更しない——監査を通過した他のfindingの投稿は妨げない）。
+
+```bash
+IMPORTANCE_NOTE=""
+if [ ! -f "$MAGI_TMPDIR_IMPORTANCE/codex-importance.json" ] || jq -e 'type == "object" and has("error")' "$MAGI_TMPDIR_IMPORTANCE/codex-importance.json" >/dev/null 2>&1; then
+  BLOCK_LAYER=importance
+  IMPORTANCE_NOTE="IMPORTANCE_FAILED（重要度判定に失敗したため、対象v2指摘はサマリのみに記載しインライン投稿しない）"
+fi
+```
+
+対象findingが0件でこのステップ自体をスキップした場合は `MAGI_TMPDIR_IMPORTANCE=""` としておく（ステップ8の後片付けが未設定変数を参照しないように）。
+
+`$MAGI_TMPDIR_IMPORTANCE`は削除せず、失敗時は調査可能な状態を保つ（`codex-audit.md`と同様）。`$IMPORTANCE_NOTE`はステップ6のサマリと8の結果表示に出す。
+
 ステップ 5（grounding）に進む。
 
 ## ステップ 5: grounding（アンカーの確認と補正）
@@ -417,10 +494,26 @@ grounding は **監査の代替ではなく補助検査**である。担当す�
 > 妥当な指摘は普通にあり、その修正案は diff にも作業ツリーにも存在しない。
 > 「全候補が不在＝幻覚」は成立しない。**アンカーできなければ通常 PR コメントへ退避するだけ**にする。
 
+**`original_line`が`null`のfinding（v2、Normalizerがline番号を確信を持って抽出できなかったもの）は、`scripts/magi-ground-findings.sh`に渡す前に除外する。** このスクリプトは`original_line`の型が`number`であることを全件に要求しており、`null`が1件でも混じると**表全体が拒否されてスクリプトが失敗し、他の全findingまで`unanchorable`に巻き込まれる**（5-3の失敗経路）。これを避けるため、`null`のfindingは直接`anchor_status: "unanchorable"`として扱い、スクリプトの入力には含めない。
+
 ```bash
 GROUNDING_NOTE=""
 ANCHORS_JSON="$MAGI_RUN_DIR/anchors.json"
-if bash scripts/magi-ground-findings.sh "$FINDINGS_TABLE" "$MAGI_RUN_DIR/pr.diff" > "$ANCHORS_JSON" 2>/dev/null; then
+
+# original_line が null の finding を分離し、直接 unanchorable にする
+NULL_LINE_ANCHORS=$(jq -c '[.findings[] | select(.original_line == null) | {id, anchored_path: "", anchored_line: 0, side: "", anchor_status: "unanchorable"}]' "$FINDINGS_TABLE")
+GROUNDABLE_TABLE="$MAGI_RUN_DIR/findings-table-groundable.json"
+jq '{schema_version, findings: [.findings[] | select(.original_line != null)]}' "$FINDINGS_TABLE" > "$GROUNDABLE_TABLE"
+
+if [ "$(jq '.findings | length' "$GROUNDABLE_TABLE")" = "0" ]; then
+  # groundable な finding が無い（全件 null-line）場合はスクリプトを呼ばず、
+  # NULL_LINE_ANCHORS だけを anchors とする
+  jq -n --argjson anchors "$NULL_LINE_ANCHORS" '{schema_version: "1", anchors: $anchors}' > "$ANCHORS_JSON"
+  GROUNDING_OK=true
+elif bash scripts/magi-ground-findings.sh "$GROUNDABLE_TABLE" "$MAGI_RUN_DIR/pr.diff" > "$MAGI_RUN_DIR/anchors-script.json" 2>/dev/null; then
+  # スクリプト出力と null-line 分を合成する
+  jq -n --argjson script "$(jq '.anchors' "$MAGI_RUN_DIR/anchors-script.json")" --argjson nullpart "$NULL_LINE_ANCHORS" \
+    '{schema_version: "1", anchors: ($script + $nullpart)}' > "$ANCHORS_JSON"
   GROUNDING_OK=true
 else
   GROUNDING_OK=false
@@ -548,6 +641,7 @@ grounding をサマリ投稿より前に置いたのはこのため。
 |---|---|---|
 | 構造化層（`$FINDINGS_TABLE` 生成・構造検証） | 4-2 / 4-3 とステップ 5・7 をスキップし、ステップ 6 で `$NORMALIZED_RESULTS` を出す | **`false`** |
 | 監査層（Codex audit） | インライン投稿を一切しない。`$FINDING_LIST` をサマリに出す | **`false`** |
+| 重要度層（Codex importance、v2 findingのみ） | 対象findingの`severity`が`UNRATED`のまま残る。サマリのみに記載しインライン投稿しない | **変更しない**（他findingの投稿は継続） |
 | anchor 層（grounding） | インラインは張らず全件を通常 PR コメントへ | **変更しない** |
 
 anchor 層だけ `$POST_INLINE` を触らないのは、**位置が確定しないだけで投稿自体は可能**だから。
@@ -585,6 +679,9 @@ SUMMARY_URL=$(gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
 $AUDIT_NOTE が空でない場合はサマリ末尾に以下を追記する:
 > ⚠ Codex 監査: \`$AUDIT_NOTE\`
 
+$IMPORTANCE_NOTE が空でない場合はサマリ末尾に以下を追記する:
+> ⚠ 重要度判定: \`$IMPORTANCE_NOTE\`（該当件数はサマリのみに記載しインライン投稿しない）
+
 $GROUNDING_NOTE が空でない場合はサマリ末尾に以下を追記する:
 > ⚠ grounding: \`$GROUNDING_NOTE\`
 
@@ -592,6 +689,8 @@ Codex 監査で `false_positive` 除外が発生した場合は以下を追記�
 > Codex 監査除外: N件（誤検知と判定）" \
   --jq '.html_url')
 ```
+
+**severity表（HIGH/MEDIUM/LOW）の3列は維持する。** `severity == "UNRATED"`（4-4失敗分）は列に含めず、別途「重要度判定失敗: N件（サマリのみ）」として記載する。
 
 ### `$POST_INLINE` が `false` の場合
 
@@ -670,7 +769,13 @@ body も anchor 情報も同じ表の同じ行から取るので、**取り違�
 1. **`$FALSE_POSITIVE_IDS` に含まれる ID は投稿しない**（`false_positive` 判定済み）。
    これは `anchor_status` の分岐より**前**に適用する。
    anchor 情報の追加は投稿対象の判断を変えるものではない
-2. 残った ID について `anchor_status` で**事前分岐**する（422 エラーを待たない）
+2. **`severity == "LOW"` または `severity == "UNRATED"` の ID は投稿しない。**
+   v1（CASPER）は元々ステップ4-1の抽出時点でHIGH/MEDIUM以外を捨てているため、LOWは
+   「そもそもテーブルに来ない」ことで事実上除外されていた。v2は全候補を一度テーブルに入れるため、
+   ここで明示的に除外する（`$FALSE_POSITIVE_IDS`と同様の扱いで、除外理由を分けて記録する）。
+   `UNRATED`はステップ4-4の重要度判定が失敗したまま残ったfindingであり、サマリには「重要度判定失敗」
+   として記載済みだが、インラインには出さない
+3. 残った ID について `anchor_status` で**事前分岐**する（422 エラーを待たない）
 
 | `anchor_status` | 経路 |
 |---|---|
@@ -724,10 +829,17 @@ gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
 
 ```bash
 # 監査が失敗した場合は raw 出力を確認できるよう $MAGI_TMPDIR を残す
-# 空チェックを外してはならない。監査をスキップする経路（HIGH/MEDIUM 0件・構造検証失敗）では
+# 空チェックを外してはならない。監査をスキップする経路（指摘 0件・構造検証失敗）では
 # 4-2 を通らず $MAGI_TMPDIR が作られないまま、ここに到達する
 if [ "$POST_INLINE" = "true" ] && [ -n "$MAGI_TMPDIR" ]; then
   rm -rf "$MAGI_TMPDIR"
+fi
+
+# 重要度判定（4-4）が失敗した場合は raw 出力を確認できるよう $MAGI_TMPDIR_IMPORTANCE を残す。
+# BLOCK_LAYER=importance のときだけ残す（POST_INLINE は importance 失敗時も true のまま変わらないため、
+# 上のブロックと同じ条件では判定できない）
+if [ "$BLOCK_LAYER" != "importance" ] && [ -n "$MAGI_TMPDIR_IMPORTANCE" ]; then
+  rm -rf "$MAGI_TMPDIR_IMPORTANCE"
 fi
 
 # PR 全体用の作業ディレクトリはここで片付ける
@@ -789,4 +901,12 @@ unset MAGI_RUN_DIR
 ```
 grounding: 失敗（⚠ $GROUNDING_NOTE）
   全 N 件を通常 PR コメントとして投稿した（インラインは 0 件）
+```
+
+`$IMPORTANCE_NOTE` が空でない場合は、上記に加えて以下を表示する
+（`$POST_INLINE` が `true` のときにも起こりうる——重要度判定はインライン投稿の可否とは別層のため）。
+
+```
+重要度判定: 失敗（⚠ $IMPORTANCE_NOTE）
+  該当 v2 指摘 N 件は重要度未確定のためサマリコメント本文にのみ記載（インライン投稿なし）
 ```

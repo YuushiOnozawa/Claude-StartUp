@@ -1,4 +1,4 @@
-# DETECTION NOTES Format (benchmark-only)
+# MAGI Output Format v2 (DETECTION NOTES)
 
 CRITICAL: Output ONLY the following format. No summaries, no explanations, no descriptions of what the code does.
 
