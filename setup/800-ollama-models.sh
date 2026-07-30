@@ -25,6 +25,7 @@ _om_base_url="$(ollama_base_url)"
 # Fast/Hard 共用（7B、コード特化）
 _om_shared=(
   "qwen2.5-coder:7b"   # MELCHIOR用
+  "qwen3:4b-instruct"  # Normalizer用（DETECTION NOTES契約の構造化清書）
 )
 
 # Hard 専用（高品質・重め）

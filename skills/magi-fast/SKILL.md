@@ -44,7 +44,7 @@ DIFF=$(printf '%s\n' "$DIFF" | bash scripts/magi-diff-filter.sh)
 
 **この後の全ペルソナ呼び出しで `MAGI_ORCHESTRATED=true` を設定する。**
 MELCHIOR/BALTHASAR（v2）は自分ではNormalizerを呼ばず生の結果を返す。`magi-fast`が
-ステップ5でまとめて1回のNormalizer呼び出しにバッチ化する（Codex呼び出し削減のため）。
+ステップ5でまとめて1回のNormalizer呼び出しにバッチ化する（呼び出し回数削減のため。モデルロード・推論のオーバーヘッドを削減する）。
 CASPER（v1）にはこの設定は影響しない。
 
 ```bash
@@ -78,7 +78,7 @@ MELCHIOR/BALTHASARは`$MAGI_ORCHESTRATED=true`で実行済みのため、生の�
 MAGI_TMPDIR_NORM=$(mktemp -d)
 ```
 
-`skills/magi-common/references/normalizer.md`（repo 内）または `~/.claude/skills/magi-common/references/normalizer.md` を Read ツールで読み込み、記載の手順に従ってCodexを呼び出す（手順中の `$MAGI_TMPDIR` は `$MAGI_TMPDIR_NORM` に読み替える）。
+`skills/magi-common/references/normalizer.md`（repo 内）または `~/.claude/skills/magi-common/references/normalizer.md` を Read ツールで読み込み、記載の手順に従ってNormalizerを実行する（手順中の `$MAGI_TMPDIR` は `$MAGI_TMPDIR_NORM` に読み替える）。
 
 - 入力: MELCHIOR/BALTHASARの生結果を`=== PERSONA: <name> / CHUNK: <path> (<n>) ===`ヘッダーで連結したもの
 - 出力: `$MAGI_TMPDIR_NORM/normalizer.json`

@@ -191,7 +191,7 @@ Read ツールで以下も読み込む（repo 内を優先、なければ絶対�
 
 1. `$MAGI_TMPDIR=$(mktemp -d)` で作業ディレクトリを作成する。
 2. 全チャンクの生結果（`$RESULT`）を、`=== PERSONA: $PERSONA_NAME / CHUNK: <path> (<n>) ===` ヘッダーを保ったまま `$NORMALIZE_INPUT` として保持する。
-3. `skills/magi-common/references/normalizer.md`（repo 内）または `~/.claude/skills/magi-common/references/normalizer.md` を Read ツールで読み込み、記載の手順に従ってCodexを呼び出す。
+3. `skills/magi-common/references/normalizer.md`（repo 内）または `~/.claude/skills/magi-common/references/normalizer.md` を Read ツールで読み込み、記載の手順に従ってNormalizerを実行する。
 4. 成功した場合、`$MAGI_TMPDIR/normalizer.json` の内容を `$NORMALIZED_RESULT` として保持する。人間可読な箇条書き（`- path:line — headline`）も添えて最終結果とする。**severityが付かないことを出力冒頭に明記する**（例: 「※ この結果はDETECTION NOTES契約（v2）のためseverity（重大度）は付与されません」）。
 5. 失敗（`NORMALIZE_SKIPPED`/`NORMALIZE_ERROR`）した場合は、`normalizer.md`の契約に従いHaiku fallbackへ切り替えるか、正規化前の生結果をその旨明記の上で表示する。
 6. `$MAGI_TMPDIR` を削除する。

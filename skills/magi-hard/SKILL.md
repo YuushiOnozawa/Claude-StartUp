@@ -65,7 +65,7 @@ IMPACT_CONTEXT=$(bash scripts/magi-impact-context.sh "$DIFF" 2>/dev/null || true
 **この後の全ペルソナ呼び出しで `MAGI_ORCHESTRATED=true` を設定する。**
 これにより v2 契約（MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIEL）のペルソナは
 自分では Normalizer を呼ばず生の結果を返す。`magi-hard` がステップ 3.7 でまとめて
-1 回の Normalizer 呼び出しにバッチ化する（Codex 呼び出し削減のため）。
+1 回の Normalizer 呼び出しにバッチ化する（呼び出し回数削減のため。モデルロード・推論のオーバーヘッドを削減する）。
 CASPER（v1、Normalizer 対象外）にはこの設定は影響しない。
 
 ```bash
@@ -162,11 +162,11 @@ CASPERの除外後の結果を `$MAGI_RUN_DIR/normalized-v1.md` として保持�
 
 ### MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIELの正規化（v2、バッチNormalizer）
 
-5体は`$MAGI_ORCHESTRATED=true`で実行済みのため、各自ではNormalizerを呼ばず生の結果（`$MELCHIOR_RESULT`/`$BALTHASAR_RESULT`/`$METATRON_RESULT`/`$SANDALPHON_RESULT`/`$LELIEL_RESULT`、チャンクヘッダー込み）を返している。ここで1回のバッチ呼び出しにまとめてNormalizerへ渡す（Codex呼び出し削減のため）。
+5体は`$MAGI_ORCHESTRATED=true`で実行済みのため、各自ではNormalizerを呼ばず生の結果（`$MELCHIOR_RESULT`/`$BALTHASAR_RESULT`/`$METATRON_RESULT`/`$SANDALPHON_RESULT`/`$LELIEL_RESULT`、チャンクヘッダー込み）を返している。ここで1回のバッチ呼び出しにまとめてNormalizerへ渡す（呼び出し回数削減のため。モデルロード・推論のオーバーヘッドを削減する）。
 
 1. `MAGI_TMPDIR=$(mktemp -d)` で作業ディレクトリを作成する。
 2. 5体の生結果を、それぞれ `=== PERSONA: <name> / CHUNK: <path> (<n>) ===` ヘッダーを保ったまま連結し、`$NORMALIZE_INPUT` として保持する。
-3. `skills/magi-common/references/normalizer.md`（repo 内）または `~/.claude/skills/magi-common/references/normalizer.md` を Read ツールで読み込み、記載の手順に従ってCodexを呼び出す。
+3. `skills/magi-common/references/normalizer.md`（repo 内）または `~/.claude/skills/magi-common/references/normalizer.md` を Read ツールで読み込み、記載の手順に従ってNormalizerを実行する。
 4. 成功した場合、`$MAGI_TMPDIR/normalizer.json` の内容を `$NORMALIZED_V2_JSON` として `$MAGI_RUN_DIR/normalized-v2.json` にコピーし保持する（`$MAGI_TMPDIR` はチャンク単位ではなくこのバッチ呼び出し専用なので、コピー後に削除してよい）。
 5. 失敗（`NORMALIZE_SKIPPED`/`NORMALIZE_ERROR`）した場合は、`normalizer.md`の契約に従いHaiku fallbackを試みる。それでも失敗する場合は、ステップ4-1の構造検証失敗と同様の扱い（v2分のみ`BLOCK_LAYER=structure`相当とし、v2 5体分は`$NORMALIZED_RESULTS`にraw結果をそのまま出す）とする。CASPER分（v1）は影響を受けず通常通り処理を続ける。
 
