@@ -11,13 +11,18 @@ For each candidate defect, output exactly:
 Location: <filepath>:<line>
 Problem: <one-sentence description of what is wrong>
 Breakage: <one-sentence description of the concrete impact if left unfixed>
+Evidence: <optional exact defective source code line copied verbatim from the diff>
 
 Separate each candidate with a blank line.
 
 ## Notes
 
 - Do NOT add a severity label (no `[HIGH]`/`[MEDIUM]`/`[LOW]`), no JSON, no table, no headline.
-- Do NOT write a summary or overall assessment section — Location/Problem/Breakage only, per candidate.
-- Maximum 4 lines per candidate (Location + Problem + Breakage + at most one continuation line).
+- Do NOT write a summary or overall assessment section — Location/Problem/Breakage/Evidence only, per candidate.
+- `Evidence:` is optional. If you can quote the defective source code line from the diff, copy that source line exactly as-is.
+- If you cannot quote the defective source line, omit the `Evidence:` line and keep the finding.
+- Do NOT wrap the `Evidence:` value in Markdown decoration (no backticks, no code fence). Write only the source line itself.
+- Do NOT include the diff leading marker (`+`/`-`/context leading space) in `Evidence:`. Write only the source code itself.
+- Maximum 5 lines per candidate (Location + Problem + Breakage + Evidence if present + at most one continuation line).
 - Maximum 20 candidates. If you find more, keep only the 20 you are most confident about.
 - If you have no candidates, output exactly: `No findings.`

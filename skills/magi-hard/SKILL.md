@@ -213,7 +213,13 @@ FINDINGS_TABLE="$MAGI_RUN_DIR/findings-table.json"
     { "id": "M-001", "persona": "MELCHIOR", "severity": "HIGH",
       "headline": "unquoted variable causes word splitting",
       "body": "…複数行の raw 本文…",
-      "original_path": "scripts/example.sh", "original_line": 17 }
+      "evidence": "$cmd $arg",
+      "original_path": "scripts/example.sh", "original_line": 17 },
+    { "id": "M-002", "persona": "CASPER", "severity": "MEDIUM",
+      "headline": "unquoted variable causes word splitting",
+      "body": "…複数行の raw 本文…",
+      "evidence": null,
+      "original_path": "scripts/example.sh", "original_line": 21 }
   ]
 }
 ```
@@ -221,6 +227,7 @@ FINDINGS_TABLE="$MAGI_RUN_DIR/findings-table.json"
 | フィールド | 出所 |
 |---|---|
 | `id` / `persona` / `severity` / `headline` / **`body`（raw 本文）** | ステップ 3.7 の結果に採番して格納 |
+| `evidence` | v2の5体: `normalized-v2.json`の`evidence`をそのまま格納（nullならnull）。CASPER（v1）: 常に`null`固定（v1契約に該当フィールドが無いため） |
 | `original_path` / `original_line` | ステップ 3.7 の結果（**モデルの申告値**） |
 | `anchored_path` / `anchored_line` / `side` / `anchor_status` | **ここでは入れない**（ステップ 5 が書き足す） |
 
@@ -263,11 +270,11 @@ M-002: [MEDIUM] BALTHASAR — filepath:line — headline
 
 - `findings` が**配列**であること（**空配列は正常**。下記の 0 件経路で使う）
 - `id` が重複していないこと
-- 各要素が必須フィールド（`id` / `persona` / `severity` / `headline` / `body` /
+- 各要素が必須フィールド（`id` / `persona` / `severity` / `headline` / `body` / `evidence` /
   `original_path` / `original_line`）を持ち、型が正しいこと
   （`original_line` は正の整数、または`null`——v2 findingでNormalizerがline番号を確信を持って
   抽出できなかった場合。`null`は「値が無い」ことを表し、`0`等の数値で代用してはならない
-  （`0`は「行1を指す誤った値」と区別できなくなる）。`body` は非空文字列）
+  （`0`は「行1を指す誤った値」と区別できなくなる）。`body` は非空文字列。`evidence` は非空文字列または`null`）
 
 ```bash
 jq -e '
@@ -279,6 +286,9 @@ jq -e '
             and (.severity? | type) == "string" and (.severity | length) > 0
             and (.headline? | type) == "string" and (.headline | length) > 0
             and (.body? | type) == "string" and (.body | length) > 0
+            and has("evidence")
+            and (((.evidence? | type) == "string" or (.evidence? | type) == "null")
+                 and ((.evidence? | type) != "string" or (.evidence | length) > 0))
             and (.original_path? | type) == "string" and (.original_path | length) > 0
             and ((.original_line? | type) == "null"
                  or ((.original_line? | type) == "number"
@@ -584,6 +594,7 @@ ID 集合だけを見ると、`anchor_status: "ok"` なのに `anchored_line` �
 { "id": "M-001", "persona": "MELCHIOR", "severity": "HIGH",
   "headline": "unquoted variable causes word splitting",
   "body": "…複数行の raw 本文…",
+  "evidence": "$cmd $arg",
   "original_path": "scripts/example.sh", "original_line": 17,
   "anchored_path": "scripts/example.sh", "anchored_line": 19,
   "side": "RIGHT", "anchor_status": "corrected" }
