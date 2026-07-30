@@ -69,7 +69,7 @@ system と prompt を分離して一時ファイルに書き出す。未信頼�
 - 責務の明示: `severityや重要度、妥当性の判定は行わないでください。候補を削除・統合・要約しないでください。読み取れた内容をそのまま構造化するだけにしてください`
 - 独立性の明示: `各候補ブロックは互いに独立しています。ある候補のフィールドに、別の候補の内容を混ぜないでください`
 - `line`の扱い: `Location: path:line の line 部分が明確に読み取れない場合は、line を推測せず null にしてください`
-- `evidence`の扱い: `Evidence:` 行があれば、その内容を前後の空白のみ除去して `evidence` に入れてください。それ以上の加工はしないでください。`Evidence:` 行が無い場合、または除去後に空文字列になる場合は `null` にしてください
+- `evidence`の扱い: `Evidence:` 行があれば、その内容を前後の空白のみ除去して `evidence` に入れてください。それ以上の加工はしないでください。`Evidence:` 行が無い場合、または除去後に空文字列になる場合は `null` にしてください。`evidence`キー自体は省略せず、値が無い場合は必ず`null`を明示してください
 - 出力形式: ステップ 4 の JSON schema に従うことを明記する
 
 `$MAGI_TMPDIR/normalizer-prompt.txt` には、`$NORMALIZE_INPUT` を `raw-notes` ラベル付き Markdown fence に入れる。`$NORMALIZE_INPUT` 中の最長の連続バッククォート数を数え、それより1つ長いバッククォート列（最低3文字）を外側fenceに使う。CommonMarkでは閉じfenceは開きfence以上の長さが必要なため、入力内の短いバッククォート列は外側fenceを閉じない。
@@ -168,9 +168,8 @@ _normalizer_valid() {
           and (has("body") | not)
           and (.problem? | type) == "string" and (.problem | length) > 0
           and (.breakage? | type) == "string" and (.breakage | length) > 0
-          and has("evidence")
-          and (((.evidence? | type) == "string" or (.evidence? | type) == "null")
-               and ((.evidence? | type) != "string" or (.evidence | length) > 0))
+          and (((.evidence? // null) | type == "null")
+               or ((.evidence? // null) | type == "string" and length > 0))
           and has("line")
           and ((.line == null)
                or ((.line | type) == "number"
@@ -219,7 +218,7 @@ Normalizerをproductionで使う前に、以下を満たすことを確認する
 
 - 候補を落とさない（入力にある `Location:` ブロックの数と、出力JSON配列の要素数が一致する）
 - フィールドを捏造しない（`path`/`headline`/`body`は入力に無い内容を作らない。`line`は確信できない場合は`null`）
-- `evidence`を捏造しない（入力に無い内容を作らない。バッククォート除去以外の加工をしない）
+- `evidence`を捏造しない（入力に無い内容を作らない。値が無い場合は`null`にする。バッククォート除去以外の加工をしない）
 - 複数回実行して再現性がある（同じ入力に対し、候補数・内容が安定している）
 - `false_positive`濾過をしない（明らかに誤検知に見える候補も、削らずそのまま出力する）
 
