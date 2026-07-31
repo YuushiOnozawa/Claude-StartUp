@@ -195,14 +195,56 @@ NORMALIZED_RESULTS="$MAGI_RUN_DIR/normalized.md"
 
 **v2の5体（MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIEL）:** `normalized-v2.json`（バッチNormalizer出力）の各要素を候補とする。**severityによる事前フィルタはしない**（全候補を採番、recall優先の設計方針。絞り込みは後述ステップ4-4に委ねる）。`severity`は暫定値`"UNRATED"`とする（ステップ4-4でCodexが`importance`を判定した後、`HIGH`/`MEDIUM`/`LOW`で上書きする）。`persona`はNormalizer出力の`persona`フィールドをそのまま使う。`original_path`/`original_line`はNormalizer出力の`path`/`line`（`line`が`null`の場合はそのまま`original_line: null`とする。捏造しない。ステップ5でアンカー不能扱いにする）。
 
-両者を`M-001`, `M-002`, ... の形式で連番付与する（CASPER分とv2分の採番順序は問わない）。
+```bash
+PRE_ID_CANDIDATES="$MAGI_RUN_DIR/pre-id-candidates.json"
+```
 
-採番と同時に **`$FINDINGS_TABLE` を作る。これが finding に関する唯一の source of truth** であり、
-`$FINDING_LIST` はここから導出する。
+`$PRE_ID_CANDIDATES` は、CASPER（v1）の抽出候補とv2の5体の候補を連結した単一の JSON 配列として保持する。CASPER分は各候補を `persona: "CASPER"`、見出し由来の `severity`（`HIGH`/`MEDIUM`）、`headline`、`body`、`evidence: null`、`original_path`、`original_line` を持つ object にする。v2分は `normalized-v2.json` の各要素について `path` を `original_path`、`line` を `original_line` にリネームし（元の `path`/`line` キーは残さない）、`severity: "UNRATED"` を持つ同じ形の object にする。
+
+#### 採番前の重複統合（機械的完全一致dedup）
+
+`skills/magi-common/references/normalizer.md` 15行目は、重複除去を Normalizer の責務ではなく呼び出し元の責務としている。ここで行うのがその実装である。
+
+CASPER（v1）とv2の候補をマージした **pre-ID candidate list** に対し、採番前に機械的な重複統合を1回だけ行う。重複キーは `persona` / `headline` / `original_path` / `original_line` / `evidence` / `body` の6フィールドの byte-for-byte 完全一致とし、6つすべてが一致する場合だけ同一候補として扱う。`body` を含めるのは、同じ persona / line / headline / evidence を共有しても Problem / Breakage の内容が異なる正当な別 finding を潰さないため。
+
+dedup は **同一 `persona` 内だけ**で行う。異なる persona が同じ場所を指すことは有用な corroboration signal なので、persona をまたいで統合してはならない。
+
+先に出た候補を残し、first-occurrence order を維持する。`jq unique_by` は order-stable ではないため使わず、`reduce` で実装する。
+
+`evidence: null` と `evidence: ""` は別値として扱う。空文字列は後続の構造検証で失敗するが、dedup キー作成時に `null` を `""` や文字列 `"null"` へ変換してはならない。
+
+```bash
+DEDUPED_CANDIDATES="$MAGI_RUN_DIR/deduped-candidates.json"
+```
+
+`$DEDUPED_CANDIDATES` は、`$PRE_ID_CANDIDATES` と同じ field shape の JSON 配列として、重複統合後・採番前の候補だけを保持する。
+
+```bash
+jq -e '
+      reduce .[] as $finding (
+        {findings: [], seen_keys: []};
+        ($finding | [.persona, .headline, .original_path, .original_line, .evidence, .body] | @json) as $key
+        | if (.seen_keys | index($key)) then
+            .
+          else
+            .findings += [$finding]
+            | .seen_keys += [$key]
+          end
+      )
+      | .findings
+    ' "$PRE_ID_CANDIDATES" > "$DEDUPED_CANDIDATES"
+```
+
+この dedup は **`M-001`, `M-002`, ... の採番より前**、かつ後述の **表の構造検証より前**に行う。構造検証の意味は変えず、重複統合済みの小さい配列を同じ条件で検証する。
+
+`$DEDUPED_CANDIDATES` の各候補を`M-001`, `M-002`, ... の形式で連番付与する（CASPER分とv2分の採番順序は問わない）。
 
 ```bash
 FINDINGS_TABLE="$MAGI_RUN_DIR/findings-table.json"
 ```
+
+`$FINDINGS_TABLE` は `$DEDUPED_CANDIDATES` の各候補に採番した `id` を加えて組み立てる。採番と同時に **`$FINDINGS_TABLE` を作る。これが finding に関する唯一の source of truth** であり、
+`$FINDING_LIST` はここから導出する。
 
 #### 表の形（grounding 前）
 
