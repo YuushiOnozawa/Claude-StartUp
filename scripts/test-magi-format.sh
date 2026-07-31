@@ -59,7 +59,7 @@ PASS=0
 FAIL=0
 SKIP=0
 
-DEFAULT_OUTPUT_FORMAT_PATH="skills/magi-common/references/output-format.md"
+DEFAULT_OUTPUT_FORMAT_PATH="skills/magi-common/references/output-format-v2.md"
 
 extract_output_format_path() {
   local skill_file="$1"

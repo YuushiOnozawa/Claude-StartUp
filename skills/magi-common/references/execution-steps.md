@@ -6,7 +6,7 @@
 - `$OLLAMA_MODEL` — Ollama モデル名（例: `qwen2.5-coder:7b`）
 - `$PERSONA_NAME` — ペルソナ名（例: `MELCHIOR`）
 - `$AGENT_PATH` — Haiku fallback 時のエージェント定義パス（例: `agents/melchior.md`）
-- `$OUTPUT_FORMAT_PATH`（省略可） — 出力契約ファイルのパス。省略時は `skills/magi-common/references/output-format.md`（v1・severity付き）を使う。v2ペルソナ（DETECTION NOTES契約）は `skills/magi-common/references/output-format-v2.md` を設定する
+- `$OUTPUT_FORMAT_PATH`（省略可） — 出力契約ファイルのパス。省略時は `skills/magi-common/references/output-format-v2.md`（DETECTION NOTES契約）を使う。全6ペルソナがこの契約を使う
 - `$MAGI_ORCHESTRATED`（省略可） — 呼び出し元が `magi-fast`/`magi-hard` 等のオーケストレーターであることを示すフラグ。**文字列 `true` との完全一致のみ有効**とする。設定されている場合、v2ペルソナは自分ではNormalizerを呼ばず生の結果を返す（呼び出し元がバッチでNormalizerを呼ぶ）。未設定（単体実行）の場合、v2ペルソナは自分でNormalizerを呼ぶ。**この変数は呼び出し元がペルソナSKILL.mdを呼ぶときにのみ設定するものであり、ペルソナ実行の内部で発生する他のサブ処理へ暗黙に引き継いではならない**（単体実行での二重Normalizer呼び出しを防ぐため）
 
 ---
@@ -86,7 +86,7 @@ curl -sf --max-time 5 "${_magi_base_url:-http://localhost:11434}/api/tags" 2>/de
    - `skills/magi-common/references/task-base.md`（repo 内）または `/home/<user>/.claude/skills/magi-common/references/task-base.md`
    - `skills/<persona>/references/task-instruction.md`（repo 内）または `/home/<user>/.claude/skills/<persona>/references/task-instruction.md`
    - `skills/<persona>/references/review-criteria.md`（repo 内）または `/home/<user>/.claude/skills/<persona>/references/review-criteria.md`
-   - `$OUTPUT_FORMAT_PATH`（省略時は `skills/magi-common/references/output-format.md`）（repo 内）または `/home/<user>/.claude/` 配下の同パス
+   - `$OUTPUT_FORMAT_PATH`（省略時は `skills/magi-common/references/output-format-v2.md`）（repo 内）または `/home/<user>/.claude/` 配下の同パス
 
 2. system/prompt を分離して一時ファイルに書き出す（差分内の特殊文字によるシェル誤展開を防ぐため）:
 
@@ -167,7 +167,7 @@ Read ツールで以下も読み込む（repo 内を優先、なければ絶対�
 - `skills/magi-common/references/task-base.md`
 - `skills/<persona>/references/task-instruction.md`
 - `skills/<persona>/references/review-criteria.md`
-- `$OUTPUT_FORMAT_PATH`（省略時は `skills/magi-common/references/output-format.md`）
+- `$OUTPUT_FORMAT_PATH`（省略時は `skills/magi-common/references/output-format-v2.md`）
 
 取得したコード・差分とペルソナ定義・references/ の内容を合わせて `Agent(subagent_type="general-purpose", model="haiku")` に渡す:
 - `agents/<persona>.md` の全内容（ペルソナ・人格）
@@ -190,7 +190,7 @@ Read ツールで以下も読み込む（repo 内を優先、なければ絶対�
 
 ## ステップ 2.5: Normalizer（v2契約・単体実行時のみ）
 
-**`$OUTPUT_FORMAT_PATH` が `output-format-v2.md` を指しており、かつ `$MAGI_ORCHESTRATED` が `true` でない場合にのみ実行する。** それ以外（v1ペルソナ、またはオーケストレーターから呼ばれた場合）はこのステップをスキップし、ステップ3にそのまま進む。
+**`$OUTPUT_FORMAT_PATH` が `output-format-v2.md` を指しており、かつ `$MAGI_ORCHESTRATED` が `true` でない場合にのみ実行する。** それ以外（オーケストレーターから呼ばれた場合等）はこのステップをスキップし、ステップ3にそのまま進む。
 
 1. `$MAGI_TMPDIR=$(mktemp -d)` で作業ディレクトリを作成する。
 2. 全チャンクの生結果（`$RESULT`）を、`=== PERSONA: $PERSONA_NAME / CHUNK: <path> (<n>) ===` ヘッダーを保ったまま `$NORMALIZE_INPUT` として保持する。
