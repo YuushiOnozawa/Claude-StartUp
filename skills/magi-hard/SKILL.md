@@ -63,10 +63,9 @@ IMPACT_CONTEXT=$(bash scripts/magi-impact-context.sh "$DIFF" 2>/dev/null || true
 失敗時は空文字で続行（中断しない）。
 
 **この後の全ペルソナ呼び出しで `MAGI_ORCHESTRATED=true` を設定する。**
-これにより v2 契約（MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIEL）のペルソナは
+これにより各ペルソナは
 自分では Normalizer を呼ばず生の結果を返す。`magi-hard` がステップ 3.7 でまとめて
 1 回の Normalizer 呼び出しにバッチ化する（呼び出し回数削減のため。モデルロード・推論のオーバーヘッドを削減する）。
-CASPER（v1、Normalizer 対象外）にはこの設定は影響しない。
 
 ```bash
 MAGI_ORCHESTRATED=true
@@ -109,70 +108,17 @@ MAGI_ORCHESTRATED=true
 
 ## ステップ 3.7: 指摘の正規化
 
-**CASPER（v1、severity付き `### [HIGH]` 形式）と、MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIEL（v2、DETECTION NOTES契約）で正規化の方法が異なる。**
-
-### CASPERの正規化（v1、既存ロジックのまま）
-
-CASPERの結果（`$CASPER_RESULT`）から**指摘ではない見出しを除外**する。以降のステップ（カウント・Codex 監査・投稿）はすべて除外後の結果を使う。
-
-### 除外 1: `No findings` 見出し
-
-見出しの本文が `No findings` のもの（例: `### [HIGH] No findings`）は指摘として扱わない。
-
-ローカルLLMは「指摘がなければ No findings と明記せよ」という指示を、Assessment ではなく各重大度見出しに適用することがある。除外しないとサマリの件数が水増しされ、「No findings」というインラインコメントが PR に投稿される。
-
-### 除外 2: few-shot 例文の引き写し
-
-弱いモデルは `skills/<persona>/references/task-instruction.md` の `<EXAMPLES>` に置かれた
-見本をそのまま出力することがある（実測: `llama3.1:8b` で 14/14 件が例文のコピー）。
-
-**headline の一致だけを条件にしてはならない。** 各ペルソナの例文見出しは
-`command injection via unquoted user input` のように**本物の脆弱性でも自然に出る**文言であり、
-このステップは Codex 監査より前にあるため、ここで消すと監査にも人間にも渡らない。
-
-除外するのは次の**両方**を満たす指摘に限る。
-
-1. headline（`— ` 以降）が、担当ペルソナの `<EXAMPLES>` 内の見出しと一致する
-   （ファイルパスと行番号は当然異なるので比較対象にしない。正規化して比較する）
-2. **かつ** 次のいずれか
-   - 指摘の本文が例文の本文を引き写している
-   - `filepath` が例文の `filepath` と一致し、**かつその `filepath` が今回の diff に存在しない**
-
-2つ目の条件で diff 不在を要求するのは、**例文の filepath が実在しうる**ため。
-METATRON の例文は `scripts/run.sh:23 — command injection via unquoted user input` だが、
-diff が本当に `scripts/run.sh` に `eval $USER_INPUT` を追加したなら、同じ headline の
-妥当な HIGH が出る。filepath 一致だけを根拠にすると、この本物を Codex 監査より前に消す。
-
-> headline を例文からコピーしつつ filepath を diff 内のものに差し替え、本文を言い換えた
-> ケースは、この条件では除外されず投稿経路に残る。**これは意図的な判断**で、
-> 本物の指摘を消すより Codex 監査に判定を委ねるほうが安全なため。
-
-参考: CASPERの例文 filepath（v2化された5ペルソナは`###`見出しを使わないため、この除外機構自体が構造的に無害。参考表からも除外する）
-
-| ペルソナ | 例文の filepath |
-|---|---|
-| CASPER | `scripts/deploy.sh` / `scripts/build.sh` |
-
-> **「`filepath` が diff に存在しない」を単独の除外根拠にしてはならない。**
-> `magi-hard` は差分外の行を通常 PR コメントへフォールバックする設計を持っており（ステップ 7 の退避経路）、
-> diff 外の path はそれだけでは誤りではない。上記の条件 2 で diff 不在を使うのは、
-> 「headline が例文と一致」「filepath が例文と一致」と**併せて**判定するためであり、単独では使わない。
-
-CASPERの除外後の結果を `$MAGI_RUN_DIR/normalized-v1.md` として保持する（v2側の結果と合わせて後述「正規化結果の書き出し」でまとめる）。
-
-### MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIELの正規化（v2、バッチNormalizer）
-
-5体は`$MAGI_ORCHESTRATED=true`で実行済みのため、各自ではNormalizerを呼ばず生の結果（`$MELCHIOR_RESULT`/`$BALTHASAR_RESULT`/`$METATRON_RESULT`/`$SANDALPHON_RESULT`/`$LELIEL_RESULT`、チャンクヘッダー込み）を返している。ここで1回のバッチ呼び出しにまとめてNormalizerへ渡す（呼び出し回数削減のため。モデルロード・推論のオーバーヘッドを削減する）。
+6体は`$MAGI_ORCHESTRATED=true`で実行済みのため、各自ではNormalizerを呼ばず生の結果（`$MELCHIOR_RESULT`/`$BALTHASAR_RESULT`/`$CASPER_RESULT`/`$METATRON_RESULT`/`$SANDALPHON_RESULT`/`$LELIEL_RESULT`、チャンクヘッダー込み）を返している。ここで1回のバッチ呼び出しにまとめてNormalizerへ渡す（呼び出し回数削減のため。モデルロード・推論のオーバーヘッドを削減する）。
 
 1. `MAGI_TMPDIR=$(mktemp -d)` で作業ディレクトリを作成する。
-2. 5体の生結果を、それぞれ `=== PERSONA: <name> / CHUNK: <path> (<n>) ===` ヘッダーを保ったまま連結し、`$NORMALIZE_INPUT` として保持する。
+2. 6体の生結果を、それぞれ `=== PERSONA: <name> / CHUNK: <path> (<n>) ===` ヘッダーを保ったまま連結し、`$NORMALIZE_INPUT` として保持する。
 3. `skills/magi-common/references/normalizer.md`（repo 内）または `~/.claude/skills/magi-common/references/normalizer.md` を Read ツールで読み込み、記載の手順に従ってNormalizerを実行する。
 4. 成功した場合、`$MAGI_TMPDIR/normalizer.json` の内容を `$NORMALIZED_V2_JSON` として `$MAGI_RUN_DIR/normalized-v2.json` にコピーし保持する（`$MAGI_TMPDIR` はチャンク単位ではなくこのバッチ呼び出し専用なので、コピー後に削除してよい）。
-5. 失敗（`NORMALIZE_SKIPPED`/`NORMALIZE_ERROR`）した場合は、`normalizer.md`の契約に従いHaiku fallbackを試みる。それでも失敗する場合は、ステップ4-1の構造検証失敗と同様の扱い（v2分のみ`BLOCK_LAYER=structure`相当とし、v2 5体分は`$NORMALIZED_RESULTS`にraw結果をそのまま出す）とする。CASPER分（v1）は影響を受けず通常通り処理を続ける。
+5. 失敗（`NORMALIZE_SKIPPED`/`NORMALIZE_ERROR`）した場合は、`normalizer.md`の契約に従いHaiku fallbackを試みる。それでも失敗する場合は、ステップ4-1の構造検証失敗と同様の扱い（`BLOCK_LAYER=structure`相当とし、6体分は`$NORMALIZED_RESULTS`にraw結果をそのまま出す）とする。
 
 ### 正規化結果の書き出し
 
-CASPERの除外後の結果（`normalized-v1.md`）と、v2 5体分（`normalized-v2.json`を人間可読な箇条書きに変換したもの）を連結し、`$MAGI_RUN_DIR/normalized.md` に書き出し、`$NORMALIZED_RESULTS` として保持する。
+6体分の`normalized-v2.json`を人間可読な箇条書きに変換し、`$MAGI_RUN_DIR/normalized.md` に書き出し、`$NORMALIZED_RESULTS` として保持する。
 
 ```bash
 NORMALIZED_RESULTS="$MAGI_RUN_DIR/normalized.md"
@@ -187,25 +133,23 @@ NORMALIZED_RESULTS="$MAGI_RUN_DIR/normalized.md"
 
 ## ステップ 4: Codex 監査
 
-6体の結果に finding ID を付与し、Codex で妥当性を検証する。CASPER（v1）とv2の5体で抽出元が異なる。
+6体の結果に finding ID を付与し、Codex で妥当性を検証する。
 
 ### 4-1. Finding ID の付与と `$FINDINGS_TABLE` の生成
 
-**CASPER（v1）:** 除外後の結果から HIGH/MEDIUM 指摘のみを抽出する（従来通り、LOW対象外）。`severity`は見出しの値（`HIGH`/`MEDIUM`）をそのまま使う。
-
-**v2の5体（MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIEL）:** `normalized-v2.json`（バッチNormalizer出力）の各要素を候補とする。**severityによる事前フィルタはしない**（全候補を採番、recall優先の設計方針。絞り込みは後述ステップ4-4に委ねる）。`severity`は暫定値`"UNRATED"`とする（ステップ4-4でCodexが`importance`を判定した後、`HIGH`/`MEDIUM`/`LOW`で上書きする）。`persona`はNormalizer出力の`persona`フィールドをそのまま使う。`original_path`/`original_line`はNormalizer出力の`path`/`line`（`line`が`null`の場合はそのまま`original_line: null`とする。捏造しない。ステップ5でアンカー不能扱いにする）。
+`normalized-v2.json`（バッチNormalizer出力）の各要素を候補とする。**severityによる事前フィルタはしない**（全候補を採番、recall優先の設計方針。絞り込みは後述ステップ4-4に委ねる）。`severity`は暫定値`"UNRATED"`とする（ステップ4-4でCodexが`importance`を判定した後、`HIGH`/`MEDIUM`/`LOW`で上書きする）。`persona`はNormalizer出力の`persona`フィールドをそのまま使う。`original_path`/`original_line`はNormalizer出力の`path`/`line`（`line`が`null`の場合はそのまま`original_line: null`とする。捏造しない。ステップ5でアンカー不能扱いにする）。
 
 ```bash
 PRE_ID_CANDIDATES="$MAGI_RUN_DIR/pre-id-candidates.json"
 ```
 
-`$PRE_ID_CANDIDATES` は、CASPER（v1）の抽出候補とv2の5体の候補を連結した単一の JSON 配列として保持する。CASPER分は各候補を `persona: "CASPER"`、見出し由来の `severity`（`HIGH`/`MEDIUM`）、`headline`、`body`、`evidence: null`、`original_path`、`original_line` を持つ object にする。v2分は `normalized-v2.json` の各要素について `path` を `original_path`、`line` を `original_line` にリネームし（元の `path`/`line` キーは残さない）、`severity: "UNRATED"` を持つ同じ形の object にする。
+`$PRE_ID_CANDIDATES` は、6体分の候補を連結した単一の JSON 配列として保持する。`normalized-v2.json` の各要素について `path` を `original_path`、`line` を `original_line` にリネームし（元の `path`/`line` キーは残さない）、`severity: "UNRATED"` を持つ同じ形の object にする。
 
 #### 採番前の重複統合（機械的完全一致dedup）
 
 `skills/magi-common/references/normalizer.md` 15行目は、重複除去を Normalizer の責務ではなく呼び出し元の責務としている。ここで行うのがその実装である。
 
-CASPER（v1）とv2の候補をマージした **pre-ID candidate list** に対し、採番前に機械的な重複統合を1回だけ行う。重複キーは `persona` / `headline` / `original_path` / `original_line` / `evidence` / `body` の6フィールドの byte-for-byte 完全一致とし、6つすべてが一致する場合だけ同一候補として扱う。`body` を含めるのは、同じ persona / line / headline / evidence を共有しても Problem / Breakage の内容が異なる正当な別 finding を潰さないため。
+6体分をマージした **pre-ID candidate list** に対し、採番前に機械的な重複統合を1回だけ行う。重複キーは `persona` / `headline` / `original_path` / `original_line` / `evidence` / `body` の6フィールドの byte-for-byte 完全一致とし、6つすべてが一致する場合だけ同一候補として扱う。`body` を含めるのは、同じ persona / line / headline / evidence を共有しても Problem / Breakage の内容が異なる正当な別 finding を潰さないため。
 
 dedup は **同一 `persona` 内だけ**で行う。異なる persona が同じ場所を指すことは有用な corroboration signal なので、persona をまたいで統合してはならない。
 
@@ -237,7 +181,7 @@ jq -e '
 
 この dedup は **`M-001`, `M-002`, ... の採番より前**、かつ後述の **表の構造検証より前**に行う。構造検証の意味は変えず、重複統合済みの小さい配列を同じ条件で検証する。
 
-`$DEDUPED_CANDIDATES` の各候補を`M-001`, `M-002`, ... の形式で連番付与する（CASPER分とv2分の採番順序は問わない）。
+`$DEDUPED_CANDIDATES` の各候補を`M-001`, `M-002`, ... の形式で連番付与する（persona間の採番順序は問わない）。
 
 ```bash
 FINDINGS_TABLE="$MAGI_RUN_DIR/findings-table.json"
@@ -252,15 +196,15 @@ FINDINGS_TABLE="$MAGI_RUN_DIR/findings-table.json"
 {
   "schema_version": "1",
   "findings": [
-    { "id": "M-001", "persona": "MELCHIOR", "severity": "HIGH",
+    { "id": "M-001", "persona": "MELCHIOR", "severity": "UNRATED",
       "headline": "unquoted variable causes word splitting",
       "body": "…複数行の raw 本文…",
       "evidence": "$cmd $arg",
       "original_path": "scripts/example.sh", "original_line": 17 },
-    { "id": "M-002", "persona": "CASPER", "severity": "MEDIUM",
-      "headline": "unquoted variable causes word splitting",
+    { "id": "M-002", "persona": "CASPER", "severity": "UNRATED",
+      "headline": "direct git commit bypasses /commit skill rule",
       "body": "…複数行の raw 本文…",
-      "evidence": null,
+      "evidence": "git commit -m \"$MESSAGE\"",
       "original_path": "scripts/example.sh", "original_line": 21 }
   ]
 }
@@ -269,7 +213,7 @@ FINDINGS_TABLE="$MAGI_RUN_DIR/findings-table.json"
 | フィールド | 出所 |
 |---|---|
 | `id` / `persona` / `severity` / `headline` / **`body`（raw 本文）** | ステップ 3.7 の結果に採番して格納 |
-| `evidence` | v2の5体: `normalized-v2.json`の`evidence`をそのまま格納（nullならnull）。CASPER（v1）: 常に`null`固定（v1契約に該当フィールドが無いため） |
+| `evidence` | `normalized-v2.json`の`evidence`をそのまま格納（nullならnull） |
 | `original_path` / `original_line` | ステップ 3.7 の結果（**モデルの申告値**） |
 | `anchored_path` / `anchored_line` / `side` / `anchor_status` | **ここでは入れない**（ステップ 5 が書き足す） |
 
@@ -297,7 +241,7 @@ M-002: [MEDIUM] BALTHASAR — filepath:line — headline
 ```
 
 `filepath:line` には **`original_path`:`original_line`** を使う（`original_path`は常に存在する）。
-`original_line`が`null`のv2 findingは`filepath:?`のように`line`部分を`?`で表す（数値の`0`は使わない。`0`は「1行目を指す誤った値」との区別がつかなくなるため）。
+`original_line`が`null`のfindingは`filepath:?`のように`line`部分を`?`で表す（数値の`0`は使わない。`0`は「1行目を指す誤った値」との区別がつかなくなるため）。
 形式は変更しない。監査（4-2 / 4-3）の入出力契約・ID 母集合・検証条件も変更しない。
 
 **両者を別々に組み立ててはならない。** 突合による検証では **`body` の取り違えを検出できない**。
@@ -314,7 +258,7 @@ M-002: [MEDIUM] BALTHASAR — filepath:line — headline
 - `id` が重複していないこと
 - 各要素が必須フィールド（`id` / `persona` / `severity` / `headline` / `body` / `evidence` /
   `original_path` / `original_line`）を持ち、型が正しいこと
-  （`original_line` は正の整数、または`null`——v2 findingでNormalizerがline番号を確信を持って
+  （`original_line` は正の整数、または`null`——Normalizerがline番号を確信を持って
   抽出できなかった場合。`null`は「値が無い」ことを表し、`0`等の数値で代用してはならない
   （`0`は「行1を指す誤った値」と区別できなくなる）。`body` は非空文字列。`evidence` は非空文字列または`null`）
 
@@ -376,7 +320,7 @@ MAGI_TMPDIR_IMPORTANCE=""  # 4-4 を通らないので作られない
 > - **表が読めない** → 投稿に必要なデータが無い → `POST_INLINE=false`（サマリのみ）
 > - **表は読めるが grounding が失敗** → 位置情報だけが無い → 全件 `unanchorable`（通常 PR コメント）
 
-#### 指摘が 0 件の場合（CASPERのHIGH/MEDIUM + v2の全候補、合計）
+#### 指摘が 0 件の場合
 
 Codex 監査とステップ 5（grounding）をスキップしてステップ 6 に進む。
 このとき次を**明示的に設定する**。未設定のままステップ 7 に到達すると、
@@ -411,8 +355,8 @@ MAGI_TMPDIR=$(mktemp -d)
 `skills/magi-common/references/codex-audit.md`（repo 内）または `~/.claude/skills/magi-common/references/codex-audit.md` を Read ツールで読み込み、記載の手順に従って Codex を呼び出す。
 
 - 入力: `$FINDING_LIST`（finding-list fence）+ `$DIFF`（diff-block fence）
-- **v2 findingについては`body`（`$FINDINGS_TABLE`の該当行から取得）も`context-block`ラベル付きfenceとして追加で渡す。** v1（CASPER）はheadlineだけでも判定可能だが、v2はProblem/Breakageこそが実質的な指摘内容であり、headlineだけでは判定材料が不足するため。
-- **`severity`が`UNRATED`のv2 findingも、severity不在を理由に除外せず全件監査対象にする**（`$FINDING_LIST`の抽出自体がseverityでフィルタしないため、自然にこの通りになる）。
+- **findingについては`body`（`$FINDINGS_TABLE`の該当行から取得）も`context-block`ラベル付きfenceとして追加で渡す。** DETECTION NOTES契約ではProblem/Breakageこそが実質的な指摘内容であり、headlineだけでは判定材料が不足するため。
+- **`severity`が`UNRATED`のfindingも、severity不在を理由に除外せず全件監査対象にする**（`$FINDING_LIST`の抽出自体がseverityでフィルタしないため、自然にこの通りになる）。
 - 出力: `$MAGI_TMPDIR/codex-audit.json`
 
 ### 4-3. 結果の判定
@@ -492,11 +436,11 @@ fi
 `$POST_INLINE` が `false` の場合はステップ 4-4 をスキップしてステップ 5（実質的にはステップ 6）へ進む。
 このとき `MAGI_TMPDIR_IMPORTANCE=""`（4-4 を通らないので作られない）と `IMPORTANCE_NOTE=""` を設定する。
 
-### 4-4. Codex 重要度判定（v2 findingのみ）
+### 4-4. Codex 重要度判定
 
 **「本物の指摘か」（4-2/4-3の妥当性判定）と「投稿する価値があるか」（重要度）は別の問いであり、明示的に別ステップとして分離する。**
 
-**対象:** `$FINDINGS_TABLE`のうち`severity == "UNRATED"`（v2由来）かつステップ4-3で`valid`または`needs_human`と判定されたfindingのみ。CASPER（v1）のfindingはこのステップを通さず、既存の`severity`をそのまま`importance`として扱う（変更不要）。`false_positive`のv2 findingも対象外（無駄なCodex呼び出しを避ける。`severity`は`UNRATED`のまま残るが、ステップ7で`$FALSE_POSITIVE_IDS`により別途除外されるため実害はない）。
+**対象:** `$FINDINGS_TABLE`のうち`severity == "UNRATED"`かつステップ4-3で`valid`または`needs_human`と判定されたfindingのみ。`false_positive`のfindingも対象外（無駄なCodex呼び出しを避ける。`severity`は`UNRATED`のまま残るが、ステップ7で`$FALSE_POSITIVE_IDS`により別途除外されるため実害はない）。
 
 対象findingが0件の場合は `MAGI_TMPDIR_IMPORTANCE=""` と `IMPORTANCE_NOTE=""` を設定し、このステップをスキップしてステップ5へ進む。
 
@@ -521,7 +465,7 @@ MAGI_TMPDIR_IMPORTANCE=$(mktemp -d)
 IMPORTANCE_NOTE=""
 if [ ! -f "$MAGI_TMPDIR_IMPORTANCE/codex-importance.json" ] || jq -e 'type == "object" and has("error")' "$MAGI_TMPDIR_IMPORTANCE/codex-importance.json" >/dev/null 2>&1; then
   BLOCK_LAYER=importance
-  IMPORTANCE_NOTE="IMPORTANCE_FAILED（重要度判定に失敗したため、対象v2指摘はサマリのみに記載しインライン投稿しない）"
+  IMPORTANCE_NOTE="IMPORTANCE_FAILED（重要度判定に失敗したため、対象指摘はサマリのみに記載しインライン投稿しない）"
 fi
 ```
 
@@ -546,7 +490,7 @@ grounding は **監査の代替ではなく補助検査**である。担当す�
 > 妥当な指摘は普通にあり、その修正案は diff にも作業ツリーにも存在しない。
 > 「全候補が不在＝幻覚」は成立しない。**アンカーできなければ通常 PR コメントへ退避するだけ**にする。
 
-**`original_line`が`null`のfinding（v2、Normalizerがline番号を確信を持って抽出できなかったもの）は、`scripts/magi-ground-findings.sh`に渡す前に除外する。** このスクリプトは`original_line`の型が`number`であることを全件に要求しており、`null`が1件でも混じると**表全体が拒否されてスクリプトが失敗し、他の全findingまで`unanchorable`に巻き込まれる**（5-3の失敗経路）。これを避けるため、`null`のfindingは直接`anchor_status: "unanchorable"`として扱い、スクリプトの入力には含めない。
+**`original_line`が`null`のfinding（Normalizerがline番号を確信を持って抽出できなかったもの）は、`scripts/magi-ground-findings.sh`に渡す前に除外する。** このスクリプトは`original_line`の型が`number`であることを全件に要求しており、`null`が1件でも混じると**表全体が拒否されてスクリプトが失敗し、他の全findingまで`unanchorable`に巻き込まれる**（5-3の失敗経路）。これを避けるため、`null`のfindingは直接`anchor_status: "unanchorable"`として扱い、スクリプトの入力には含めない。
 
 ```bash
 GROUNDING_NOTE=""
@@ -694,7 +638,7 @@ grounding をサマリ投稿より前に置いたのはこのため。
 |---|---|---|
 | 構造化層（`$FINDINGS_TABLE` 生成・構造検証） | 4-2 / 4-3 とステップ 5・7 をスキップし、ステップ 6 で `$NORMALIZED_RESULTS` を出す | **`false`** |
 | 監査層（Codex audit） | インライン投稿を一切しない。`$FINDING_LIST` をサマリに出す | **`false`** |
-| 重要度層（Codex importance、v2 findingのみ） | 対象findingの`severity`が`UNRATED`のまま残る。サマリのみに記載しインライン投稿しない | **変更しない**（他findingの投稿は継続） |
+| 重要度層（Codex importance） | 対象findingの`severity`が`UNRATED`のまま残る。サマリのみに記載しインライン投稿しない | **変更しない**（他findingの投稿は継続） |
 | anchor 層（grounding） | インラインは張らず全件を通常 PR コメントへ | **変更しない** |
 
 anchor 層だけ `$POST_INLINE` を触らないのは、**位置が確定しないだけで投稿自体は可能**だから。
@@ -769,7 +713,7 @@ Codex 監査で `false_positive` 除外が発生した場合は以下を追記�
 ```markdown
 > ⚠ Codex 監査が実行できなかったため指摘は投稿せず以下に一覧表示する（理由: `$AUDIT_NOTE`）
 
-<details><summary>未監査の指摘一覧（HIGH/MEDIUM）</summary>
+<details><summary>未監査の指摘一覧</summary>
 
 M-001: [HIGH] MELCHIOR — filepath:line — headline
 M-002: [MEDIUM] BALTHASAR — filepath:line — headline
@@ -786,7 +730,7 @@ M-002: [MEDIUM] BALTHASAR — filepath:line — headline
 ```markdown
 > ⚠ 指摘の構造化に失敗したため未整形のまま一覧表示する
 
-<details><summary>未整形の指摘一覧（HIGH/MEDIUM）</summary>
+<details><summary>未整形の指摘一覧</summary>
 
 （$NORMALIZED_RESULTS の内容をそのまま貼る）
 
@@ -823,9 +767,7 @@ body も anchor 情報も同じ表の同じ行から取るので、**取り違�
    これは `anchor_status` の分岐より**前**に適用する。
    anchor 情報の追加は投稿対象の判断を変えるものではない
 2. **`severity == "LOW"` または `severity == "UNRATED"` の ID は投稿しない。**
-   v1（CASPER）は元々ステップ4-1の抽出時点でHIGH/MEDIUM以外を捨てているため、LOWは
-   「そもそもテーブルに来ない」ことで事実上除外されていた。v2は全候補を一度テーブルに入れるため、
-   ここで明示的に除外する（`$FALSE_POSITIVE_IDS`と同様の扱いで、除外理由を分けて記録する）。
+   全候補を一度テーブルに入れるため、ここで明示的に除外する（`$FALSE_POSITIVE_IDS`と同様の扱いで、除外理由を分けて記録する）。
    `UNRATED`はステップ4-4の重要度判定が失敗したまま残ったfindingであり、サマリには「重要度判定失敗」
    として記載済みだが、インラインには出さない
 3. 残った ID について `anchor_status` で**事前分岐**する（422 エラーを待たない）
@@ -961,5 +903,5 @@ grounding: 失敗（⚠ $GROUNDING_NOTE）
 
 ```
 重要度判定: 失敗（⚠ $IMPORTANCE_NOTE）
-  該当 v2 指摘 N 件は重要度未確定のためサマリコメント本文にのみ記載（インライン投稿なし）
+  該当指摘 N 件は重要度未確定のためサマリコメント本文にのみ記載（インライン投稿なし）
 ```

@@ -99,12 +99,15 @@ curl -sf --max-time 5 "${_magi_base_url:-http://localhost:11434}/api/tags" 2>/de
    ```
    [task-instruction.md の内容をそのまま展開]
    [review-criteria.md の内容をそのまま展開]
-   [$OUTPUT_FORMAT_PATH の内容をそのまま展開]
    ```
-   **CASPER のみ:** system.txt の末尾に以下を追加:
+   **CASPER のみ:** system.txt に `$OUTPUT_FORMAT_PATH` の内容より前に以下を追加:
    ```
    ---CLAUDE.md---
    [CLAUDE_RULES の内容]
+   ```
+   **$MAGI_TMPDIR/system.txt（出力契約）:**
+   ```
+   [$OUTPUT_FORMAT_PATH の内容をそのまま展開]
    ```
    **BALTHASAR のみ:** $MAGI_IMPACT_CONTEXT が設定されている場合、system.txt の末尾に以下を追加:
    ```
