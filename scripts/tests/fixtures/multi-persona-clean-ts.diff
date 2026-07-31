@@ -1,0 +1,74 @@
+diff --git a/src/services/accountService.ts b/src/services/accountService.ts
+index 8f2c1a1..c4d9e7b 100644
+--- a/src/services/accountService.ts
++++ b/src/services/accountService.ts
+@@ -1,11 +1,21 @@
+-import { Pool } from "pg";
++import { Pool, PoolClient } from "pg";
++import * as crypto from "node:crypto";
+
+ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
++function getTokenPepper(): string {
++  const pepper = process.env.TOKEN_PEPPER;
++  if (!pepper) {
++    throw new Error("missing required env: TOKEN_PEPPER");
++  }
++  return pepper;
++}
++
+ export async function findUserByEmail(
+   email: string,
++  existingClient?: PoolClient,
+ ): Promise<{ id: string; email: string } | null> {
+-  const client = await pool.connect();
++  const client = existingClient ?? (await pool.connect());
+   try {
+     const result = await client.query(
+       "SELECT id, email FROM users WHERE email = $1",
+@@ -13,7 +23,9 @@
+     );
+     return result.rows[0] ?? null;
+   } finally {
+-    client.release();
++    if (!existingClient) {
++      client.release();
++    }
+   }
+ }
+
+@@ -25,3 +37,34 @@
+   }
+   return users.map((u) => u.email).join(", ");
+ }
++
++function hashToken(token: string): string {
++  return crypto.createHash("sha256").update(`${token}${getTokenPepper()}`).digest("hex");
++}
++
++export async function createPasswordResetToken(
++  email: string,
++  options?: { ttlMs?: number },
++): Promise<string> {
++  const client = await pool.connect();
++  try {
++    const user = await findUserByEmail(email, client);
++    if (!user) {
++      throw new Error("user not found");
++    }
++
++    const token = crypto.randomBytes(32).toString("hex");
++    const tokenHash = hashToken(token);
++    const ttlMs = options?.ttlMs ?? 15 * 60 * 1000;
++    const expiresAt = new Date(Date.now() + ttlMs);
++
++    await client.query(
++      "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
++      [user.id, tokenHash, expiresAt],
++    );
++
++    return token;
++  } finally {
++    client.release();
++  }
++}
