@@ -64,7 +64,7 @@ prompt には必ず次を含める。
 - Severity Standardsの扱い: `severity-standards`はpersona別の補助文脈であり、上記の汎用`block`/`defer`/`manual`基準が主基準である。personaのSeverity StandardsでHIGH相当と書かれていることだけを理由に、自動的に`gate=block`へ倒してはならない
 - `$GATE_INPUT`: `finding-list` ラベル付き Markdown fence に入れる
 - `$DIFF`: 呼び出し元から渡された diff を `diff-block` ラベル付き Markdown fence に入れる
-- 出力形式: ステップ 4 の JSON schema に従うことを明記する
+- 出力形式: ステップ 4 の JSON schema に従うことを明記する。`verdict` の禁止値も同じ指示に含める
 
 ## ステップ 4: 出力スキーマの定義
 
@@ -75,7 +75,7 @@ prompt には必ず次を含める。
 ]
 ```
 
-- `verdict`: `valid` / `false_positive` / `needs_human`
+- `verdict`: 必ず `valid` / `false_positive` / `needs_human` の3値のいずれかとする。他の値（`invalid`/`invalidated`/`incorrect`/`ok` 等）は使わない
 - `gate`: `block` / `defer` / `manual`（`verdict`が`false_positive`の場合、`gate`は無視してよい）
 
 ## ステップ 5: Codex 呼び出し

@@ -131,7 +131,7 @@ Codex の出力は JSON array のみとし、`$MAGI_TMPDIR/codex-audit.json` に
 ]
 ```
 
-`verdict` は次のいずれかにする。
+`verdict` は必ず次の3値のいずれかとする。他の値（`invalid`/`invalidated`/`incorrect`/`ok` 等）は使わない。
 
 - `"valid"`: 指摘は妥当。投稿対象
 - `"false_positive"`: 誤検知。投稿除外（サマリに記録）
@@ -142,8 +142,10 @@ Codex の出力は JSON array のみとし、`$MAGI_TMPDIR/codex-audit.json` に
 prompt は先に `$MAGI_TMPDIR/audit-prompt.txt` に書き込む。heredoc を変数内で扱う shell escaping 問題を避けるため、prompt ファイル経由で渡す。
 
 ```bash
-node "$CODEX_COMPANION" task "$(cat "$MAGI_TMPDIR/audit-prompt.txt")" > "$MAGI_TMPDIR/codex-audit-raw.txt" 2>/dev/null
+node "$CODEX_COMPANION" task --prompt-file "$MAGI_TMPDIR/audit-prompt.txt" > "$MAGI_TMPDIR/codex-audit-raw.txt" 2>/dev/null
 ```
+
+単一引数に prompt 全体を渡すと Codex companion CLI の `normalizeArgv` で再トークン化され、diff/finding 内の `-m` が CLI の `--model` 短縮として解釈されることがある。`--prompt-file` はファイルを直接読むため、この経路を通らない。
 
 `--write` flag は使わない。
 
