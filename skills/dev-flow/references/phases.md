@@ -109,7 +109,9 @@ Proceed to Phase 5.
 
 Execute `/magi-fast`.
 
-`/magi-fast` now covers CASPER (v1, severity-based) plus MELCHIOR/BALTHASAR (v2, DETECTION NOTES contract with no severity). Its gate is `blocking_count` (CASPER HIGH count + MELCHIOR/BALTHASAR `gate=block` count from `codex-fast-gate.md`), not a bare `HIGH` count.
+`/magi-fast` now covers MELCHIOR/BALTHASAR/CASPER with the same v2 DETECTION NOTES contract. Its gate is a single `blocking_count` (combined 3-persona `gate=block` count from `codex-fast-gate.md`), not a bare `HIGH` count.
+
+If gate judgment fails, no persona has a reliable gate result. Treat this as a total blackout, do not issue LGTM, and recommend `/magi-hard` or manual review.
 
 ### If `blocking_count = 0` and no unresolved `manual`/`needs_human` items → proceed to Phase 6
 

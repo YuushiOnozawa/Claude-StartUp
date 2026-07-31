@@ -39,7 +39,7 @@ MAGI は6体のレビューエージェント群。既定は **Ollama（ロー�
 
 | スキル | 体 | 用途 |
 |--------|-----|------|
-| `/magi-fast` | MELCHIOR→BALTHASAR→CASPER | コミット前チェック。HIGH 指摘ゼロで LGTM |
+| `/magi-fast` | MELCHIOR→BALTHASAR→CASPER | コミット前チェック。ブロック指摘ゼロで LGTM |
 | `/magi-hard` | 6体すべて | PR レビュー。結果を GitHub インラインコメントで投稿 |
 | `/pr-review` | magi-hard 呼び出し | PR レビューのエントリーポイント。HIGH/MEDIUM 指摘があれば `/pr-review-respond` と交互にループ |
 | `/pr-review-respond` | — | PR レビューコメントへの対応。Haiku で second opinion、実装は `/codegen` 優先 |

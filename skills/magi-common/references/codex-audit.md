@@ -262,4 +262,3 @@ fi
 片側の変更でもう一方が静かに fail-open する。
 
 - `magi-hard`: 成功条件を満たさない場合はインライン投稿を行わない（`skills/magi-hard/SKILL.md` ステップ 4-3）
-- `magi-fast`: 投稿経路がないため表示のみ（`skills/magi-fast/SKILL.md` ステップ 6-3）
