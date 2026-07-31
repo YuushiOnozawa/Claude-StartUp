@@ -1,0 +1,33 @@
+# findUserByEmail の既存呼び出し元（diff外、変更なし）
+
+## src/routes/authRoutes.ts
+
+```ts
+import { findUserByEmail } from "../services/accountService";
+
+export async function handleLogin(email: string, password: string) {
+  const user = await findUserByEmail(email);
+  if (!user) {
+    return { ok: false, reason: "not_found" };
+  }
+  return { ok: true, userId: user.id };
+}
+```
+
+## src/jobs/weeklyDigest.ts
+
+```ts
+import { findUserByEmail } from "../services/accountService";
+
+export async function sendDigestTo(email: string) {
+  const user = await findUserByEmail(email);
+  if (!user) {
+    return;
+  }
+  await queueDigestEmail(user.id);
+}
+
+function queueDigestEmail(userId: string) {
+  return Promise.resolve(userId);
+}
+```
