@@ -1,6 +1,7 @@
 # setup/402-knowledge-rag-mcp-config.sh — knowledge-rag: MCP 設定・config.yaml 生成
 # Requires: ok, fail, MISSING_CMDS (append-only)
 # Requires: KRAG_VENV (set by 400-knowledge-rag-python.sh)
+# Requires: KRAG_BASE_DIR (set by 400-knowledge-rag-python.sh)
 
 [[ "${BASH_SOURCE[0]}" == "$0" ]] && { echo "ERROR: setup.sh から source してください" >&2; exit 1; }
 
@@ -89,7 +90,7 @@ fi
 
 # config.yaml の自動生成（初回のみ、既存は上書きしない）
 # 生成先は venv 親ディレクトリ (~/.local/share/knowledge-rag/) — KnowledgeOrchestrator が自動発見できる場所
-KRAG_CONFIG="$HOME/.local/share/knowledge-rag/config.yaml"
+KRAG_CONFIG="$KRAG_BASE_DIR/config.yaml"
 KRAG_CONFIG_EXAMPLE="$_KRAG_MCP_REPO_DIR/config.example.yaml"
 
 if [[ -f "$KRAG_CONFIG" ]]; then
@@ -97,10 +98,10 @@ if [[ -f "$KRAG_CONFIG" ]]; then
 elif [[ -f "$KRAG_CONFIG_EXAMPLE" ]]; then
   echo "  → config.yaml を生成: $KRAG_CONFIG"
   mkdir -p "$(dirname "$KRAG_CONFIG")"
-  if sed "s|documents_dir: \"./documents\"|documents_dir: \"${HOME}/.local/share/knowledge-rag/documents\"|" \
+  if sed "s|documents_dir: \"./documents\"|documents_dir: \"${KRAG_BASE_DIR}/documents\"|" \
     "$KRAG_CONFIG_EXAMPLE" > "$KRAG_CONFIG" && \
-    grep -q "documents_dir: \"${HOME}/.local/share/knowledge-rag/documents\"" "$KRAG_CONFIG"; then
-    ok "config.yaml (documents_dir=${HOME}/.local/share/knowledge-rag/documents)"
+    grep -q "documents_dir: \"${KRAG_BASE_DIR}/documents\"" "$KRAG_CONFIG"; then
+    ok "config.yaml (documents_dir=${KRAG_BASE_DIR}/documents)"
   else
     fail "config.yaml  →  sed 置換失敗"
     rm -f "$KRAG_CONFIG"
@@ -114,11 +115,9 @@ fi
 # 既存 config.yaml の documents_dir を旧 pCloud パスからローカルパスへ移行する。
 # documents_dir の値行だけを対象にし、カスタム値や複雑な設定は変更しない。
 if [[ -f "$KRAG_CONFIG" ]]; then
-  _KRAG_LOCAL_DOCS_DIR="$HOME/.local/share/knowledge-rag/documents"
-  if ! _KRAG_DOCS_SUMMARY="$(awk \
-    -v old_abs="$HOME/pcloud/obsidian" \
-    -v old_tilde="~/pcloud/obsidian" \
-    -v new_path="$_KRAG_LOCAL_DOCS_DIR" '
+  _KRAG_LOCAL_DOCS_DIR="$KRAG_BASE_DIR/documents"
+  # documents_dir 検査・置換・検証の3呼び出しで共有する awk 関数（trim, document_value）
+  _KRAG_AWK_DOCS_FUNCS='
       function trim(value) {
         sub(/^[[:space:]]+/, "", value)
         sub(/[[:space:]]+$/, "", value)
@@ -139,6 +138,12 @@ if [[ -f "$KRAG_CONFIG" ]]; then
         }
         return "__complex_documents_dir__"
       }
+'
+  if ! _KRAG_DOCS_SUMMARY="$(awk \
+    -v old_abs="$HOME/pcloud/obsidian" \
+    -v old_tilde="~/pcloud/obsidian" \
+    -v new_path="$_KRAG_LOCAL_DOCS_DIR" \
+"$_KRAG_AWK_DOCS_FUNCS"'
       {
         if ($0 !~ /^[[:space:]]*documents_dir[[:space:]]*:/) next
         total++
@@ -159,27 +164,8 @@ if [[ -f "$KRAG_CONFIG" ]]; then
          awk \
            -v old_abs="$HOME/pcloud/obsidian" \
            -v old_tilde="~/pcloud/obsidian" \
-           -v new_path="$_KRAG_LOCAL_DOCS_DIR" '
-             function trim(value) {
-               sub(/^[[:space:]]+/, "", value)
-               sub(/[[:space:]]+$/, "", value)
-               return value
-             }
-             function document_value(line,    colon, value) {
-               if (line !~ /^[[:space:]]*documents_dir[[:space:]]*:/) return ""
-               colon = index(line, ":")
-               value = trim(substr(line, colon + 1))
-               if (value ~ /^"[^"]*"[[:space:]]*(#.*)?$/) {
-                 sub(/^"/, "", value)
-                 sub(/"[[:space:]]*(#.*)?$/, "", value)
-                 return value
-               }
-               if (value ~ /^[^[:space:]#]+[[:space:]]*(#.*)?$/) {
-                 sub(/[[:space:]]+#.*$/, "", value)
-                 return value
-               }
-               return "__complex_documents_dir__"
-             }
+           -v new_path="$_KRAG_LOCAL_DOCS_DIR" \
+"$_KRAG_AWK_DOCS_FUNCS"'
              function replacement(line,    colon, rest, suffix) {
                colon = index(line, ":")
                rest = substr(line, colon + 1)
@@ -196,27 +182,8 @@ if [[ -f "$KRAG_CONFIG" ]]; then
         _KRAG_DOCS_AFTER="$(awk \
           -v old_abs="$HOME/pcloud/obsidian" \
           -v old_tilde="~/pcloud/obsidian" \
-          -v new_path="$_KRAG_LOCAL_DOCS_DIR" '
-            function trim(value) {
-              sub(/^[[:space:]]+/, "", value)
-              sub(/[[:space:]]+$/, "", value)
-              return value
-            }
-            function document_value(line,    colon, value) {
-              if (line !~ /^[[:space:]]*documents_dir[[:space:]]*:/) return ""
-              colon = index(line, ":")
-              value = trim(substr(line, colon + 1))
-              if (value ~ /^"[^"]*"[[:space:]]*(#.*)?$/) {
-                sub(/^"/, "", value)
-                sub(/"[[:space:]]*(#.*)?$/, "", value)
-                return value
-              }
-              if (value ~ /^[^[:space:]#]+[[:space:]]*(#.*)?$/) {
-                sub(/[[:space:]]+#.*$/, "", value)
-                return value
-              }
-              return "__complex_documents_dir__"
-            }
+          -v new_path="$_KRAG_LOCAL_DOCS_DIR" \
+"$_KRAG_AWK_DOCS_FUNCS"'
             {
               if ($0 !~ /^[[:space:]]*documents_dir[[:space:]]*:/) next
               total++
@@ -421,6 +388,6 @@ if [[ -f "$KRAG_CONFIG" ]]; then
 fi
 
 unset _KRAG_MCP_REPO_DIR KRAG_PYTHON_ABS _KRAG_CC_SETTINGS _krag_py_abs _krag_already _krag_tmp _krag_ok
-unset LLM_MCP_DIR LLM_MCP_CONF KRAG_CONFIG KRAG_CONFIG_EXAMPLE _KRAG_LOCAL_DOCS_DIR _KRAG_DOCS_SUMMARY
+unset LLM_MCP_DIR LLM_MCP_CONF KRAG_CONFIG KRAG_CONFIG_EXAMPLE _KRAG_LOCAL_DOCS_DIR _KRAG_AWK_DOCS_FUNCS _KRAG_DOCS_SUMMARY
 unset _KRAG_OLD_DOCS _KRAG_NEW_DOCS _KRAG_CUSTOM_DOCS _KRAG_DOCS_TOTAL _KRAG_DOCS_TMP _KRAG_DOCS_AFTER
 unset _KRAG_AFTER_OLD _KRAG_AFTER_NEW _KRAG_AFTER_CUSTOM _KRAG_AFTER_TOTAL _KRAG_CATEGORY_TMP

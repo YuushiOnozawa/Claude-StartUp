@@ -7,6 +7,8 @@ set -euo pipefail
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/logging.sh
 source "${HOOK_DIR}/lib/logging.sh"
+# shellcheck source=lib/paths.sh
+source "${HOOK_DIR}/lib/paths.sh"
 # shellcheck source=lib/ollama.sh
 source "${HOOK_DIR}/lib/ollama.sh"
 
@@ -14,10 +16,10 @@ SESSION_FILE="${1:-}"
 [[ -z "$SESSION_FILE" ]] && { log_info "引数なし、スキップ"; exit 0; }
 [[ -f "$SESSION_FILE" ]] || { log_info "セッションファイル未存在: $SESSION_FILE"; exit 0; }
 
-KNOWLEDGE_DIR="$HOME/.local/share/knowledge-rag/documents/knowledge"
-LLM="$HOME/.local/share/knowledge-rag/venv/bin/llm"
+KNOWLEDGE_DIR="$KRAG_BASE_DIR/documents/knowledge"
+LLM="$KRAG_BASE_DIR/venv/bin/llm"
 NOTIFY_FILE="$HOME/.claude/hooks/promote-notifications.jsonl"
-_MODEL_FILE="$HOME/.local/share/knowledge-rag/model"
+_MODEL_FILE="$KRAG_BASE_DIR/model"
 _MODEL="$(ollama_best_model "$_MODEL_FILE")"
 
 # LLM バイナリ確認
@@ -39,7 +41,7 @@ log_info "類似セッション検索: $SESSION_BASENAME"
 SEARCH_RAW="$(echo "search_knowledgeツールを使って category='sessions' で以下のテキストに類似するドキュメントを検索してください。ファイル名が '${SESSION_BASENAME}' のものは除いてください。score 0.85 以上のものがあればそのfilepathを1行で返してください。なければ 'NONE' と返してください。
 
 ${QUERY}" \
-  | KNOWLEDGE_RAG_DIR="$HOME/.local/share/knowledge-rag" \
+  | KNOWLEDGE_RAG_DIR="$KRAG_BASE_DIR" \
     "$LLM" prompt -m "$_MODEL" -T MCP --no-stream 2>>"$_HOOK_LOG" \
   || true)"
 
@@ -72,7 +74,7 @@ KRAG_REL="knowledge/$SESSION_BASENAME"
   echo "category: knowledge"
   echo "content:"
   cat "$DEST"
-} | KNOWLEDGE_RAG_DIR="$HOME/.local/share/knowledge-rag" \
+} | KNOWLEDGE_RAG_DIR="$KRAG_BASE_DIR" \
   "$LLM" prompt -m "$_MODEL" -T MCP --no-stream >>"$_HOOK_LOG" 2>&1 \
   || log_warn "knowledge-rag 登録失敗（ファイルコピーは完了）"
 

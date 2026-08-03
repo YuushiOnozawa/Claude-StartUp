@@ -38,16 +38,23 @@ cleanup() {
 
 trap cleanup EXIT
 
+pass_test() {
+  echo "PASS: $1"
+  ((PASS++)) || true
+}
+
+fail_test() {
+  echo "FAIL: $1"
+  ((FAIL++)) || true
+}
+
 run_test() {
   local desc="$1"
   local test_function="$2"
-
   if "$test_function"; then
-    echo "PASS: $desc"
-    ((PASS++)) || true
+    pass_test "$desc"
   else
-    echo "FAIL: $desc"
-    ((FAIL++)) || true
+    fail_test "$desc"
   fi
 }
 
@@ -55,17 +62,14 @@ run_test_or_skip() {
   local desc="$1"
   local test_function="$2"
   local status=0
-
   if "$test_function"; then
-    echo "PASS: $desc"
-    ((PASS++)) || true
+    pass_test "$desc"
   else
     status=$?
     if [ "$status" -eq 2 ] && [ -n "$TEST_SKIP_REASON" ]; then
       skip_test "$desc" "$TEST_SKIP_REASON"
     else
-      echo "FAIL: $desc"
-      ((FAIL++)) || true
+      fail_test "$desc"
     fi
   fi
 }
@@ -111,6 +115,7 @@ run_setup() {
   if result_output=$(
     HOME="$FIXTURE_DIR" \
     KRAG_VENV="$FIXTURE_DIR/venv" \
+    KRAG_BASE_DIR="$FIXTURE_DIR/.local/share/knowledge-rag" \
     "$BASH_BIN" -c '
       ok() { printf "STUB_OK: %s\n" "$*"; }
       fail() { printf "STUB_FAIL: %s\n" "$*"; }
@@ -597,7 +602,11 @@ bash_syntax() {
     "$PRUNE_SCRIPT" \
     "$CHECK_QUEUE_SCRIPT" \
     "$KNOWLEDGE_DISTILL_SCRIPT" \
-    "$LESSONS_LEARNED_DISTILL_SCRIPT"
+    "$LESSONS_LEARNED_DISTILL_SCRIPT" \
+    "$SCRIPT_DIR/../hooks/lib/paths.sh" \
+    "$SCRIPT_DIR/../hooks/knowledge-distill-register.sh" \
+    "$SCRIPT_DIR/../setup/400-knowledge-rag-python.sh" \
+    "$SCRIPT_DIR/../setup/800-ollama-models.sh"
 }
 
 shellcheck_pass() {

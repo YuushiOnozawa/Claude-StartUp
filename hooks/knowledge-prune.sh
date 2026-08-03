@@ -12,9 +12,11 @@ HOOK_DIR="$(dirname "$0")"
 
 # shellcheck source=lib/logging.sh
 source "${HOOK_DIR}/lib/logging.sh"
+# shellcheck source=lib/paths.sh
+source "${HOOK_DIR}/lib/paths.sh"
 
-DOCS_DIR="$HOME/.local/share/knowledge-rag/documents"
-ARCHIVE_DIR="$HOME/.local/share/knowledge-rag/archive"
+DOCS_DIR="$KRAG_BASE_DIR/documents"
+ARCHIVE_DIR="$KRAG_BASE_DIR/archive"
 
 # カテゴリ別 TTL（日数）。-1 は永続保持。
 declare -A CATEGORY_TTL=(
