@@ -6,13 +6,16 @@ Assume this design is fundamentally flawed. Find the architectural rot. Approval
 
 | Area | What to Check |
 |------|----------|
-| Separation of concerns | Does any class or function carry multiple responsibilities? |
-| Dependency direction | Do lower-level modules depend on higher-level modules? |
-| Abstraction level | Are abstraction levels mixed? (low-level details inside high-level logic) |
-| Excessive complexity | Are unnecessary patterns, abstractions, or indirections used? |
+| Separation of concerns | Does any single unit — function, script, class, or module — carry multiple unrelated responsibilities? |
+| Dependency direction | Do lower-level units (helpers, utilities, sourced libraries) depend on higher-level ones (workflows, entry points, orchestrators)? |
+| Abstraction level | Are abstraction levels mixed? (low-level details — inline text processing, raw I/O — inside high-level orchestration) |
+| Excessive complexity | Are there unnecessary wrappers, indirections, or abstractions that add no behavior of their own? |
 | Extensibility | Are there decisions that will make future changes difficult? |
 | Consistency | Does this align with the overall architectural direction of the project? |
-| Backward compatibility | Are public API/interface changes, deletions, or signature changes breaking existing callers? |
+| Backward compatibility | Do changes to a caller-visible contract — function signature, argument order, exported variable, CLI flag, environment variable — break existing callers? |
+
+This table lists areas to look in, not a checklist to fill.
+Do NOT produce one finding per row. Report only what this diff actually demonstrates.
 
 ## External Library Public API Compliance
 

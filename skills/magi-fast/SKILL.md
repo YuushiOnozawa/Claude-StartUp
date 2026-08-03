@@ -1,29 +1,19 @@
 ---
 name: magi-fast
-description: MAGI 3体（melchior→balthasar→casper）でコミット前レビューを行う。HIGH指摘ゼロでLGTM。--audit フラグで Codex 監査を追加実行。Trigger: "/magi-fast", "magi-fast", "コミット前レビュー", "ファストレビュー"
+description: MAGI 3体（melchior→balthasar→casper）でコミット前レビューを行う。ブロック指摘ゼロでLGTM。Trigger: "/magi-fast", "magi-fast", "コミット前レビュー", "ファストレビュー"
 ---
 
 # MAGI-FAST スキル
 
 MAGI の3体（MELCHIOR→BALTHASAR→CASPER）を順次実行し、コミット前の品質チェックを行う。
-HIGH 指摘がゼロになるまでユーザーに修正を促すループの1サイクルを担う。
+ブロック指摘がゼロになるまでユーザーに修正を促すループの1サイクルを担う。
+
+3体ともDETECTION NOTES契約（v2、severity廃止）を使う。
 
 ## 前提
 
 各体は独立して同じ diff を見る（コンテキスト非共有）。
 Ollama が使える場合はローカル実行、使えない場合は Haiku にフォールバック。
-
-### オプション: `--audit`
-
-`/magi-fast --audit` で呼び出した場合、ステップ 5 の集計後に Codex 監査を追加実行する。
-HIGH/MEDIUM 指摘の妥当性を検証し、`false_positive` 判定の指摘に注記を付けてユーザーに提示する。
-（magi-fast はインラインコメントを投稿しないため、false_positive は除外でなく注記扱い）
-
-## ステップ 0: フラグ解析
-
-ユーザーの引数に `--audit` が含まれるか確認し、`$AUDIT_MODE` に保持する:
-- `--audit` あり: `AUDIT_MODE=true`
-- `--audit` なし: `AUDIT_MODE=false`
 
 ## ステップ 1: レビュー対象の取得
 
@@ -37,6 +27,14 @@ DIFF=$(printf '%s\n' "$DIFF" | bash scripts/magi-diff-filter.sh)
 ```
 
 差分が空の場合は「ステージ済み差分がありません」と表示して終了する。
+
+**この後の全ペルソナ呼び出しで `MAGI_ORCHESTRATED=true` を設定する。**
+3体とも自分ではNormalizerを呼ばず生の結果を返す。`magi-fast`がステップ5でまとめて
+1回のNormalizer呼び出しにバッチ化する（呼び出し回数削減のため。モデルロード・推論のオーバーヘッドを削減する）。
+
+```bash
+MAGI_ORCHESTRATED=true
+```
 
 ## ステップ 2: MELCHIOR 実行（最初）
 
@@ -57,90 +55,83 @@ DIFF=$(printf '%s\n' "$DIFF" | bash scripts/magi-diff-filter.sh)
 
 ## ステップ 5: 結果の集計と判定
 
-3体の結果を統合し、`[HIGH]` 指摘の総数を数える。
+### 5-1. 3体のバッチNormalizer呼び出し
+
+MELCHIOR/BALTHASAR/CASPERは`$MAGI_ORCHESTRATED=true`で実行済みのため、生の結果（`$MELCHIOR_RESULT`/`$BALTHASAR_RESULT`/`$CASPER_RESULT`、チャンクヘッダー込み）を返している。1回のバッチ呼び出しにまとめてNormalizerへ渡す。
+
+```bash
+MAGI_TMPDIR_NORM=$(mktemp -d)
+```
+
+`skills/magi-common/references/normalizer.md`（repo 内）または `~/.claude/skills/magi-common/references/normalizer.md` を Read ツールで読み込み、記載の手順に従ってNormalizerを実行する（手順中の `$MAGI_TMPDIR` は `$MAGI_TMPDIR_NORM` に読み替える）。
+
+- 入力: 3体の生結果を`=== PERSONA: <name> / CHUNK: <path> (<n>) ===`ヘッダーで連結したもの
+- 出力: `$MAGI_TMPDIR_NORM/normalizer.json`
+
+失敗（`NORMALIZE_SKIPPED`/`NORMALIZE_ERROR`）した場合は、Haiku fallbackを試みる。それでも失敗する場合は3体すべて未判定として扱い、5-3のフォールバックへ進む。
+
+### 5-2. Codex軽量ゲート判定
+
+正規化に成功した場合、`skills/magi-common/references/codex-fast-gate.md`（repo 内）または `~/.claude/skills/magi-common/references/codex-fast-gate.md` を Read ツールで読み込み、記載の手順に従ってCodexを呼び出す。
+
+```bash
+MAGI_TMPDIR_GATE=$(mktemp -d)
+```
+
+- 入力: `normalizer.json`の各候補（MELCHIOR/BALTHASAR/CASPER分の`$GATE_INPUT`）+ `$DIFF` + `$SEVERITY_STANDARDS`
+- 出力: `$MAGI_TMPDIR_GATE/codex-fast-gate.json`
+
+`$GATE_INPUT` は `normalizer.json` の各候補に `F-001`, `F-002`, ... の形式でIDを付与し、`persona`・`path`・`line`・`headline`・`body`を含めて組み立てる。severityによる事前フィルタはしない。
+
+`$SEVERITY_STANDARDS` は、MELCHIOR/BALTHASAR/CASPERそれぞれの `skills/<persona>/references/review-criteria.md` の `## Severity Standards` 節を、ペルソナ名付きで連結して組み立てる。これは `codex-fast-gate.md` の補助文脈であり、ゲート判定の主基準は同ファイルの汎用 `block`/`defer`/`manual` 基準である。
+
+`verdict=valid`かつ`gate=block`の件数を`$BLOCK_COUNT`、`verdict=valid`かつ`gate=defer`の件数を`$DEFER_COUNT`、`verdict=needs_human`または`gate=manual`の件数を`$MANUAL_COUNT`として保持する。
+
+**ゲート呼び出しが失敗した場合（`FAST_GATE_SKIPPED`/`FAST_GATE_ERROR`）:** 3体すべて未判定として扱い、5-3のフォールバックへ進む。
+
+### 5-3. 結果の表示と判定
 
 ```
 ## MAGI-FAST レビュー結果
 
 ---
 ### MELCHIOR（コード品質・バグ）
-<$MELCHIOR_RESULT>
+<$MELCHIOR_RESULT の要約、または正規化済み候補一覧>
 
 ---
 ### BALTHASAR（設計・アーキテクチャ）
-<$BALTHASAR_RESULT>
+<$BALTHASAR_RESULT の要約、または正規化済み候補一覧>
 
 ---
 ### CASPER（ルール遵守）
-<$CASPER_RESULT>
+<$CASPER_RESULT の要約、または正規化済み候補一覧>
 
 ---
 ## 判定
-HIGH 指摘: N 件 / MEDIUM 指摘: M 件 / LOW 指摘: K 件
+ブロック指摘: N件 / 要確認: M件 / 見送り: K件
 ```
 
-### HIGH が 1 件以上の場合
+### ブロック指摘（`$BLOCK_COUNT`）が 1 件以上の場合
 
 ```
-⚠ HIGH 指摘が N 件あります。修正後に /magi-fast を再実行してください。
+⚠ ブロック指摘が N 件あります。修正後に /magi-fast を再実行してください。
 ```
 
-HIGH 指摘の修正は `/codegen` で実装すること。Ollama が使えない場合のみ直接修正する。
+ブロック指摘の修正は `/codegen` で実装すること。Ollama が使えない場合のみ直接修正する。
+`gate=defer`の指摘は表示するがブロック対象にしない。`gate=manual`/`needs_human`の指摘はLGTMを妨げるが自動`/codegen`対象にはしない（ユーザー確認を促す）。
 
-### HIGH が 0 件の場合
+### ブロック指摘が 0 件、かつ `$MANUAL_COUNT` も 0 件の場合
 
 ```
 ✓ MAGI-FAST: 全体 LGTM。/commit できます。
 ```
 
-## ステップ 6: Codex 監査（`--audit` 指定時のみ）
-
-`$AUDIT_MODE` が `true` でない場合はこのステップをスキップする。
-
-### 6-1. Finding ID の付与
-
-3体の結果から HIGH/MEDIUM 指摘を抽出し、`M-001`, `M-002`, ... の形式で連番を付与する。
-
-```text
-M-001: [HIGH] MELCHIOR — filepath:line — headline
-M-002: [MEDIUM] BALTHASAR — filepath:line — headline
-...
-```
-
-このリストを `$FINDING_LIST` として保持する（plain text）。
-HIGH/MEDIUM 指摘が 0 件の場合は Codex 監査をスキップして終了する。
-
-### 6-2. Codex 監査の実行
-
-```bash
-MAGI_TMPDIR=$(mktemp -d)
-```
-
-`skills/magi-common/references/codex-audit.md`（repo 内）または `~/.claude/skills/magi-common/references/codex-audit.md` を Read ツールで読み込み、記載の手順に従って Codex を呼び出す。
-
-- 入力: `$FINDING_LIST`（finding-list fence）+ `$DIFF`（diff-block fence）
-- 出力: `$MAGI_TMPDIR/codex-audit.json`
-
-### 6-3. 結果の表示
-
-`$MAGI_TMPDIR/codex-audit.json` の内容に基づき、ステップ 5 の結果に追記して表示する：
+### 5-1または5-2で判定に失敗した場合のフォールバック
 
 ```
----
-## Codex 監査結果
-
-| ID | 判定 | 理由（要約） |
-|----|------|-------------|
-| M-001 | ✅ valid | ... |
-| M-002 | 🔕 false_positive | ... |
-| M-003 | ❓ needs_human | ... |
-
-false_positive: N件（コミット判断はユーザーに委ねる）
+⚠ ゲート判定が失敗したため、いずれの体の指摘も判定できていません。
+LGTMは出しません。/magi-hard での精査を推奨します。
+理由: <NORMALIZE_ERROR/FAST_GATE_ERROR等>
 ```
 
-- **`AUDIT_SKIPPED`**（Codex 不可）: 「Codex audit skipped: 監査なし」と表示して終了
-- **`AUDIT_ERROR`**: エラー旨を表示して終了
-
-```bash
-rm -rf "$MAGI_TMPDIR"
-```
+`magi-fast` は `codex-audit.md` によるvalid/false_positive/needs_humanの精査を行わない。精査が必要な場合は `magi-hard` に委ねる。

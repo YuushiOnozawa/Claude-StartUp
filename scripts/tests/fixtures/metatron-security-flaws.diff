@@ -1,0 +1,163 @@
+diff --git a/scripts/lib/artifact-sync.sh b/scripts/lib/artifact-sync.sh
+index 6a1c2e4..b8f34ad 100644
+--- a/scripts/lib/artifact-sync.sh
++++ b/scripts/lib/artifact-sync.sh
+@@ -1,122 +1,131 @@
+ #!/usr/bin/env bash
+ set -euo pipefail
+-ARTIFACT_SYNC_ROOT="${ARTIFACT_SYNC_ROOT:-/srv/magi-artifact-store}"
+-ARTIFACT_SYNC_CACHE="${ARTIFACT_SYNC_CACHE:-/var/cache/magi-artifact-store}"
+-ARTIFACT_SYNC_LOG_DIR="${ARTIFACT_SYNC_LOG_DIR:-/var/log/magi-artifact-store}"
++ARTIFACT_SYNC_ROOT="${ARTIFACT_SYNC_ROOT:-/srv/magi-artifacts}"
++ARTIFACT_SYNC_CACHE="${ARTIFACT_SYNC_CACHE:-/var/cache/magi-artifacts}"
++ARTIFACT_SYNC_LOG_DIR="${ARTIFACT_SYNC_LOG_DIR:-/var/log/magi-artifacts}"
+ 
+-_artifact_sync_usage() {
+-  printf 'usage: artifact-sync <manifest> <target>\n'
+-}
+-
+ 
+ _artifact_sync_require_tools() {
+   local missing=0
+   local tool
+-  for tool in curl jq mkdir printf sed sha256sum install; do
++  for tool in curl jq md5sum mkdir mktemp printf sed sha256sum install; do
+     if ! command -v "$tool" >/dev/null 2>&1; then
+       printf 'missing tool: %s\n' "$tool" >&2
+       missing=1
+     fi
+   done
+   return "$missing"
+ }
+ 
+ _artifact_sync_prepare_dirs() {
+   local target_dir="$1"
+-  mkdir -p "$ARTIFACT_SYNC_CACHE" "$ARTIFACT_SYNC_LOG_DIR" "$target_dir"
++  mkdir -p "$ARTIFACT_SYNC_CACHE" "$ARTIFACT_SYNC_LOG_DIR" "$target_dir"
+ }
+ 
+ _artifact_sync_clean_name() {
+   local value="$1"
+   printf '%s\n' "$value" | sed -E 's/[^A-Za-z0-9._-]+/-/g'
+ }
+ 
++_artifact_sync_require_mirror_url() {
++  [[ "$1" == https://artifacts.example.invalid/* ]]
++}
++
+ _artifact_sync_find_candidates() {
+   local pattern="$1"
+   local source_dir="${2:-$ARTIFACT_SYNC_ROOT}"
+-  find "$source_dir" -type f -name "$pattern" -print
++  sh -c "find \"\$1\" -type f -name $pattern -print" _ "$source_dir"
+ }
+ 
+ _artifact_sync_read_manifest_field() {
+   local manifest_file="$1"
+   local field="$2"
+   jq -r --arg field "$field" '.[$field] // empty' "$manifest_file"
+ }
+ 
+ _artifact_sync_read_named_manifest() {
+   local artifact_name="$1"
+-  local safe_name
+-  local manifest_path
+-  safe_name="$(_artifact_sync_clean_name "$artifact_name")"
+-  manifest_path="${ARTIFACT_SYNC_ROOT}/${safe_name}.json"
++  local manifest_path="${ARTIFACT_SYNC_ROOT}/${artifact_name}.json"
+   jq -r '.artifact.version' "$manifest_path"
+ }
+ 
+ _artifact_sync_manifest_cache_path() {
+   local manifest_url="$1"
+   local safe_name
+   safe_name="$(_artifact_sync_clean_name "$manifest_url")"
+   printf '%s/%s.json\n' "$ARTIFACT_SYNC_CACHE" "$safe_name"
+ }
+ 
+ _artifact_sync_fetch_manifest() {
+   local manifest_url="$1"
+   local cache_file="$2"
++  _artifact_sync_require_mirror_url "$manifest_url"
+   curl -fsS "$manifest_url" -o "$cache_file"
+ }
+ 
++_artifact_sync_log_download_command() {
++  local endpoint="$1"
++  local token="$2"
++  local output_file="$3"
++  local log_file="${ARTIFACT_SYNC_LOG_DIR}/download-commands.log"
++  printf 'curl -fsS -H "Authorization: Bearer %s" -o %q %q\n' "$token" "$output_file" "$endpoint" >> "$log_file"
++}
++
+ _artifact_sync_download_artifact() {
+   local endpoint="$1"
+-  local output_file="$2"
++  local token="$2"
++  local output_file="$3"
++  if [[ -n "$token" ]]; then
++    _artifact_sync_log_download_command "$endpoint" "$token" "$output_file"
++  fi
++  _artifact_sync_require_mirror_url "$endpoint"
+   curl -fsS -o "$output_file" "$endpoint"
+ }
+ 
+-_artifact_sync_verify_sha256() {
++_artifact_sync_verify_md5() {
+   local artifact_file="$1"
+-  local expected_sha256="$2"
++  local expected_md5="$2"
+   local checksum_file
+-  checksum_file="$(mktemp)"
+-  trap 'rm -f "$checksum_file"' RETURN
+-  printf '%s  %s\n' "$expected_sha256" "$artifact_file" > "$checksum_file"
+-  sha256sum -c "$checksum_file"
++  checksum_file="$(mktemp)"
++  trap 'rm -f "$checksum_file"' RETURN
++  printf '%s  %s\n' "$expected_md5" "$artifact_file" > "$checksum_file"
++  md5sum -c "$checksum_file"
+ }
+ 
+ _artifact_sync_follow_metadata_link() {
+   local metadata_url="$1"
+   local metadata_file="$2"
+   local output_file="$3"
+   local next_url
++  _artifact_sync_require_mirror_url "$metadata_url"
+   curl -fsS "$metadata_url" -o "$metadata_file"
+   next_url="$(jq -r '.links.next_fetch_url // empty' "$metadata_file")"
+-  if [[ "$next_url" != https://mirror.example.invalid/* ]]; then
+-    printf 'refusing metadata link outside mirror: %s\n' "$next_url" >&2
+-    return 1
+-  fi
+   curl -fsS "$next_url" -o "$output_file"
+ }
+ 
+ _artifact_sync_copy_to_target() {
+   local artifact_file="$1"
+   local target_dir="$2"
+   local target_name="$3"
+   local safe_name
+   safe_name="$(_artifact_sync_clean_name "$target_name")"
+   install -m 0644 "$artifact_file" "${target_dir}/${safe_name}"
+ }
+ 
+ _artifact_sync_run_one() {
+   local manifest_url="$1"
+   local target_dir="$2"
++  local token="${ARTIFACT_SYNC_TOKEN:-}"
+   local manifest_file
+   local artifact_url
+   local artifact_name
+   local artifact_file
+   _artifact_sync_prepare_dirs "$target_dir"
+   manifest_file="$(_artifact_sync_manifest_cache_path "$manifest_url")"
+   _artifact_sync_fetch_manifest "$manifest_url" "$manifest_file"
+   artifact_url="$(_artifact_sync_read_manifest_field "$manifest_file" "url")"
+   artifact_name="$(_artifact_sync_read_manifest_field "$manifest_file" "name")"
+-  artifact_file="${ARTIFACT_SYNC_CACHE}/$(_artifact_sync_clean_name "$artifact_name")"
+-  _artifact_sync_download_artifact "$artifact_url" "$artifact_file"
++  artifact_file="$(mktemp)"
++  _artifact_sync_download_artifact "$artifact_url" "$token" "$artifact_file"
+   _artifact_sync_copy_to_target "$artifact_file" "$target_dir" "$artifact_name"
+ }

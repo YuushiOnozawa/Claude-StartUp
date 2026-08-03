@@ -15,11 +15,12 @@ Ollama `devstral:latest` が利用可能な場合はそちらを使い、なけ�
 | OLLAMA_MODEL | `devstral:latest` |
 | PERSONA_NAME | `METATRON` |
 | エージェント定義 | `agents/metatron.md`（repo 内）または `/home/<user>/.claude/agents/metatron.md` |
+| OUTPUT_FORMAT_PATH | `skills/magi-common/references/output-format-v2.md` |
 
 ## 参照ファイル
 
 - `skills/magi-common/references/execution-steps.md` — 共通実行手順（Read して展開する）
-- `skills/magi-common/references/output-format.md` — 共通出力フォーマット
+- `skills/magi-common/references/output-format-v2.md` — 共通出力フォーマット（DETECTION NOTES契約、v2）
 - `references/task-instruction.md` — ロール定義・ペルソナ名ヘッダー・few-shot出力例
 - `references/review-criteria.md` — レビュー観点・重大度基準・守備範囲外
 

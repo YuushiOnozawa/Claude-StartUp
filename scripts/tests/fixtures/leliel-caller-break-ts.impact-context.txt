@@ -1,0 +1,5 @@
+src/api/invoiceRoutes.ts:6:  const total = calculateInvoiceTotal(invoice, {
+src/jobs/reconcileInvoices.ts:6:  const total = calculateInvoiceTotal(invoice.lines, invoice.currency);
+src/cli/printInvoice.ts:6:  const total = calculateInvoiceTotal(invoice.lines);
+src/reports/monthlyRevenue.ts:6:      calculateInvoiceTotal(invoice as Invoice, {
+src/tests/invoiceTotal.test.ts:5:  expect(calculateInvoiceTotal(lines, "USD")).toBe(900);

@@ -109,11 +109,15 @@ Proceed to Phase 5.
 
 Execute `/magi-fast`.
 
-### If HIGH = 0 → proceed to Phase 6
+`/magi-fast` now covers MELCHIOR/BALTHASAR/CASPER with the same v2 DETECTION NOTES contract. Its gate is a single `blocking_count` (combined 3-persona `gate=block` count from `codex-fast-gate.md`), not a bare `HIGH` count.
 
-### If HIGH ≥ 1 → fix
+If gate judgment fails, no persona has a reliable gate result. Treat this as a total blackout, do not issue LGTM, and recommend `/magi-hard` or manual review.
 
-Present a fix proposal for each HIGH finding. The user decides whether to adopt. After fixes, re-run `/magi-fast`. Repeat until HIGH = 0.
+### If `blocking_count = 0` and no unresolved `manual`/`needs_human` items → proceed to Phase 6
+
+### If `blocking_count ≥ 1`, or unresolved `manual`/`needs_human` items remain → fix
+
+Present a fix proposal for each blocking finding. `manual`/`needs_human` items are not auto-fed to `/codegen` — surface them to the user for a decision instead. The user decides whether to adopt each fix. After fixes, re-run `/magi-fast`. Repeat until `blocking_count = 0` and no unresolved `manual`/`needs_human` items remain.
 
 ## Phase 6: COMMIT
 
