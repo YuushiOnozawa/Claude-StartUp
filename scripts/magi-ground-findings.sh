@@ -11,6 +11,7 @@
 #   アンカーは PR diff 上の変更行へ張る契約で、diff 外の既存行は通常コメントへ退避させるため。
 # - `evidence`フィールドがある場合はそれを唯一の候補として完全一致で探索し、bodyのバッククォート抽出へは
 #   フォールバックしない（断片化による誤補正を避けるため。unanchorableの方が誤ったcorrectedより安全という既存方針と一貫させる）。
+# - 引用候補が空の場合のみ、original_line が新側追加行として一意に実在するか確認し、未検証アンカーとして返す。
 # - JSON の読み書きは jq に任せる。body は改行・引用符・パイプ等を含むため、手書き連結しない。
 
 usage() {
@@ -129,7 +130,8 @@ function trim(s) {
   return s
 }
 
-function matches(content) {
+function matches(content, line_no) {
+  if (match_mode == "line") return line_no == (needle + 0)
   if (match_mode == "exact") return trim(content) == trim(needle)
   return index(content, needle) > 0
 }
@@ -184,6 +186,7 @@ function strip_b_path(line,    path) {
   # rename diff では finding が旧パスを指すことがあるため a/b 両側で同じ diff エントリを選ぶ。
   # GitHub の inline comment は新側パスだけを受け付けるので、返す anchoring path は常に b 側にする。
   in_target_hunk = (current_a_path == target || current_b_path == target)
+  in_target_hunk_new_path = (current_b_path == target)
   next
 }
 
@@ -203,19 +206,21 @@ function strip_b_path(line,    path) {
   content = substr($0, 2)
 
   if (prefix == "+") {
-    if (layer == "add" && matches(content)) remember(new_line)
+    if (layer == "add" && matches(content, new_line)) {
+      if (match_mode != "line" || in_target_hunk_new_path) remember(new_line)
+    }
     new_line++
     next
   }
 
   if (prefix == "-") {
-    if (layer == "del" && matches(content)) remember(old_line)
+    if (layer == "del" && matches(content, old_line)) remember(old_line)
     old_line++
     next
   }
 
   if (prefix == " ") {
-    if (layer == "context" && matches(content)) remember(new_line)
+    if (layer == "context" && matches(content, new_line)) remember(new_line)
     old_line++
     new_line++
   }
@@ -290,7 +295,7 @@ if ! jq -e '
     and has("evidence")
     and (((.evidence | type) == "string" and (.evidence | length) > 0) or (.evidence | type) == "null")
     and (.original_path | type == "string" and length > 0)
-    and (.original_line | type == "number")
+    and (.original_line | type == "number" and (. | floor) == . and . > 0)
   )
 ' "$FINDINGS_JSON" >/dev/null 2>&1; then
   die "each finding must contain required fields: id, body, evidence, original_path, original_line"
@@ -327,7 +332,14 @@ while IFS= read -r FINDING_ROW; do
   fi
 
   if [ ! -s "$CANDIDATES_TMP" ]; then
-    emit_unanchorable "$ID"
+    MATCH_RESULT=$(find_in_diff_layer "$ORIGINAL_PATH" "$ORIGINAL_LINE" "add" "line")
+    if [ $? -eq 0 ]; then
+      MATCH_LINE=${MATCH_RESULT%%$'\t'*}
+      MATCH_PATH=${MATCH_RESULT#*$'\t'}
+      emit_anchor "$ID" "$MATCH_PATH" "$MATCH_LINE" "RIGHT" "unverified"
+    else
+      emit_unanchorable "$ID"
+    fi
     continue
   fi
 
