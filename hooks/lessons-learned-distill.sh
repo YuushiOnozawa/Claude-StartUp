@@ -9,6 +9,8 @@ set -euo pipefail
 HOOK_DIR="$(dirname "$0")"
 # shellcheck source=lib/logging.sh
 source "${HOOK_DIR}/lib/logging.sh"
+# shellcheck source=lib/paths.sh
+source "${HOOK_DIR}/lib/paths.sh"
 # shellcheck source=lib/queue.sh
 source "${HOOK_DIR}/lib/queue.sh"
 # shellcheck source=lib/ollama.sh
@@ -20,7 +22,7 @@ _OLLAMA_UP=0
 ollama_is_up && _OLLAMA_UP=1 || true
 
 # キュードレイン（リトライ実行時はスキップして無限ループを防ぐ）
-if [[ "${KRAG_LL_RETRY:-0}" != "1" ]] && mountpoint -q "$HOME/pcloud"; then
+if [[ "${KRAG_LL_RETRY:-0}" != "1" ]]; then
   _ll_retry_callback() {
     local item_file="$1"
     local t c
@@ -71,19 +73,7 @@ fi
 PROJECT_CWD=$(echo "$INPUT" | jq -r '.cwd // "unknown"' 2>/dev/null)
 PROJECT=$(basename "$PROJECT_CWD" 2>/dev/null || echo "unknown")
 DATE=$(date +%Y-%m-%d)
-OUTPUT_DIR="$HOME/pcloud/obsidian"
-
-# pCloud マウント確認
-if ! mountpoint -q "$HOME/pcloud"; then
-  log_error "pCloud not mounted"
-  echo "  ⏳ lessons-learned: pCloud 未マウント → 保留 ($PROJECT)" >&2
-  if queue_push "$HOOK_NAME" "pcloud" "$TRANSCRIPT_PATH" "$PROJECT_CWD"; then
-    log_info "queued for retry: $TRANSCRIPT_PATH"
-  else
-    log_error "queue_push failed"
-  fi
-  exit 0
-fi
+OUTPUT_DIR="$KRAG_BASE_DIR/documents"
 
 mkdir -p "${OUTPUT_DIR}/lessons-learned"
 
@@ -103,7 +93,7 @@ if [[ $_OLLAMA_UP -eq 0 ]]; then
 fi
 
 # 使用モデルを解決
-_KRAG_MODEL_FILE="$HOME/.local/share/knowledge-rag/model"
+_KRAG_MODEL_FILE="$KRAG_BASE_DIR/model"
 _DISTILL_MODEL="$(ollama_best_model "$_KRAG_MODEL_FILE")"
 
 # ミス検知実行（lessons-learned-extract.sh に委譲）
@@ -138,7 +128,7 @@ log_info "saved: $_LL_FILE"
 echo "✓ lessons-learned: ミス検知 → $(basename "$_LL_FILE")" >&2
 
 # knowledge-rag 登録
-LLM="$HOME/.local/share/knowledge-rag/venv/bin/llm"
+LLM="$KRAG_BASE_DIR/venv/bin/llm"
 if [[ -x "$LLM" ]]; then
   echo "  → knowledge-rag 登録中..." >&2
   _LL_BASE="${_LL_FILE##*/}"; _LL_BASE="${_LL_BASE%.md}"
@@ -149,7 +139,7 @@ if [[ -x "$LLM" ]]; then
     echo "category: lessons-learned"
     echo "content:"
     cat "$_LL_FILE"
-  } | KNOWLEDGE_RAG_DIR="$HOME/.local/share/knowledge-rag" \
+  } | KNOWLEDGE_RAG_DIR="$KRAG_BASE_DIR" \
     "$LLM" prompt -m "$_DISTILL_MODEL" -T MCP --no-stream \
     >>"$_HOOK_LOG" 2>&1 || true
 fi

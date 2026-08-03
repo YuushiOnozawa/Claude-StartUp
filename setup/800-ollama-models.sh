@@ -1,5 +1,5 @@
 # setup/800-ollama-models.sh — MAGI 用 Ollama モデルの確認と案内
-# Requires: ok
+# Requires: ok, KRAG_BASE_DIR (set by 400-knowledge-rag-python.sh)
 #
 # Ollama は Windows ホスト側で動作する構成が標準のため、WSL2 側から pull しない。
 # 未導入モデルは Windows 側で実行するコマンドを案内するに留め、setup は失敗させない
@@ -89,8 +89,8 @@ fi
 
 # primary model（リスト末尾）を knowledge-distill 用に保存
 _om_primary="${_om_knowledge[-1]}"
-mkdir -p "$HOME/.local/share/knowledge-rag"
-echo "${_om_primary}" > "$HOME/.local/share/knowledge-rag/model"
+mkdir -p "$KRAG_BASE_DIR"
+echo "${_om_primary}" > "$KRAG_BASE_DIR/model"
 ok "knowledge-rag primary model → ${_om_primary}"
 
 ok "ollama models"

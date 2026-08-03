@@ -1,6 +1,6 @@
 # setup/400-knowledge-rag-python.sh — knowledge-rag: Python 環境セットアップ
 # Requires: ok, fail, _detect_os, _detect_arch, _install_binary_direct, MISSING_CMDS (append-only)
-# Exports: KRAG_VENV, KRAG_PYTHON_CMD (for 402-knowledge-rag-mcp-config.sh and later modules)
+# Exports: KRAG_BASE_DIR, KRAG_VENV, KRAG_PYTHON_CMD (for 402-knowledge-rag-mcp-config.sh and later modules)
 
 [[ "${BASH_SOURCE[0]}" == "$0" ]] && { echo "ERROR: setup.sh から source してください" >&2; exit 1; }
 
@@ -44,7 +44,8 @@ else
 fi
 
 # venv 作成 + pip パッケージ
-KRAG_VENV="$HOME/.local/share/knowledge-rag/venv"
+KRAG_BASE_DIR="$HOME/.local/share/knowledge-rag"
+KRAG_VENV="$KRAG_BASE_DIR/venv"
 
 if [[ -n "$KRAG_PYTHON_CMD" ]]; then
   # 既存 venv が壊れている場合は再作成 (rm -rf 対象はハードコードされたパスのみ)
