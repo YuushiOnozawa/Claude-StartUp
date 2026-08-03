@@ -46,7 +46,7 @@ make_finding() {
     --arg body "$body" \
     --arg original_path "$original_path" \
     --argjson original_line "$original_line" \
-    '{id:$id, body:$body, original_path:$original_path, original_line:$original_line}'
+    '{id:$id, body:$body, evidence:null, original_path:$original_path, original_line:$original_line}'
 }
 
 run_anchor_test() {
@@ -160,6 +160,26 @@ run_anchor_test "引用候補が無い本文は unanchorable" \
   0 \
   ""
 
+run_anchor_test "引用候補が無くても original_line が追加行に実在すれば unverified" \
+  "no-candidate-verified-line" \
+  "本文だけで引用候補がありませんが行番号は正しい" \
+  "scripts/lib/artifact-sync.sh" \
+  30 \
+  "unverified" \
+  "scripts/lib/artifact-sync.sh" \
+  30 \
+  "RIGHT"
+
+run_anchor_test "引用候補が無く original_line も追加行に実在しなければ unanchorable" \
+  "no-candidate-unverified-line" \
+  "本文だけで引用候補がなく行番号も存在しません" \
+  "scripts/lib/artifact-sync.sh" \
+  9999 \
+  "unanchorable" \
+  "" \
+  0 \
+  ""
+
 run_anchor_test "別ファイルへはアンカーしない" \
   "wrong-path" \
   '検出箇所: `_artifact_sync_require_mirror_url() {`' \
@@ -255,6 +275,44 @@ if [ "$rename_status" = "ok" ] \
   ((PASS++)) || true
 else
   echo "FAIL: rename diff の旧パス finding は LEFT に新パスでアンカー (expected: ok|src/new-name.sh|2|LEFT, got: ${rename_status}|${rename_path}|${rename_line}|${rename_side})"
+  ((FAIL++)) || true
+fi
+
+rename_unverified_findings="$TMP_DIR/rename-unverified.json"
+make_findings "$rename_unverified_findings" \
+  "$(make_finding "rename-new-path-unverified" "本文だけで引用候補がありません" "src/new-name.sh" 2)"
+rename_unverified_output=$(bash "$SCRIPT" "$rename_unverified_findings" "$rename_diff")
+rename_unverified_status=$(printf '%s' "$rename_unverified_output" | jq -r '.anchors[] | select(.id == "rename-new-path-unverified") | .anchor_status')
+rename_unverified_path=$(printf '%s' "$rename_unverified_output" | jq -r '.anchors[] | select(.id == "rename-new-path-unverified") | .anchored_path')
+rename_unverified_line=$(printf '%s' "$rename_unverified_output" | jq -r '.anchors[] | select(.id == "rename-new-path-unverified") | .anchored_line')
+rename_unverified_side=$(printf '%s' "$rename_unverified_output" | jq -r '.anchors[] | select(.id == "rename-new-path-unverified") | .side')
+if [ "$rename_unverified_status" = "unverified" ] \
+  && [ "$rename_unverified_path" = "src/new-name.sh" ] \
+  && [ "$rename_unverified_line" = "2" ] \
+  && [ "$rename_unverified_side" = "RIGHT" ]; then
+  echo "PASS: rename diff の新パス finding は evidence 無しでも新側追加行へ未検証アンカー"
+  ((PASS++)) || true
+else
+  echo "FAIL: rename diff の新パス finding は evidence 無しでも新側追加行へ未検証アンカー (expected: unverified|src/new-name.sh|2|RIGHT, got: ${rename_unverified_status}|${rename_unverified_path}|${rename_unverified_line}|${rename_unverified_side})"
+  ((FAIL++)) || true
+fi
+
+rename_old_path_findings="$TMP_DIR/rename-old-path.json"
+make_findings "$rename_old_path_findings" \
+  "$(make_finding "rename-old-path-no-candidate" "本文だけで引用候補がありません" "src/old-name.sh" 2)"
+rename_old_path_output=$(bash "$SCRIPT" "$rename_old_path_findings" "$rename_diff")
+rename_old_path_status=$(printf '%s' "$rename_old_path_output" | jq -r '.anchors[] | select(.id == "rename-old-path-no-candidate") | .anchor_status')
+rename_old_path_path=$(printf '%s' "$rename_old_path_output" | jq -r '.anchors[] | select(.id == "rename-old-path-no-candidate") | .anchored_path')
+rename_old_path_line=$(printf '%s' "$rename_old_path_output" | jq -r '.anchors[] | select(.id == "rename-old-path-no-candidate") | .anchored_line')
+rename_old_path_side=$(printf '%s' "$rename_old_path_output" | jq -r '.anchors[] | select(.id == "rename-old-path-no-candidate") | .side')
+if [ "$rename_old_path_status" = "unanchorable" ] \
+  && [ "$rename_old_path_path" = "" ] \
+  && [ "$rename_old_path_line" = "0" ] \
+  && [ "$rename_old_path_side" = "" ]; then
+  echo "PASS: rename diff の旧パス finding は evidence 無しで新側追加行へ誤アンカーしない"
+  ((PASS++)) || true
+else
+  echo "FAIL: rename diff の旧パス finding は evidence 無しで新側追加行へ誤アンカーしない (expected: unanchorable||0|, got: ${rename_old_path_status}|${rename_old_path_path}|${rename_old_path_line}|${rename_old_path_side})"
   ((FAIL++)) || true
 fi
 

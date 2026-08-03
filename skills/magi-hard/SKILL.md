@@ -481,7 +481,7 @@ fi
 HIGH/MEDIUM 指摘が 0 件の場合も同様にスキップする（4-1 で `$GROUNDING_NOTE=""` を設定済み）。
 
 grounding は **監査の代替ではなく補助検査**である。担当するのは
-**アンカーの確認と行ズレの補正**（`ok` / `corrected` / `unanchorable` の判定）だけで、
+**アンカーの確認と行ズレの補正**（`ok` / `corrected` / `unverified` / `unanchorable` の判定）だけで、
 **semantic な妥当性判定と、幻覚の断定・finding の除外は行わない**（どちらも Codex 監査の責務）。
 
 > **grounding は finding を1件も消さない。`dropped` という状態を持たない。**
@@ -530,7 +530,8 @@ fi
 |---|---|---|
 | 新側の行にアンカーできる | `ok` / `corrected` | インライン（`side: RIGHT`） |
 | 旧側の行にアンカーできる | `ok` / `corrected` | インライン（`side: LEFT`） |
-| **上記以外すべて**（位置を特定できない / 引用候補が空 / 全候補が不在 / context・作業ツリーでしか見つからない） | `unanchorable` | **通常 PR コメントへ退避** |
+| 引用候補が空、かつ `original_line` が rename後の新パスの追加行として一意に確認できる | `unverified` | インライン（`side: RIGHT`）、本文に「位置未検証」の注記を付ける |
+| **上記以外すべて**（位置を特定できない / 引用候補はあるが全候補が不在 / context・作業ツリーでしか見つからない / 引用候補が空で行番号も確認できない） | `unanchorable` | **通常 PR コメントへ退避** |
 
 **旧側にしか無い引用を一律に落とさない。** 「削除された検証」「弱められたチェック」を
 根拠とする指摘は正当であり、`side: LEFT` のインラインとして投稿できる。
@@ -545,11 +546,14 @@ LELIEL は `<IMPACT_CONTEXT>` の呼び出し元証拠を根拠にする契約�
 **1つでも満たさなければ 5-3 の失敗経路（全件 `unanchorable`）に倒す。**
 
 - `anchors` の `id` 集合が `$FINDINGS_TABLE` の `id` 集合と**過不足なく・重複なく一致**する
-- `anchor_status` が `ok` / `corrected` / `unanchorable` のいずれか（**未知の値を通さない**）
+- `anchor_status` が `ok` / `corrected` / `unverified` / `unanchorable` のいずれか（**未知の値を通さない**）
 - `anchor_status` が `ok` / `corrected` のとき、`anchored_path` が非空文字列、
   `anchored_line` が正の整数、`side` が `RIGHT` / `LEFT` のいずれか（**前後空白を許さない**）
 - `anchor_status` が `ok` / `corrected` のとき、`anchored_path` が `$DIFF` の変更対象に含まれ、
   **`anchored_line` が PR diff 上でコメント可能な位置**である
+- `anchor_status` が `unverified` のとき、`anchored_path` が非空文字列、
+  `anchored_line` が正の整数、`side` が `RIGHT` であり、`anchored_path` が `$DIFF` の変更対象に含まれ、
+  **`anchored_line` が PR diff 上の新側追加行としてコメント可能な位置**である
 - `anchor_status` が `unanchorable` のとき、`anchored_*` / `side` は**参照しない**（値があっても無視する）
 
 ID 集合だけを見ると、`anchor_status: "ok"` なのに `anchored_line` が `null`、`side` が `"RIGHT "`、
@@ -591,7 +595,7 @@ grounding が失敗した場合や `unanchorable` の場合、`anchored_*` は�
 兼ねると `$FINDING_LIST`（`filepath:line` が必須）もサマリも通常 PR コメントの場所表示も作れなくなる。
 
 - `$FINDING_LIST` と通常 PR コメントの場所表示は **`original_*` を使う**（常に存在する）
-- インラインコメントの位置は **`anchored_*` を使う**（`ok` / `corrected` のときのみ存在する）
+- インラインコメントの位置は **`anchored_*` を使う**（`ok` / `corrected` / `unverified` のときのみ存在する）
 
 ### 5-3. grounding が失敗した場合
 
@@ -775,6 +779,7 @@ body も anchor 情報も同じ表の同じ行から取るので、**取り違�
 | `anchor_status` | 経路 |
 |---|---|
 | `ok` / `corrected` | `anchored_path` / `anchored_line` / `side` でインラインコメント |
+| `unverified` | `anchored_path` / `anchored_line` / `side` でインラインコメント。本文冒頭に「⚠ 位置は未検証（evidence引用なし、original_lineの実在確認のみ）」を付記 |
 | `unanchorable` | **`anchored_line` / `side` を読まずに**通常 PR コメントへ退避 |
 | **フィールドが無い** | `unanchorable` と同じ扱い（通常 PR コメントへ退避） |
 
@@ -802,6 +807,14 @@ gh api -X POST repos/$OWNER/$REPO/pulls/$PR_NUM/comments \
 コメント本文の形式：
 ```
 [MAGI-HARD] **[HIGH] <ペルソナ名>（<観点>）** または **[MEDIUM] <ペルソナ名>（<観点>）**
+
+<指摘の詳細内容>
+```
+
+`anchor_status` が `unverified` のときは、本文冒頭に次を付ける:
+
+```
+⚠ 位置は未検証（evidence引用なし、original_lineの実在確認のみ）
 
 <指摘の詳細内容>
 ```
