@@ -8,6 +8,8 @@ HOOK_DIR="$(dirname "$0")"
 source "${HOOK_DIR}/lib/logging.sh"
 # shellcheck source=lib/paths.sh
 source "${HOOK_DIR}/lib/paths.sh"
+# shellcheck source=lib/ollama.sh
+source "${HOOK_DIR}/lib/ollama.sh"
 
 _HOOK_NAME="knowledge-distill"  # ログファイルを orchestrator と統一
 _HOOK_LOG="${HOOK_LOG_DIR}/${_HOOK_NAME}.log"
@@ -22,6 +24,8 @@ LLM="$KRAG_BASE_DIR/venv/bin/llm"
 
 if [[ -x "$LLM" ]]; then
   echo "  → knowledge-rag 登録中..." >&2
+  OLLAMA_HOST="$(ollama_base_url)"
+  export OLLAMA_HOST
   KRAG_STRICT="${KRAG_DISTILL_STRICT:-0}"
   KRAG_REL="sessions/${DATE}-${TRANSCRIPT_BASE}-${PROJECT}.md"
 

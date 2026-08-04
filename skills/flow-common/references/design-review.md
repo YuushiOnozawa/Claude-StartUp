@@ -121,9 +121,10 @@ EOF
 
 ## ステップ 3: Codex 呼び出し
 prompt ファイル経由で Codex companion task を呼び出す。`--write` flag は使わない。
+`--prompt-file` を使い、prompt 内の `-m` や `--model` を companion の CLI 引数として再解釈させない。
 
 ```bash
-node "$CODEX_COMPANION" task "$(cat $DESIGN_REVIEW_TMPDIR/design-review-prompt.txt)" > "$DESIGN_REVIEW_TMPDIR/design-review-raw.txt" 2>/dev/null
+node "$CODEX_COMPANION" task --prompt-file "$DESIGN_REVIEW_TMPDIR/design-review-prompt.txt" > "$DESIGN_REVIEW_TMPDIR/design-review-raw.txt" 2>/dev/null
 ```
 
 cmd が non-zero exit で失敗した場合は、`CODEX_REVIEW_SKIPPED` としてステップ 5 へ進む。
