@@ -11,7 +11,8 @@ source "${HOOK_DIR}/lib/logging.sh"
 source "${HOOK_DIR}/lib/paths.sh"
 # shellcheck source=lib/ollama.sh
 source "${HOOK_DIR}/lib/ollama.sh"
-export OLLAMA_HOST="$(ollama_base_url)"
+OLLAMA_HOST="$(ollama_base_url)"
+export OLLAMA_HOST
 
 SESSION_FILE="${1:-}"
 [[ -z "$SESSION_FILE" ]] && { log_info "引数なし、スキップ"; exit 0; }

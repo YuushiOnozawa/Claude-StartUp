@@ -24,7 +24,8 @@ LLM="$KRAG_BASE_DIR/venv/bin/llm"
 
 if [[ -x "$LLM" ]]; then
   echo "  → knowledge-rag 登録中..." >&2
-  export OLLAMA_HOST="$(ollama_base_url)"
+  OLLAMA_HOST="$(ollama_base_url)"
+  export OLLAMA_HOST
   KRAG_STRICT="${KRAG_DISTILL_STRICT:-0}"
   KRAG_REL="sessions/${DATE}-${TRANSCRIPT_BASE}-${PROJECT}.md"
 

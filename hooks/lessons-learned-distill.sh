@@ -131,7 +131,8 @@ echo "✓ lessons-learned: ミス検知 → $(basename "$_LL_FILE")" >&2
 LLM="$KRAG_BASE_DIR/venv/bin/llm"
 if [[ -x "$LLM" ]]; then
   echo "  → knowledge-rag 登録中..." >&2
-  export OLLAMA_HOST="$(ollama_base_url)"
+  OLLAMA_HOST="$(ollama_base_url)"
+  export OLLAMA_HOST
   _LL_BASE="${_LL_FILE##*/}"; _LL_BASE="${_LL_BASE%.md}"
   KRAG_REL="lessons-learned/${_LL_BASE}.md"
   {
