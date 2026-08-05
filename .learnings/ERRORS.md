@@ -119,3 +119,48 @@
 **Recurrence-Count:** 1
 **Status:** pending
 **Knowledge-Status:** pending
+
+### ERR-20260805-001
+**Summary:** `llm -T MCP` がローカルOllamaモデルでMCPツール呼び出しをdispatchせず、knowledge-rag登録が静かに失敗する
+
+**Details:** `skills/remember/SKILL.md` および新規 `skills/learnings-promote/SKILL.md` が使う `"$LLM" prompt -m "$MODEL" -T MCP --no-stream` 呼び出しで、MCPサーバー（knowledge-rag）側ログには `ListToolsRequest` のみが記録され `CallToolRequest` に到達しない。`qwen2.5:3b`（設定ファイル既定モデル）では出力が完全に空（exit code 0、stdout/stderrとも空）、`--td`（tool-debug）でも何も表示されない。`qwen2.5-coder:7b` に切り替えると `--td` はモデルが生成した妥当なtool call JSON（`add_document`、正しいfilepath/category/content）を表示するが、それでもMCPサーバーには `CallToolRequest` が届かない。原因は `llm-tools-mcp`/`llm-ollama` 側のツール呼び出しディスパッチの問題と推定されるが未特定（`~/.llm-tools-mcp/mcp.json` の設定・`mcp_server.server` 単体起動はいずれも正常）。`KNOWLEDGE_RAG_DIR`・`OLLAMA_HOST` を呼び出し元シェルでexportしても、`mcp.json` に `env` キーが無いため、MCPサーバーの子プロセスにはPython MCP SDKの `get_default_environment()`（HOME/LOGNAME/PATH/SHELL/TERM/USERのみ）しか継承されない点も別途確認（今回のdispatch失敗の直接原因ではなさそうだが、環境変数依存の副作用が起きうる設計）。
+
+**Suggested Action:** `remember`・`learnings-promote` はいずれも「成功痕跡が確認できなければ登録失敗として扱いStatusを更新しない」設計になっており、危険側には倒れていない（サイレントなデータ破損はない）が、`remember` は現状ユーザーに気づかれず登録し続けているつもりが実際には何も登録されていない可能性が高い。別Issueとして起票し、(1) `llm-tools-mcp`/`llm-ollama` バージョンアップでの解消有無、(2) MCPクライアント実装を `llm` CLI 経由でなくPython `mcp` SDKで直接呼ぶ代替経路、を検討する。
+
+**Source:** PR #378（learnings-promote実機検証）
+**Related Files:** skills/remember/SKILL.md, skills/learnings-promote/SKILL.md
+**Tags:** knowledge-rag, mcp, ollama, llm-cli
+**Pattern-Key:** llm-mcp-tool-dispatch-silent-failure
+**Recurrence-Count:** 1
+**Status:** pending
+**Knowledge-Status:** pending
+
+### ERR-20260805-002
+**Summary:** MAGI Normalizer（qwen3:4b-instruct）が候補間でpersona/evidenceを混入させたが、lossless突合・スキーマ検証の双方をすり抜けた
+
+**Details:** magi-fastのバッチNormalizer呼び出しで、MELCHIORの指摘（`error-detector.sh:78`、evidence無し）が出力JSONで `persona: "BALTHASAR"` に誤帰属され、さらにCASPERの指摘に付いていたEvidence文言（`Old: ... → New: ...`）がこのMELCHIOR由来の候補に混入した。加えて2件目の候補では `persona` フィールドに `"BALTHASิAR"`（タイ文字の結合文字が混入した文字化け）が出力された。`normalizer.md` が定義する検証（`_normalizer_valid`のスキーマチェック、`^Location:`行数と出力配列長のlossless突合）はいずれも通過した——スキーマ検証はフィールドの型・必須性のみを見ており、値の意味的な正しさ（どの候補がどのpersonaに属するか、evidenceが正しい候補のものか）は検証していないため。
+
+**Suggested Action:** 候補が少数（3件）だったため今回はNormalizer出力を破棄し手動でJSONを再構築して対処した。件数が多い場合にこの種の混入をどう検出するかは未解決。対策候補: (1) 入力側で候補ごとに一意なsentinel ID（`CANDIDATE-001`等）を付与し、出力にも同じIDを含めさせて突合する、(2) persona値が入力ヘッダーに実在する値の集合に含まれるかをスキーマ検証に追加する、(3) evidence文字列が入力の対応するブロック内に実在するかを文字列照合で検証する。いずれも今回は未実装。
+
+**Source:** PR #378（learnings-promote、MAGI-FAST実行時）
+**Related Files:** skills/magi-common/references/normalizer.md
+**Tags:** magi, normalizer, ollama, data-integrity
+**Pattern-Key:** magi-normalizer-persona-evidence-crosscontamination
+**Recurrence-Count:** 1
+**Status:** pending
+**Knowledge-Status:** pending
+
+### ERR-20260805-003
+**Summary:** CASPER/MELCHIOR/BALTHASARのHaiku fallback用エージェント定義ファイル（`agents/casper.md`等）がrepo・グローバルいずれにも存在しない
+
+**Details:** `skills/magi-common/references/execution-steps.md` は Haiku fallback パスで `agents/<persona>.md`（repo内優先、無ければ `~/.claude/agents/<persona>.md`）を読み込む前提だが、`melchior.md`・`balthasar.md`・`casper.md` のいずれも `agents/` ディレクトリ（repo・グローバル双方）に存在しない（`agents/`には`code-reviewer.md`・`leliel.md`のみ）。CASPERは `casper/SKILL.md` で「Ollamaパスを使用しない。常にHaikuパスを実行する」と明記されているため、この欠落は毎回のCASPER実行で該当ファイル参照が失敗することを意味する。今回はtask-instruction.md（Your Role節）とreview-criteria.mdの内容で代替してAgent呼び出しを構成し実害なく完了したが、これは手順の必須ファイルが恒常的に見つからない状態であり、今後CASPER実行のたびに同じ代替が必要になる。
+
+**Suggested Action:** `agents/melchior.md`・`agents/balthasar.md`・`agents/casper.md` を新規作成するか、execution-steps.mdのHaiku fallback手順から「エージェント定義ファイル読み込み」の記述を削除し「task-instruction.md + review-criteria.mdで十分」と明記するかのいずれかで整合させる。
+
+**Source:** PR #378（learnings-promote、MAGI-FAST CASPER実行時）
+**Related Files:** skills/magi-common/references/execution-steps.md, skills/casper/SKILL.md
+**Tags:** magi, casper, agents, missing-file
+**Pattern-Key:** magi-persona-agent-definition-missing
+**Recurrence-Count:** 1
+**Status:** pending
+**Knowledge-Status:** pending
