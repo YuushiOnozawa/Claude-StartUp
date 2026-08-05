@@ -27,6 +27,23 @@ if command -v lean-ctx &>/dev/null; then
     MISSING_CMDS+=("lean-ctx-onboard")
   fi
 
+  # shell allowlist を無効化（デフォルトの組み込みリストは kizami 等の自前フックコマンドを
+  # ブロックするため、新規環境で SessionEnd/UserPromptSubmit hook が [BLOCKED] になる。
+  # `lean-ctx config set shell_allowlist '[]'` は値を文字列 "[]" として書き込むバグがあるため使わない）
+  _lctx_config="$HOME/.config/lean-ctx/config.toml"
+  if command -v lean-ctx &>/dev/null; then
+    mkdir -p "$(dirname "$_lctx_config")"
+    if [[ ! -f "$_lctx_config" ]]; then
+      printf 'shell_allowlist = []\n' > "$_lctx_config"
+      ok "lean-ctx config (shell_allowlist 無効化)"
+    elif ! grep -q '^shell_allowlist' "$_lctx_config"; then
+      printf 'shell_allowlist = []\n' >> "$_lctx_config"
+      ok "lean-ctx config (shell_allowlist 無効化)"
+    else
+      ok "lean-ctx config (shell_allowlist 設定済み)"
+    fi
+  fi
+
   # lean-ctx hook rewrite（Bash コマンドを lean-ctx -c でラップ）は RTK と競合するため除去
   # RTK が先に Bash を書き換えるが、lean-ctx がさらに wrap すると lean-ctx の allowlist で RTK がブロックされる
   # onboard 成否に依存せず実行（以前の onboard で書き込まれた hook が残存している場合に備える）

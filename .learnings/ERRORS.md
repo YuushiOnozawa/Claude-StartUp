@@ -164,3 +164,18 @@
 **Recurrence-Count:** 1
 **Status:** pending
 **Knowledge-Status:** pending
+
+### ERR-20260805-004
+**Summary:** `lean-ctx config set shell_allowlist '[]'` が空配列でなく文字列 `"[]"` を書き込み、意図と逆に allowlist を制限的な状態にする
+
+**Details:** 新規環境の SessionEnd hook で `kizami save --stdin` が lean-ctx の shell allowlist に未登録のためブロックされる不具合を調査中、`shell_allowlist = []`（空配列＝allowlist無効化・全コマンド許可）を明示的に書き込む目的で `lean-ctx config set shell_allowlist '[]'` を実行した。結果、config.toml には `shell_allowlist = ["[]"]`（文字列 `"[]"` を要素に持つ配列）が書き込まれ、`lean-ctx doctor` は "2 command(s) enforced" と報告した。これは元々の「全許可」状態から一転して「`"[]"` と `kizami` の2つしか許可しない」制限状態への regression であり、他の全コマンドがブロックされる状態になっていた。TOML の値をシェル経由でCLI引数として渡す際、空配列リテラル `[]` が空配列としてパースされず文字列として扱われるパーサ側の不具合と考えられる。`lean-ctx allow <cmd>` コマンド（config.toml が存在しない場合に新規生成し、その際 `shell_allowlist = []` を正しい空配列として書き込む）は同じ問題を起こさなかった。
+
+**Suggested Action:** `lean-ctx config set shell_allowlist <value>` は使わない。allowlist を無効化したい場合は (1) config.toml が存在しなければ `lean-ctx allow <任意のcmd>` を1回実行して新規生成させる、または (2) config.toml に直接 `shell_allowlist = []` の行を追記する（本セッションでは setup/250-lean-ctx.sh に後者の冪等チェックを追加した）。誤って `["[]"]` になってしまった場合は config.toml を直接編集して `shell_allowlist = []` に戻せば復旧する。
+
+**Source:** 新規環境ワンライナーセットアップ後の SessionEnd hook エラー対応
+**Related Files:** setup/250-lean-ctx.sh, ~/.config/lean-ctx/config.toml
+**Tags:** lean-ctx, config, cli-bug, shell-allowlist
+**Pattern-Key:** lean-ctx-config-set-empty-array-string-bug
+**Recurrence-Count:** 1
+**Status:** pending
+**Knowledge-Status:** pending
