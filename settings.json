@@ -122,14 +122,6 @@
       {
         "hooks": [
           {
-            "command": "bash /home/ylocal/.claude/hooks/knowledge-distill.sh 2> >(tee -a /home/ylocal/.claude/hooks/knowledge-distill.log >&2)",
-            "type": "command"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
             "command": "lean-ctx hook observe",
             "type": "command"
           }
@@ -323,19 +315,14 @@
       "Read(~/**/.env.*)",
       "Edit(~/**/.env)",
       "Edit(~/**/.env.*)",
-      "Write(~/**/.env)",
-      "Write(~/**/.env.*)",
       "Bash(cat .env*)",
       "Read(~/.ssh/**)",
       "Edit(~/.ssh/**)",
-      "Write(~/.ssh/**)",
       "Bash(cat ~/.ssh/*)",
       "Read(~/.claude/.credentials.json)",
       "Edit(~/.claude/.credentials.json)",
-      "Write(~/.claude/.credentials.json)",
       "Read(~/**/rclone.conf)",
       "Edit(~/**/rclone.conf)",
-      "Write(~/**/rclone.conf)",
       "Bash(*rclone.conf*)",
       "Bash(*rclone*sync*)",
       "Bash(*rclone*delete*)",
