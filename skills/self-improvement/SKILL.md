@@ -30,7 +30,10 @@ argument-hint: "<エントリタイプ: LRN|ERR|FEAT> または <自由記述>"
 **Pattern-Key:** [パターンを一言で（例: git-rebase-conflict）]
 **Recurrence-Count:** 1
 **Status:** pending
+**Knowledge-Status:** pending
 ```
+
+`Status` と `Knowledge-Status` は独立した軸。`Status`（pending/promoted）は CLAUDE.md/settings.json への昇格状態を表し、`Knowledge-Status`（pending/synced）は Obsidian/knowledge-rag への配備状態を表す。`Status: promoted` かつ `Knowledge-Status: pending`（昇格済みだが未配備）、`Status: pending` かつ `Knowledge-Status: synced`（未昇格だが配備済み）のどちらの組み合わせも成立する。
 
 ## ファイル構成
 

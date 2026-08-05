@@ -78,7 +78,7 @@ if [ "$contains_error" = true ]; then
 {
   "hookSpecificOutput": {
     "hookEventName": "PostToolUse",
-    "additionalContext": "<error-detected>\nコマンドエラーが検出されました。以下に該当する場合は .learnings/ERRORS.md に ERR エントリを記録してください:\n- 予期しないエラーまたは原因が自明でないエラー\n- 調査・解決に時間を要したエラー\n- 同じコンテキストで再発する可能性があるエラー\n- 解決策が将来のセッションでも役立つエラー\n\nself-improvement スキルの形式: [ERR-YYYYMMDD-XXX]\n</error-detected>"
+    "additionalContext": "<error-detected>\nコマンドエラーが検出されました。以下に該当する場合は .learnings/ERRORS.md に正式フォーマットで ERR エントリを記録してください:\n- 予期しないエラーまたは原因が自明でないエラー\n- 調査・解決に時間を要したエラー\n- 同じコンテキストで再発する可能性があるエラー\n- 解決策が将来のセッションでも役立つエラー\n\n記録形式（各フィールドを具体的に埋めてください）:\n### ERR-YYYYMMDD-XXX\n**Summary:** [エラーの要約]\n**Details:** [詳細]\n**Suggested Action:** [推奨アクション]\n\n**Source:** [タスク名またはファイル名]\n**Related Files:** [関連ファイル]\n**Tags:** [タグ]\n**Pattern-Key:** [パターンキー]\n**Recurrence-Count:** 1\n**Status:** pending\n**Knowledge-Status:** pending\n</error-detected>"
   }
 }
 EOF
