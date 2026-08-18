@@ -369,6 +369,92 @@ else
   record_result "連続実行時に開始・完了ログを順序どおり記録する" 1
 fi
 
+# 13. SIGTERM 時の実行ログ
+CASE_13_DIR="$TEST_ROOT/case-13"
+CASE_13_CURL_DIR="$CASE_13_DIR/bin"
+CASE_13_LOG_FILE="$CASE_13_DIR/ollama-run.log"
+CASE_13_RESPONSE_FILE="$CASE_13_DIR/response.json"
+CASE_13_CAPTURE_DIR="$CASE_13_DIR/capture"
+CASE_13_STDOUT="$CASE_13_DIR/stdout"
+CASE_13_STDERR="$CASE_13_DIR/stderr"
+mkdir -p "$CASE_13_CURL_DIR" "$CASE_13_DIR/lock" "$CASE_13_CAPTURE_DIR"
+printf '%s\n' '{"response":"ok","done_reason":"stop"}' >"$CASE_13_RESPONSE_FILE"
+cat >"$CASE_13_CURL_DIR/curl" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${REAL_CURL:?REAL_CURL is required}"
+args=("$@")
+body=""
+for ((i = 0; i < ${#args[@]}; i++)); do
+  case "${args[i]}" in
+    -d|--data|--data-raw)
+      if ((i + 1 < ${#args[@]})); then
+        body="${args[i + 1]}"
+      fi
+      i=$((i + 1))
+      ;;
+  esac
+done
+
+if [[ "$body" == *'"prompt"'* ]]; then
+  sleep 5
+fi
+exec "$REAL_CURL" "${args[@]}"
+EOF
+chmod +x "$CASE_13_CURL_DIR/curl"
+
+CASE_13_ENV_ARGS=(
+  env
+  -u OLLAMA_NUM_PREDICT
+  -u OLLAMA_REPEAT_PENALTY
+  -u OLLAMA_NUM_CTX
+  -u OLLAMA_TEMPERATURE
+  -u OLLAMA_KEEP_ALIVE
+  -u OLLAMA_RUN_LOG
+  "OLLAMA_BASE_URL=http://127.0.0.1:11434"
+  "OLLAMA_LOCK_DIR=$CASE_13_DIR/lock"
+  "OLLAMA_TIMEOUT=10"
+  "OLLAMA_RUN_LOG=$CASE_13_LOG_FILE"
+  "PATH=$CASE_13_CURL_DIR:$FAKE_CURL_DIR:$ORIGINAL_PATH"
+  "CURL_CAPTURE_DIR=$CASE_13_CAPTURE_DIR"
+  "CURL_FAKE_RESPONSE_FILE=$CASE_13_RESPONSE_FILE"
+  "REAL_CURL=$FAKE_CURL_DIR/curl"
+)
+CASE_13_RUN_STATUS=0
+printf '%s\n' 'test prompt' \
+  | "${CASE_13_ENV_ARGS[@]}" bash "$SCRIPT" some-model \
+    >"$CASE_13_STDOUT" 2>"$CASE_13_STDERR" &
+CASE_13_PID=$!
+CASE_13_START_SEEN=0
+for _ in {1..50}; do
+  if [[ -f "$CASE_13_LOG_FILE" ]] && [[ "$(wc -l <"$CASE_13_LOG_FILE")" -ge 1 ]]; then
+    CASE_13_START_SEEN=1
+    break
+  fi
+  sleep 0.1
+done
+kill -TERM "$CASE_13_PID" 2>/dev/null || true
+if wait "$CASE_13_PID"; then
+  CASE_13_RUN_STATUS=0
+else
+  CASE_13_RUN_STATUS=$?
+fi
+
+if [[ "$CASE_13_START_SEEN" -eq 1 ]] \
+  && [[ "$CASE_13_RUN_STATUS" -eq 143 ]] \
+  && [[ -f "$CASE_13_LOG_FILE" ]] \
+  && [[ "$(wc -l <"$CASE_13_LOG_FILE")" -eq 2 ]] \
+  && awk -F '\t' '
+    NR == 1 { start_ok = NF == 3 }
+    NR == 2 { complete_ok = NF == 4 && $4 == "interrupted:TERM" && $3 ~ /^[0-9]+$/ }
+    END { exit !(NR == 2 && start_ok && complete_ok) }
+  ' "$CASE_13_LOG_FILE"; then
+  record_result "SIGTERM 時に interrupted:TERM の完了ログを記録する" 0
+else
+  record_result "SIGTERM 時に interrupted:TERM の完了ログを記録する" 1
+fi
+
 echo ""
 echo "=== 結果: PASS=$PASS FAIL=$FAIL ==="
 if [[ "$FAIL" -eq 0 ]]; then

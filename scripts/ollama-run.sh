@@ -118,6 +118,7 @@ PROMPT="$(cat)"
 _CURL_PID=""
 _RESP=""
 _CLEANED_UP=0
+_LOG_COMPLETED=0
 _cleanup() {
   local _reason="${1:-exit}"
   [[ "$_CLEANED_UP" -eq 1 ]] && return 0
@@ -132,11 +133,19 @@ _cleanup() {
       _unload_model || true
     fi
   fi
+  if [[ -n "${_LOG_START_EPOCH:-}" && "$_LOG_COMPLETED" -eq 0 ]]; then
+    if [[ "$_reason" == "signal" ]]; then
+      _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"interrupted:${_SIGNAL_NAME:-UNKNOWN}"
+    else
+      _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"error:unexpected"
+    fi
+    _LOG_COMPLETED=1
+  fi
   exec 9>&- 2>/dev/null || true
   [[ -n "${_RESP:-}" ]] && rm -f "$_RESP" || true
 }
-trap '_cleanup signal; trap - EXIT; exit 130' INT
-trap '_cleanup signal; trap - EXIT; exit 143' TERM
+trap '_SIGNAL_NAME=INT; _cleanup signal; trap - EXIT; exit 130' INT
+trap '_SIGNAL_NAME=TERM; _cleanup signal; trap - EXIT; exit 143' TERM
 trap '_cleanup exit' EXIT
 
 # stale lock チェック（flock ホルダープロセスが死んでいる場合はロックを解放）
@@ -194,6 +203,7 @@ _CURL_PID=""
 
 if [[ "$_curl_status" -ne 0 ]]; then
   _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"error:$_curl_status"
+  _LOG_COMPLETED=1
   exec 9>&-
   exit "$_curl_status"
 fi
@@ -204,6 +214,7 @@ if [[ "$DONE_REASON" == "length" ]]; then
   rm -f "$_RESP"
   _RESP=""
   _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"truncated"
+  _LOG_COMPLETED=1
   exec 9>&-
   exit 75
 fi
@@ -211,6 +222,7 @@ fi
 jq -r '.response // empty' "$_RESP" \
   | perl -0777 -pe 's/<think>.*?<\/think>\n?//gs'
 _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"ok"
+_LOG_COMPLETED=1
 exec 9>&-
 rm -f "$_RESP"
 _RESP=""
