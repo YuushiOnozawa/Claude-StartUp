@@ -68,17 +68,17 @@ else
   fi
 
 fi
-git -C "$WORKTREE_PATH" status --porcelain -uall > "$STATUS_FILE" \
+git -C "$WORKTREE_PATH" status --porcelain=v1 -uall -z > "$STATUS_FILE" \
   || { echo "CODEX_REVIEW_FAILED: status の取得に失敗しました"; return 1; }
 ```
 
 `$DIFF` が非空なら、呼び出し元が確定した内容をそのまま `$DIFF_FILE` として使い、Git から再取得しない。`$DIFF` が空または未設定の場合、staged diff が非空でも `git diff` で unstaged diff を追加し、両方が空の場合だけ `git diff HEAD` を使う。
 
-`$DIFF` の有無にかかわらず、`git status --porcelain -uall` の `?? ` 行から untracked ファイルを検出し、レビュー対象に明示的に追加する。`-uall` により未追跡ディレクトリ配下のファイルも個別に列挙される。各ファイルは `git diff --no-index /dev/null <file>` 形式で `$DIFF_FILE` の末尾に追記する。`git diff --no-index` の終了コード `1` は差分があることを示すため許容し、`0` 以外を一律に成功扱いしない。
+`$DIFF` の有無にかかわらず、`git status --porcelain=v1 -uall -z` の NUL 区切りの `?? ` エントリから untracked ファイルを検出し、レビュー対象に明示的に追加する。`-uall` により未追跡ディレクトリ配下のファイルも個別に列挙される。各ファイルは `git diff --no-index /dev/null <file>` 形式で `$DIFF_FILE` の末尾に追記する。`git diff --no-index` の終了コード `1` は差分があることを示すため許容し、`0` 以外を一律に成功扱いしない。
 この設計では `$DIFF` の有無にかかわらず常に untracked ファイルを検出するため、dev-flow-fast は Phase 3 で作成した専用 worktree 内で実行されることを前提とする（dev-flow の既存 Phase 3 と同じ）。専用 worktree 以外（例えば main チェックアウト上）で直接実行すると、この PR と無関係な既存の untracked ファイルまでレビュー対象に含まれる可能性がある。
 
 ```bash
-while IFS= read -r STATUS_LINE; do
+while IFS= read -r -d '' STATUS_LINE; do
   case "$STATUS_LINE" in
     "?? "*)
       UNTRACKED_PATH=${STATUS_LINE#?? }
@@ -338,7 +338,7 @@ fi
 
 ## ステップ 6: Codex 呼び出し
 
-raw output と stderr は一時ディレクトリに保持する。non-zero exit、出力先の truncation 表示、または output の欠落がある場合は、空配列に置き換えず `CODEX_REVIEW_FAILED` として停止する。
+raw output と stderr は一時ディレクトリに保持する。non-zero exit、stderr の truncation 表示、または output の欠落がある場合は、空配列に置き換えず `CODEX_REVIEW_FAILED` として停止する。
 
 ```bash
 RAW_FILE="$REVIEW_TMPDIR/codex-review-raw.txt"
@@ -358,7 +358,7 @@ if [ ! -r "$ERR_FILE" ] || [ ! -r "$RAW_FILE" ]; then
   echo "CODEX_REVIEW_FAILED: Codex出力またはstderrを読み取れません。raw=$RAW_FILE err=$ERR_FILE"
   return 1
 fi
-if grep -aEiq 'truncat|切り詰め|output limit|中断|省略' "$ERR_FILE" "$RAW_FILE"; then
+if grep -aEiq 'truncat|切り詰め|output limit|中断|省略' "$ERR_FILE"; then
   echo "CODEX_REVIEW_FAILED: Codex出力が切り詰められた可能性があります。raw=$RAW_FILE"
   return 1
 else
@@ -477,9 +477,9 @@ Phase 5 が保持する waiver は次のすべてが一致する場合だけ有�
 - finding の `path` が一致する
 - finding の `line` が一致する（`null` も含めて厳密一致）
 - finding の `gate` が一致する
-- 対象領域の diff hash（`sha256sum "$DIFF_FILE"`）が一致する
+- diff全体の hash（`sha256sum "$DIFF_FILE"`）が一致する
 
-`$WAIVERS_FILE`（未設定時は空配列）は、`id` / `body` / `path` / `line` / `gate` / `diff_hash` を持つ JSON 配列として Phase 5 が保持する。対象コード領域の diff が変わった場合、waiver を無効化して再確認を求める。Codex/codegen は waiver を選べず、waiver の選択は常にユーザーが行う。
+`$WAIVERS_FILE`（未設定時は空配列）は、`id` / `body` / `path` / `line` / `gate` / `diff_hash` を持つ JSON 配列として Phase 5 が保持する。diff全体（`$DIFF_FILE` の内容全体）が変わった場合、waiver対象と無関係な変更を含め、waiverを無効化して再確認を求める。Codex/codegen は waiver を選べず、waiver の選択は常にユーザーが行う。
 
 ```bash
 DIFF_HASH_FILE="$REVIEW_TMPDIR/diff.sha256"
