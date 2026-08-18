@@ -181,7 +181,7 @@ if grep -aFq 'Binary files ' "$DIFF_FILE"; then
 fi
 ```
 
-大きい diff について入力上限を超えて切り詰めることは禁止する。実行環境が許容するレビュー入力上限を `$MAX_REVIEW_BYTES`（未設定時は `1048576`）として確認し、超過時は未レビュー部分を無視せず、次のように停止する。`$MAX_REVIEW_BYTES` が正の整数であることも検証してから上限比較を行う。上限内でも、Codex companion、ラッパー、または出力先が truncation を示した場合は同じ扱いにする。
+大きい diff について入力上限を超えて切り詰めることは禁止する。実行環境が許容するレビュー入力上限を `$MAX_REVIEW_BYTES`（未設定時は `1048576`）として確認し、超過時は未レビュー部分を無視せず、次のように停止する。`$MAX_REVIEW_BYTES` が正の整数であることも検証してから上限比較を行う。比較自体が失敗した場合も検証不能として停止する。上限内でも、Codex companion、ラッパー、または出力先が truncation を示した場合は同じ扱いにする。
 
 ```bash
 MAX_REVIEW_BYTES=${MAX_REVIEW_BYTES:-1048576}
@@ -195,6 +195,12 @@ DIFF_BYTES=$(wc -c < "$DIFF_FILE")
 if [ "$DIFF_BYTES" -gt "$MAX_REVIEW_BYTES" ]; then
   echo "CODEX_REVIEW_FAILED: 大きいdiffが入力上限を超え、全内容をレビューできません(${DIFF_BYTES} bytes)"
   return 1
+else
+  COMPARE_STATUS=$?
+  if [ "$COMPARE_STATUS" -gt 1 ]; then
+    echo "CODEX_REVIEW_FAILED: MAX_REVIEW_BYTESとの比較に失敗しました(${DIFF_BYTES} vs ${MAX_REVIEW_BYTES})"
+    return 1
+  fi
 fi
 ```
 
