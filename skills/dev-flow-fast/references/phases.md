@@ -145,6 +145,7 @@ Codex companionが利用不可、または呼び出し・検証に失敗した�
   - waiverの選択は常にユーザーが行う。Codex/codegenはwaiverを選べない
 - `defer`指摘は表示のみで、ループの継続条件には一切影響しない。
 
+修正または waiver 判断の後、次回の `references/codex-review.md` 実行前に必ず `$DIFF` を空にする（`unset DIFF` または `DIFF=""`）。これにより次回のレビューは worktree の最新状態から diff を再取得し、Phase 4 で取得した `$DIFF` をそのまま再利用しない。
 修正または waiver 判断の後、上記の `$REVIEW_ITERATION` 加算と上限判定を行ってから `references/codex-review.md` を再実行する。反復は最大5回。5回以内でも同一findingが解決後に再発する、または反復間でdiffが実質進展しない場合は `REVIEW_ESCALATE` とし、5回を超えて `$BLOCK_COUNT ≥ 1` または未waiver `manual` が残る場合も同様に扱う。
 
 ## Phase 6: COMMIT
