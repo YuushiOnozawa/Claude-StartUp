@@ -57,7 +57,7 @@ _unload_model() {
 _log_line() {
   local log="${OLLAMA_RUN_LOG:-/tmp/ollama-run.log}"
   mkdir -p "$(dirname "$log")" 2>/dev/null || true
-  printf '%s\n' "$*" >> "$log" 2>/dev/null || true
+  printf '%s\n' "$*" >> "$log" 2>/dev/null
 }
 
 if [[ "${1:-}" == "--unload" ]]; then
@@ -135,11 +135,18 @@ _cleanup() {
   fi
   if [[ -n "${_LOG_START_EPOCH:-}" && "$_LOG_COMPLETED" -eq 0 ]]; then
     if [[ "$_reason" == "signal" ]]; then
-      _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"interrupted:${_SIGNAL_NAME:-UNKNOWN}"
+      if _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"interrupted:${_SIGNAL_NAME:-UNKNOWN}"; then
+        _LOG_COMPLETED=1
+      else
+        echo "Warning: failed to write completion log to ${OLLAMA_RUN_LOG:-/tmp/ollama-run.log}" >&2
+      fi
     else
-      _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"error:unexpected"
+      if _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"error:unexpected"; then
+        _LOG_COMPLETED=1
+      else
+        echo "Warning: failed to write completion log to ${OLLAMA_RUN_LOG:-/tmp/ollama-run.log}" >&2
+      fi
     fi
-    _LOG_COMPLETED=1
   fi
   exec 9>&- 2>/dev/null || true
   [[ -n "${_RESP:-}" ]] && rm -f "$_RESP" || true
@@ -202,8 +209,11 @@ wait "$_CURL_PID" || _curl_status=$?
 _CURL_PID=""
 
 if [[ "$_curl_status" -ne 0 ]]; then
-  _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"error:$_curl_status"
-  _LOG_COMPLETED=1
+  if _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"error:$_curl_status"; then
+    _LOG_COMPLETED=1
+  else
+    echo "Warning: failed to write completion log to ${OLLAMA_RUN_LOG:-/tmp/ollama-run.log}" >&2
+  fi
   exec 9>&-
   exit "$_curl_status"
 fi
@@ -213,16 +223,22 @@ if [[ "$DONE_REASON" == "length" ]]; then
   echo "Warning: Ollama response truncated at num_predict=$NUM_PREDICT tokens (done_reason=length)" >&2
   rm -f "$_RESP"
   _RESP=""
-  _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"truncated"
-  _LOG_COMPLETED=1
+  if _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"truncated"; then
+    _LOG_COMPLETED=1
+  else
+    echo "Warning: failed to write completion log to ${OLLAMA_RUN_LOG:-/tmp/ollama-run.log}" >&2
+  fi
   exec 9>&-
   exit 75
 fi
 
 jq -r '.response // empty' "$_RESP" \
   | perl -0777 -pe 's/<think>.*?<\/think>\n?//gs'
-_log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"ok"
-_LOG_COMPLETED=1
+if _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"ok"; then
+  _LOG_COMPLETED=1
+else
+  echo "Warning: failed to write completion log to ${OLLAMA_RUN_LOG:-/tmp/ollama-run.log}" >&2
+fi
 exec 9>&-
 rm -f "$_RESP"
 _RESP=""

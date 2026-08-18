@@ -372,6 +372,7 @@ fi
 # 13. SIGTERM 時の実行ログ
 CASE_13_DIR="$TEST_ROOT/case-13"
 CASE_13_CURL_DIR="$CASE_13_DIR/bin"
+CASE_13_CURL_STARTED="$CASE_13_DIR/curl-started"
 CASE_13_LOG_FILE="$CASE_13_DIR/ollama-run.log"
 CASE_13_RESPONSE_FILE="$CASE_13_DIR/response.json"
 CASE_13_CAPTURE_DIR="$CASE_13_DIR/capture"
@@ -384,6 +385,7 @@ cat >"$CASE_13_CURL_DIR/curl" <<'EOF'
 set -euo pipefail
 
 : "${REAL_CURL:?REAL_CURL is required}"
+: "${CURL_STARTED_MARKER:?CURL_STARTED_MARKER is required}"
 args=("$@")
 body=""
 for ((i = 0; i < ${#args[@]}; i++)); do
@@ -398,6 +400,7 @@ for ((i = 0; i < ${#args[@]}; i++)); do
 done
 
 if [[ "$body" == *'"prompt"'* ]]; then
+  : >"$CURL_STARTED_MARKER"
   sleep 5
 fi
 exec "$REAL_CURL" "${args[@]}"
@@ -419,6 +422,7 @@ CASE_13_ENV_ARGS=(
   "PATH=$CASE_13_CURL_DIR:$FAKE_CURL_DIR:$ORIGINAL_PATH"
   "CURL_CAPTURE_DIR=$CASE_13_CAPTURE_DIR"
   "CURL_FAKE_RESPONSE_FILE=$CASE_13_RESPONSE_FILE"
+  "CURL_STARTED_MARKER=$CASE_13_CURL_STARTED"
   "REAL_CURL=$FAKE_CURL_DIR/curl"
 )
 CASE_13_RUN_STATUS=0
@@ -434,6 +438,14 @@ for _ in {1..50}; do
   fi
   sleep 0.1
 done
+CASE_13_CURL_STARTED_SEEN=0
+for _ in {1..50}; do
+  if [[ -f "$CASE_13_CURL_STARTED" ]]; then
+    CASE_13_CURL_STARTED_SEEN=1
+    break
+  fi
+  sleep 0.1
+done
 kill -TERM "$CASE_13_PID" 2>/dev/null || true
 if wait "$CASE_13_PID"; then
   CASE_13_RUN_STATUS=0
@@ -442,6 +454,7 @@ else
 fi
 
 if [[ "$CASE_13_START_SEEN" -eq 1 ]] \
+  && [[ "$CASE_13_CURL_STARTED_SEEN" -eq 1 ]] \
   && [[ "$CASE_13_RUN_STATUS" -eq 143 ]] \
   && [[ -f "$CASE_13_LOG_FILE" ]] \
   && [[ "$(wc -l <"$CASE_13_LOG_FILE")" -eq 2 ]] \
