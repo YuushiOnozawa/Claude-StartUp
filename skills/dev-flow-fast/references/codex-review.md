@@ -23,6 +23,7 @@
 ## ステップ 1: diff の取得
 
 `$DIFF_FILE` はレビュー専用一時ディレクトリ内に作り、取得順序を固定する。
+`$WORKTREE_PATH` が絶対パスで、存在するディレクトリかつ Git リポジトリとして解決できることを、Git 操作の開始前に検証する。
 
 ```bash
 REVIEW_TMPDIR=${REVIEW_TMPDIR:-$(mktemp -d)}
@@ -32,6 +33,25 @@ DIFF_FILE="$REVIEW_TMPDIR/review.diff"
 STATUS_FILE="$REVIEW_TMPDIR/status.porcelain"
 TARGETS_FILE="$REVIEW_TMPDIR/targets.txt"
 mkdir -p "$REVIEW_TMPDIR"
+case "$WORKTREE_PATH" in
+  /*) ;;
+  *)
+    echo "CODEX_REVIEW_FAILED: WORKTREE_PATHが絶対パスではありません"
+    return 1
+    ;;
+esac
+[ -d "$WORKTREE_PATH" ] || {
+  echo "CODEX_REVIEW_FAILED: WORKTREE_PATHが存在しません"
+  return 1
+}
+WORKTREE_ROOT=$(git -C "$WORKTREE_PATH" rev-parse --show-toplevel) || {
+  echo "CODEX_REVIEW_FAILED: WORKTREE_PATHがgitリポジトリとして解決できません"
+  return 1
+}
+[ -n "$WORKTREE_ROOT" ] || {
+  echo "CODEX_REVIEW_FAILED: WORKTREE_PATHがgitリポジトリとして解決できません"
+  return 1
+}
 : > "$TARGETS_FILE" || {
   echo "CODEX_REVIEW_FAILED: 対象ファイル一覧を初期化できません"
   return 1
@@ -161,10 +181,16 @@ if grep -aFq 'Binary files ' "$DIFF_FILE"; then
 fi
 ```
 
-大きい diff について入力上限を超えて切り詰めることは禁止する。実行環境が許容するレビュー入力上限を `$MAX_REVIEW_BYTES`（未設定時は `1048576`）として確認し、超過時は未レビュー部分を無視せず、次のように停止する。上限内でも、Codex companion、ラッパー、または出力先が truncation を示した場合は同じ扱いにする。
+大きい diff について入力上限を超えて切り詰めることは禁止する。実行環境が許容するレビュー入力上限を `$MAX_REVIEW_BYTES`（未設定時は `1048576`）として確認し、超過時は未レビュー部分を無視せず、次のように停止する。`$MAX_REVIEW_BYTES` が正の整数であることも検証してから上限比較を行う。上限内でも、Codex companion、ラッパー、または出力先が truncation を示した場合は同じ扱いにする。
 
 ```bash
 MAX_REVIEW_BYTES=${MAX_REVIEW_BYTES:-1048576}
+case "$MAX_REVIEW_BYTES" in
+  ''|*[!0-9]*|0)
+    echo "CODEX_REVIEW_FAILED: MAX_REVIEW_BYTESが正の整数ではありません"
+    return 1
+    ;;
+esac
 DIFF_BYTES=$(wc -c < "$DIFF_FILE")
 if [ "$DIFF_BYTES" -gt "$MAX_REVIEW_BYTES" ]; then
   echo "CODEX_REVIEW_FAILED: 大きいdiffが入力上限を超え、全内容をレビューできません(${DIFF_BYTES} bytes)"
