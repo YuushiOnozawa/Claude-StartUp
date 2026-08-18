@@ -102,6 +102,7 @@ run_ollama() {
   local num_predict="$3"
   local repeat_penalty="$4"
   local system_file="${5:-}"
+  local run_log="${6:-$run_dir/ollama-run.log}"
   local response_file="$run_dir/response.json"
   local -a env_args
   local -a script_args
@@ -123,7 +124,7 @@ run_ollama() {
     "OLLAMA_BASE_URL=http://127.0.0.1:11434"
     "OLLAMA_LOCK_DIR=$run_dir/lock"
     "OLLAMA_TIMEOUT=10"
-    "OLLAMA_RUN_LOG=$run_dir/ollama-run.log"
+    "OLLAMA_RUN_LOG=$run_log"
     "PATH=$FAKE_CURL_DIR:$ORIGINAL_PATH"
     "CURL_CAPTURE_DIR=$RUN_CAPTURE_DIR"
     "CURL_FAKE_RESPONSE_FILE=$response_file"
@@ -301,6 +302,71 @@ if capture_contract_ok "$RUN_CAPTURE_DIR" \
   record_result "切り詰め時に truncated の完了ログを記録する" 0
 else
   record_result "切り詰め時に truncated の完了ログを記録する" 1
+fi
+
+# 11. num_predict のゼロ埋め値フォールバック
+run_ollama "$TEST_ROOT/case-11-00" \
+  '{"response":"ok","done_reason":"stop"}' '00' '__unset__'
+ZERO_PAD_00_CAPTURE_DIR="$RUN_CAPTURE_DIR"
+ZERO_PAD_00_STDOUT="$RUN_STDOUT"
+ZERO_PAD_00_STDERR="$RUN_STDERR"
+ZERO_PAD_00_STATUS="$RUN_STATUS"
+
+run_ollama "$TEST_ROOT/case-11-0000" \
+  '{"response":"ok","done_reason":"stop"}' '0000' '__unset__'
+ZERO_PAD_0000_CAPTURE_DIR="$RUN_CAPTURE_DIR"
+ZERO_PAD_0000_STDOUT="$RUN_STDOUT"
+ZERO_PAD_0000_STDERR="$RUN_STDERR"
+ZERO_PAD_0000_STATUS="$RUN_STATUS"
+
+if capture_contract_ok "$ZERO_PAD_00_CAPTURE_DIR" \
+  && payload_matches "$ZERO_PAD_00_CAPTURE_DIR/call-1.json" '.options.num_predict == 4096' \
+  && [[ "$ZERO_PAD_00_STATUS" -eq 0 ]] \
+  && [[ "$(<"$ZERO_PAD_00_STDOUT")" == "ok" ]] \
+  && grep -qi 'warning' "$ZERO_PAD_00_STDERR" \
+  && capture_contract_ok "$ZERO_PAD_0000_CAPTURE_DIR" \
+  && payload_matches "$ZERO_PAD_0000_CAPTURE_DIR/call-1.json" '.options.num_predict == 4096' \
+  && [[ "$ZERO_PAD_0000_STATUS" -eq 0 ]] \
+  && [[ "$(<"$ZERO_PAD_0000_STDOUT")" == "ok" ]] \
+  && grep -qi 'warning' "$ZERO_PAD_0000_STDERR"; then
+  record_result "OLLAMA_NUM_PREDICT=00/0000 を警告して 4096 にフォールバックする" 0
+else
+  record_result "OLLAMA_NUM_PREDICT=00/0000 を警告して 4096 にフォールバックする" 1
+fi
+
+# 12. 連続実行時の開始・完了ログ順序
+SEQUENTIAL_LOG_DIR="$TEST_ROOT/case-12"
+SEQUENTIAL_LOG_FILE="$SEQUENTIAL_LOG_DIR/shared-ollama-run.log"
+mkdir -p "$SEQUENTIAL_LOG_DIR"
+run_ollama "$TEST_ROOT/case-12-run-1" \
+  '{"response":"ok","done_reason":"stop"}' '__unset__' '__unset__' '' "$SEQUENTIAL_LOG_FILE"
+SEQUENTIAL_RUN_1_CAPTURE_DIR="$RUN_CAPTURE_DIR"
+SEQUENTIAL_RUN_1_STDOUT="$RUN_STDOUT"
+SEQUENTIAL_RUN_1_STATUS="$RUN_STATUS"
+
+run_ollama "$TEST_ROOT/case-12-run-2" \
+  '{"response":"ok","done_reason":"stop"}' '__unset__' '__unset__' '' "$SEQUENTIAL_LOG_FILE"
+SEQUENTIAL_RUN_2_CAPTURE_DIR="$RUN_CAPTURE_DIR"
+SEQUENTIAL_RUN_2_STDOUT="$RUN_STDOUT"
+SEQUENTIAL_RUN_2_STATUS="$RUN_STATUS"
+
+if capture_contract_ok "$SEQUENTIAL_RUN_1_CAPTURE_DIR" \
+  && [[ "$SEQUENTIAL_RUN_1_STATUS" -eq 0 ]] \
+  && [[ "$(<"$SEQUENTIAL_RUN_1_STDOUT")" == "ok" ]] \
+  && capture_contract_ok "$SEQUENTIAL_RUN_2_CAPTURE_DIR" \
+  && [[ "$SEQUENTIAL_RUN_2_STATUS" -eq 0 ]] \
+  && [[ "$(<"$SEQUENTIAL_RUN_2_STDOUT")" == "ok" ]] \
+  && [[ "$(wc -l <"$SEQUENTIAL_LOG_FILE")" -eq 4 ]] \
+  && awk -F '\t' '
+    NR == 1 { start_1_ok = NF == 3 && $2 == "some-model" && $3 ~ /^[0-9]+$/ }
+    NR == 2 { complete_1_ok = NF == 4 && $2 == "some-model" && $3 ~ /^[0-9]+$/ && $4 == "ok" }
+    NR == 3 { start_2_ok = NF == 3 && $2 == "some-model" && $3 ~ /^[0-9]+$/ }
+    NR == 4 { complete_2_ok = NF == 4 && $2 == "some-model" && $3 ~ /^[0-9]+$/ && $4 == "ok" }
+    END { exit !(NR == 4 && start_1_ok && complete_1_ok && start_2_ok && complete_2_ok) }
+  ' "$SEQUENTIAL_LOG_FILE"; then
+  record_result "連続実行時に開始・完了ログを順序どおり記録する" 0
+else
+  record_result "連続実行時に開始・完了ログを順序どおり記録する" 1
 fi
 
 echo ""

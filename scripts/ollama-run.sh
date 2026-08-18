@@ -92,7 +92,7 @@ else
   KEEP_ALIVE_JSON=0
 fi
 NUM_PREDICT="${OLLAMA_NUM_PREDICT:-4096}"
-if [[ -v OLLAMA_NUM_PREDICT && "$OLLAMA_NUM_PREDICT" =~ ^[0-9]+$ && "$OLLAMA_NUM_PREDICT" != "0" ]]; then
+if [[ -v OLLAMA_NUM_PREDICT && "$OLLAMA_NUM_PREDICT" =~ ^[1-9][0-9]*$ ]]; then
   NUM_PREDICT="$OLLAMA_NUM_PREDICT"
 elif [[ -v OLLAMA_NUM_PREDICT ]]; then
   echo "Warning: invalid OLLAMA_NUM_PREDICT value: $OLLAMA_NUM_PREDICT (falling back to 4096)" >&2
@@ -191,10 +191,10 @@ _CURL_PID=$!
 _curl_status=0
 wait "$_CURL_PID" || _curl_status=$?
 _CURL_PID=""
-exec 9>&-
 
 if [[ "$_curl_status" -ne 0 ]]; then
   _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"error:$_curl_status"
+  exec 9>&-
   exit "$_curl_status"
 fi
 
@@ -204,11 +204,13 @@ if [[ "$DONE_REASON" == "length" ]]; then
   rm -f "$_RESP"
   _RESP=""
   _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"truncated"
+  exec 9>&-
   exit 75
 fi
 
 jq -r '.response // empty' "$_RESP" \
   | perl -0777 -pe 's/<think>.*?<\/think>\n?//gs'
 _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"ok"
+exec 9>&-
 rm -f "$_RESP"
 _RESP=""
