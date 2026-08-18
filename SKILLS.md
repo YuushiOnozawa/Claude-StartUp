@@ -10,6 +10,7 @@
 | スキル | 概要 |
 |--------|------|
 | `/dev-flow` | 単一機能の開発サイクル（設計 → BALTHASAR レビュー → 承認 → 実装 → MAGI → PR） |
+| `/dev-flow-fast` | Codex中心の高速開発サイクル(実装・レビューともCodex、MAGI-FASTは使わない。指摘ゼロまで修正ループ) |
 | `/epic-flow` | 大規模機能の開発。規模を評価し、単一なら `/dev-flow`、複数なら Issue 分解してループ実行 |
 | `/codegen` | コード生成を **Codex** に委譲。Claude が仕様書を書き、Codex が実装する（Codex 不可時は Haiku にフォールバック） |
 | `/commit` | Conventional Commits 形式で安全にコミット。main/master への直接コミットは拒否 |
