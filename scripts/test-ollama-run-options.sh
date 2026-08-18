@@ -1,0 +1,271 @@
+#!/usr/bin/env bash
+# scripts/test-ollama-run-options.sh — ollama-run.sh の options と終了理由のテスト
+
+set -euo pipefail
+
+SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ollama-run.sh"
+PASS=0
+FAIL=0
+TEST_ROOT="$(mktemp -d)"
+FAKE_CURL_DIR="$TEST_ROOT/bin"
+ORIGINAL_PATH="${PATH:-}"
+
+cleanup() {
+  rm -rf -- "$TEST_ROOT"
+}
+trap cleanup EXIT
+
+mkdir -p "$FAKE_CURL_DIR"
+
+cat >"$FAKE_CURL_DIR/curl" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${CURL_CAPTURE_DIR:?CURL_CAPTURE_DIR is required}"
+mkdir -p "$CURL_CAPTURE_DIR"
+
+count_file="$CURL_CAPTURE_DIR/.count"
+if [[ -f "$count_file" ]]; then
+  count="$(<"$count_file")"
+else
+  count=0
+fi
+count=$((count + 1))
+printf '%s\n' "$count" >"$count_file"
+
+body=""
+output_file=""
+while (($# > 0)); do
+  case "$1" in
+    -d|--data|--data-raw)
+      body="${2:?missing argument for $1}"
+      shift 2
+      ;;
+    -o|--output)
+      output_file="${2:?missing argument for $1}"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+printf '%s' "$body" >"$CURL_CAPTURE_DIR/call-$count.json"
+
+if [[ -n "$output_file" ]]; then
+  if [[ -n "${CURL_FAKE_RESPONSE_FILE:-}" ]]; then
+    cp -- "$CURL_FAKE_RESPONSE_FILE" "$output_file"
+  else
+    printf '%s\n' '{"response":"ok","done_reason":"stop"}' >"$output_file"
+  fi
+fi
+
+exit 0
+EOF
+chmod +x "$FAKE_CURL_DIR/curl"
+
+record_result() {
+  local description="$1"
+  local passed="$2"
+
+  if [[ "$passed" -eq 0 ]]; then
+    echo "PASS: $description"
+    ((PASS++)) || true
+  else
+    echo "FAIL: $description"
+    ((FAIL++)) || true
+  fi
+}
+
+capture_contract_ok() {
+  local capture_dir="$1"
+
+  [[ -f "$capture_dir/call-1.json" ]] \
+    && [[ -f "$capture_dir/call-2.json" ]] \
+    && [[ ! -e "$capture_dir/call-3.json" ]] \
+    && jq -e 'has("prompt")' "$capture_dir/call-1.json" >/dev/null 2>&1 \
+    && jq -e '(.keep_alive == 0) and (has("prompt") | not)' \
+      "$capture_dir/call-2.json" >/dev/null 2>&1
+}
+
+payload_matches() {
+  local payload_file="$1"
+  local expression="$2"
+
+  jq -e "$expression" "$payload_file" >/dev/null 2>&1
+}
+
+run_ollama() {
+  local run_dir="$1"
+  local response_json="$2"
+  local num_predict="$3"
+  local repeat_penalty="$4"
+  local system_file="${5:-}"
+  local response_file="$run_dir/response.json"
+  local -a env_args
+  local -a script_args
+
+  RUN_CAPTURE_DIR="$run_dir/capture"
+  RUN_STDOUT="$run_dir/stdout"
+  RUN_STDERR="$run_dir/stderr"
+  mkdir -p "$RUN_CAPTURE_DIR" "$run_dir/lock"
+  printf '%s\n' "$response_json" >"$response_file"
+
+  env_args=(
+    env
+    -u OLLAMA_NUM_PREDICT
+    -u OLLAMA_REPEAT_PENALTY
+    -u OLLAMA_NUM_CTX
+    -u OLLAMA_TEMPERATURE
+    -u OLLAMA_KEEP_ALIVE
+    "OLLAMA_BASE_URL=http://127.0.0.1:11434"
+    "OLLAMA_LOCK_DIR=$run_dir/lock"
+    "OLLAMA_TIMEOUT=10"
+    "PATH=$FAKE_CURL_DIR:$ORIGINAL_PATH"
+    "CURL_CAPTURE_DIR=$RUN_CAPTURE_DIR"
+    "CURL_FAKE_RESPONSE_FILE=$response_file"
+  )
+  if [[ "$num_predict" != "__unset__" ]]; then
+    env_args+=("OLLAMA_NUM_PREDICT=$num_predict")
+  fi
+  if [[ "$repeat_penalty" != "__unset__" ]]; then
+    env_args+=("OLLAMA_REPEAT_PENALTY=$repeat_penalty")
+  fi
+
+  script_args=(bash "$SCRIPT" some-model)
+  if [[ -n "$system_file" ]]; then
+    script_args+=("$system_file")
+  fi
+
+  RUN_STATUS=0
+  if printf '%s\n' 'test prompt' \
+    | "${env_args[@]}" "${script_args[@]}" >"$RUN_STDOUT" 2>"$RUN_STDERR"; then
+    RUN_STATUS=0
+  else
+    RUN_STATUS=$?
+  fi
+}
+
+# 1. デフォルト値と既存 options の回帰
+run_ollama "$TEST_ROOT/case-1" \
+  '{"response":"ok","done_reason":"stop"}' '__unset__' '__unset__'
+if capture_contract_ok "$RUN_CAPTURE_DIR" \
+  && payload_matches "$RUN_CAPTURE_DIR/call-1.json" \
+    '.options.num_predict == 4096 and .options.repeat_penalty == 1.15 and .options.num_ctx == 16384 and .options.temperature == 0.1 and .keep_alive == 0' \
+  && [[ "$RUN_STATUS" -eq 0 ]] \
+  && [[ "$(<"$RUN_STDOUT")" == "ok" ]]; then
+  record_result "デフォルト値と既存 options を送信する" 0
+else
+  record_result "デフォルト値と既存 options を送信する" 1
+fi
+
+# 2. num_predict の指定
+run_ollama "$TEST_ROOT/case-2" \
+  '{"response":"ok","done_reason":"stop"}' '800' '__unset__'
+if capture_contract_ok "$RUN_CAPTURE_DIR" \
+  && payload_matches "$RUN_CAPTURE_DIR/call-1.json" '.options.num_predict == 800' \
+  && [[ "$RUN_STATUS" -eq 0 ]] \
+  && [[ "$(<"$RUN_STDOUT")" == "ok" ]]; then
+  record_result "OLLAMA_NUM_PREDICT=800 を送信する" 0
+else
+  record_result "OLLAMA_NUM_PREDICT=800 を送信する" 1
+fi
+
+# 3. repeat_penalty の指定
+run_ollama "$TEST_ROOT/case-3" \
+  '{"response":"ok","done_reason":"stop"}' '__unset__' '1.3'
+if capture_contract_ok "$RUN_CAPTURE_DIR" \
+  && payload_matches "$RUN_CAPTURE_DIR/call-1.json" '.options.repeat_penalty == 1.3' \
+  && [[ "$RUN_STATUS" -eq 0 ]] \
+  && [[ "$(<"$RUN_STDOUT")" == "ok" ]]; then
+  record_result "OLLAMA_REPEAT_PENALTY=1.3 を送信する" 0
+else
+  record_result "OLLAMA_REPEAT_PENALTY=1.3 を送信する" 1
+fi
+
+# 4. num_predict の負値フォールバック
+run_ollama "$TEST_ROOT/case-4" \
+  '{"response":"ok","done_reason":"stop"}' '-1' '__unset__'
+if capture_contract_ok "$RUN_CAPTURE_DIR" \
+  && payload_matches "$RUN_CAPTURE_DIR/call-1.json" '.options.num_predict == 4096' \
+  && [[ "$RUN_STATUS" -eq 0 ]] \
+  && [[ "$(<"$RUN_STDOUT")" == "ok" ]] \
+  && grep -qi 'warning' "$RUN_STDERR"; then
+  record_result "OLLAMA_NUM_PREDICT=-1 を警告して 4096 にフォールバックする" 0
+else
+  record_result "OLLAMA_NUM_PREDICT=-1 を警告して 4096 にフォールバックする" 1
+fi
+
+# 5. num_predict の非数値フォールバック
+run_ollama "$TEST_ROOT/case-5" \
+  '{"response":"ok","done_reason":"stop"}' 'abc' '__unset__'
+if capture_contract_ok "$RUN_CAPTURE_DIR" \
+  && payload_matches "$RUN_CAPTURE_DIR/call-1.json" '.options.num_predict == 4096' \
+  && [[ "$RUN_STATUS" -eq 0 ]] \
+  && [[ "$(<"$RUN_STDOUT")" == "ok" ]] \
+  && grep -qi 'warning' "$RUN_STDERR"; then
+  record_result "OLLAMA_NUM_PREDICT=abc を警告して 4096 にフォールバックする" 0
+else
+  record_result "OLLAMA_NUM_PREDICT=abc を警告して 4096 にフォールバックする" 1
+fi
+
+# 6. done_reason=length の扱い
+run_ollama "$TEST_ROOT/case-6" \
+  '{"response":"truncated","done_reason":"length"}' '__unset__' '__unset__'
+if capture_contract_ok "$RUN_CAPTURE_DIR" \
+  && [[ "$RUN_STATUS" -eq 75 ]] \
+  && [[ ! -s "$RUN_STDOUT" ]] \
+  && grep -qi 'warning' "$RUN_STDERR"; then
+  record_result "done_reason=length で 75 を返し本文を出力しない" 0
+else
+  record_result "done_reason=length で 75 を返し本文を出力しない" 1
+fi
+
+# 7. 通常の done_reason では従来どおり本文を出力
+run_ollama "$TEST_ROOT/case-7" \
+  '{"response":"completed","done_reason":"stop"}' '__unset__' '__unset__'
+if capture_contract_ok "$RUN_CAPTURE_DIR" \
+  && [[ "$RUN_STATUS" -eq 0 ]] \
+  && [[ "$(<"$RUN_STDOUT")" == "completed" ]]; then
+  record_result "done_reason=stop では本文を出力する" 0
+else
+  record_result "done_reason=stop では本文を出力する" 1
+fi
+
+# 8. system プロンプト分岐と通常分岐の双方
+SYSTEM_FILE="$TEST_ROOT/system-prompt.txt"
+printf '%s\n' 'system prompt' >"$SYSTEM_FILE"
+run_ollama "$TEST_ROOT/case-8-system" \
+  '{"response":"ok","done_reason":"stop"}' '__unset__' '__unset__' "$SYSTEM_FILE"
+SYSTEM_CAPTURE_DIR="$RUN_CAPTURE_DIR"
+SYSTEM_STDOUT="$RUN_STDOUT"
+SYSTEM_STATUS="$RUN_STATUS"
+
+run_ollama "$TEST_ROOT/case-8-no-system" \
+  '{"response":"ok","done_reason":"stop"}' '__unset__' '__unset__'
+NO_SYSTEM_CAPTURE_DIR="$RUN_CAPTURE_DIR"
+NO_SYSTEM_STDOUT="$RUN_STDOUT"
+NO_SYSTEM_STATUS="$RUN_STATUS"
+
+if capture_contract_ok "$SYSTEM_CAPTURE_DIR" \
+  && payload_matches "$SYSTEM_CAPTURE_DIR/call-1.json" \
+    '.system == "system prompt" and .options.num_predict == 4096 and .options.repeat_penalty == 1.15' \
+  && [[ "$SYSTEM_STATUS" -eq 0 ]] \
+  && [[ "$(<"$SYSTEM_STDOUT")" == "ok" ]] \
+  && capture_contract_ok "$NO_SYSTEM_CAPTURE_DIR" \
+  && payload_matches "$NO_SYSTEM_CAPTURE_DIR/call-1.json" \
+    '.options.num_predict == 4096 and .options.repeat_penalty == 1.15' \
+  && [[ "$NO_SYSTEM_STATUS" -eq 0 ]] \
+  && [[ "$(<"$NO_SYSTEM_STDOUT")" == "ok" ]]; then
+  record_result "system プロンプト有無の両分岐に新 options を含める" 0
+else
+  record_result "system プロンプト有無の両分岐に新 options を含める" 1
+fi
+
+echo ""
+echo "=== 結果: PASS=$PASS FAIL=$FAIL ==="
+if [[ "$FAIL" -eq 0 ]]; then
+  exit 0
+fi
+exit 1
