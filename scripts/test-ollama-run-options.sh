@@ -119,9 +119,11 @@ run_ollama() {
     -u OLLAMA_NUM_CTX
     -u OLLAMA_TEMPERATURE
     -u OLLAMA_KEEP_ALIVE
+    -u OLLAMA_RUN_LOG
     "OLLAMA_BASE_URL=http://127.0.0.1:11434"
     "OLLAMA_LOCK_DIR=$run_dir/lock"
     "OLLAMA_TIMEOUT=10"
+    "OLLAMA_RUN_LOG=$run_dir/ollama-run.log"
     "PATH=$FAKE_CURL_DIR:$ORIGINAL_PATH"
     "CURL_CAPTURE_DIR=$RUN_CAPTURE_DIR"
     "CURL_FAKE_RESPONSE_FILE=$response_file"
@@ -261,6 +263,44 @@ if capture_contract_ok "$SYSTEM_CAPTURE_DIR" \
   record_result "system プロンプト有無の両分岐に新 options を含める" 0
 else
   record_result "system プロンプト有無の両分岐に新 options を含める" 1
+fi
+
+# 9. 通常完了時の実行ログ
+run_ollama "$TEST_ROOT/case-9" \
+  '{"response":"ok","done_reason":"stop"}' '__unset__' '__unset__'
+LOG_FILE="$TEST_ROOT/case-9/ollama-run.log"
+if capture_contract_ok "$RUN_CAPTURE_DIR" \
+  && [[ -f "$LOG_FILE" ]] \
+  && [[ "$(wc -l <"$LOG_FILE")" -eq 2 ]] \
+  && awk -F '\t' '
+    NR == 1 { start_ok = NF == 3 }
+    NR == 2 { complete_ok = NF == 4 && $4 == "ok" && $3 ~ /^[0-9]+$/ }
+    END { exit !(NR == 2 && start_ok && complete_ok) }
+  ' "$LOG_FILE" \
+  && [[ "$RUN_STATUS" -eq 0 ]] \
+  && [[ "$(<"$RUN_STDOUT")" == "ok" ]]; then
+  record_result "通常完了時に開始・完了ログを記録する" 0
+else
+  record_result "通常完了時に開始・完了ログを記録する" 1
+fi
+
+# 10. 応答切り詰め時の実行ログ
+run_ollama "$TEST_ROOT/case-10" \
+  '{"response":"truncated","done_reason":"length"}' '__unset__' '__unset__'
+LOG_FILE="$TEST_ROOT/case-10/ollama-run.log"
+if capture_contract_ok "$RUN_CAPTURE_DIR" \
+  && [[ -f "$LOG_FILE" ]] \
+  && [[ "$(wc -l <"$LOG_FILE")" -eq 2 ]] \
+  && awk -F '\t' '
+    NR == 1 { start_ok = NF == 3 }
+    NR == 2 { complete_ok = NF == 4 && $4 == "truncated" }
+    END { exit !(NR == 2 && start_ok && complete_ok) }
+  ' "$LOG_FILE" \
+  && [[ "$RUN_STATUS" -eq 75 ]] \
+  && [[ ! -s "$RUN_STDOUT" ]]; then
+  record_result "切り詰め時に truncated の完了ログを記録する" 0
+else
+  record_result "切り詰め時に truncated の完了ログを記録する" 1
 fi
 
 echo ""

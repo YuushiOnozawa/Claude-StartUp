@@ -27,6 +27,7 @@
 #                       duration 文字列（5m, 30s など）を指定するとモデルを保持する。
 #                       無期限保持を避けるため、負値は受け付けない。
 #                       無効値は警告を出して 0 にフォールバックする。
+#   OLLAMA_RUN_LOG      生成実行ログファイル（デフォルト: /tmp/ollama-run.log）
 #   OLLAMA_BASE_URL     Ollama ベース URL（デフォルト: WSL2 は自動検出、それ以外は http://localhost:11434）
 #                       例: OLLAMA_BASE_URL=http://172.17.96.1:11434 bash ollama-run.sh <model>
 #
@@ -51,6 +52,12 @@ _unload_model() {
   curl -sf --max-time 10 "$OLLAMA_URL" \
     -H 'Content-Type: application/json' \
     -d "$unload_json" >/dev/null 2>&1
+}
+
+_log_line() {
+  local log="${OLLAMA_RUN_LOG:-/tmp/ollama-run.log}"
+  mkdir -p "$(dirname "$log")" 2>/dev/null || true
+  printf '%s\n' "$*" >> "$log" 2>/dev/null || true
 }
 
 if [[ "${1:-}" == "--unload" ]]; then
@@ -149,6 +156,8 @@ fi
 mkdir -p "$(dirname "$LOCK")"
 exec 9>"$LOCK"
 flock 9
+_LOG_START_EPOCH="$(date +%s)"
+_log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$$"
 
 if [[ -n "$SYSTEM" ]]; then
   JSON="$(jq -n \
@@ -185,6 +194,7 @@ _CURL_PID=""
 exec 9>&-
 
 if [[ "$_curl_status" -ne 0 ]]; then
+  _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"error:$_curl_status"
   exit "$_curl_status"
 fi
 
@@ -193,10 +203,12 @@ if [[ "$DONE_REASON" == "length" ]]; then
   echo "Warning: Ollama response truncated at num_predict=$NUM_PREDICT tokens (done_reason=length)" >&2
   rm -f "$_RESP"
   _RESP=""
+  _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"truncated"
   exit 75
 fi
 
 jq -r '.response // empty' "$_RESP" \
   | perl -0777 -pe 's/<think>.*?<\/think>\n?//gs'
+_log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"ok"
 rm -f "$_RESP"
 _RESP=""
