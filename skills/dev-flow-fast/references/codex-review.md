@@ -68,13 +68,14 @@ else
   fi
 
 fi
-git -C "$WORKTREE_PATH" status --porcelain > "$STATUS_FILE" \
+git -C "$WORKTREE_PATH" status --porcelain -uall > "$STATUS_FILE" \
   || { echo "CODEX_REVIEW_FAILED: status の取得に失敗しました"; return 1; }
 ```
 
 `$DIFF` が非空なら、呼び出し元が確定した内容をそのまま `$DIFF_FILE` として使い、Git から再取得しない。`$DIFF` が空または未設定の場合、staged diff が非空でも `git diff` で unstaged diff を追加し、両方が空の場合だけ `git diff HEAD` を使う。
 
-`$DIFF` の有無にかかわらず、`git status --porcelain` の `?? ` 行から untracked ファイルを検出し、レビュー対象に明示的に追加する。各ファイルは `git diff --no-index /dev/null <file>` 形式で `$DIFF_FILE` の末尾に追記する。`git diff --no-index` の終了コード `1` は差分があることを示すため許容し、`0` 以外を一律に成功扱いしない。
+`$DIFF` の有無にかかわらず、`git status --porcelain -uall` の `?? ` 行から untracked ファイルを検出し、レビュー対象に明示的に追加する。`-uall` により未追跡ディレクトリ配下のファイルも個別に列挙される。各ファイルは `git diff --no-index /dev/null <file>` 形式で `$DIFF_FILE` の末尾に追記する。`git diff --no-index` の終了コード `1` は差分があることを示すため許容し、`0` 以外を一律に成功扱いしない。
+この設計では `$DIFF` の有無にかかわらず常に untracked ファイルを検出するため、dev-flow-fast は Phase 3 で作成した専用 worktree 内で実行されることを前提とする（dev-flow の既存 Phase 3 と同じ）。専用 worktree 以外（例えば main チェックアウト上）で直接実行すると、この PR と無関係な既存の untracked ファイルまでレビュー対象に含まれる可能性がある。
 
 ```bash
 while IFS= read -r STATUS_LINE; do
