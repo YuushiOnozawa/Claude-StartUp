@@ -18,14 +18,20 @@
 #                       以前は 65536 だったが VRAM 8GB 環境で KV キャッシュが溢れ推論不能になるため
 #                       16384 に変更。LELIEL など長い diff を扱う場合は環境変数で上書きすること。
 #                       例: OLLAMA_NUM_CTX=65536 bash ollama-run.sh <model> system.txt < prompt.txt
+#   OLLAMA_NUM_PREDICT  生成トークン数上限（デフォルト: 4096）
+#                       正の整数以外を指定した場合は警告を出して 4096 にフォールバックする。
 #   OLLAMA_TEMPERATURE  サンプリング温度（デフォルト: 0.1）
+#   OLLAMA_REPEAT_PENALTY  繰り返しペナルティ（デフォルト: 1.15）
 #   OLLAMA_KEEP_ALIVE   モデル保持時間（デフォルト: 0 = 即時解放）
 #                       例: OLLAMA_KEEP_ALIVE=5m bash ollama-run.sh <model> < prompt.txt
 #                       duration 文字列（5m, 30s など）を指定するとモデルを保持する。
 #                       無期限保持を避けるため、負値は受け付けない。
 #                       無効値は警告を出して 0 にフォールバックする。
+#   OLLAMA_RUN_LOG      生成実行ログファイル（デフォルト: /tmp/ollama-run.log）
 #   OLLAMA_BASE_URL     Ollama ベース URL（デフォルト: WSL2 は自動検出、それ以外は http://localhost:11434）
 #                       例: OLLAMA_BASE_URL=http://172.17.96.1:11434 bash ollama-run.sh <model>
+#
+# num_predict 上限で応答が切り詰められた場合は終了コード 75 で終了する。
 
 set -euo pipefail
 
@@ -48,6 +54,12 @@ _unload_model() {
     -d "$unload_json" >/dev/null 2>&1
 }
 
+_log_line() {
+  local log="${OLLAMA_RUN_LOG:-/tmp/ollama-run.log}"
+  mkdir -p "$(dirname "$log")" 2>/dev/null || true
+  printf '%s\n' "$*" >> "$log" 2>/dev/null
+}
+
 if [[ "${1:-}" == "--unload" ]]; then
   MODEL="${2:?Usage: $(basename "$0") --unload <model>}"
   mkdir -p "$(dirname "$LOCK")"
@@ -66,6 +78,7 @@ MODEL="${1:?Usage: $(basename "$0") <model> [system_file]}"
 TIMEOUT="${OLLAMA_TIMEOUT:-1800}"
 CONTEXT_SIZE="${OLLAMA_NUM_CTX:-16384}"
 TEMPERATURE="${OLLAMA_TEMPERATURE:-0.1}"
+REPEAT_PENALTY="${OLLAMA_REPEAT_PENALTY:-1.15}"
 KEEP_ALIVE="${OLLAMA_KEEP_ALIVE:-0}"
 if [[ -v OLLAMA_KEEP_ALIVE && -z "$OLLAMA_KEEP_ALIVE" ]]; then
   echo "Warning: invalid OLLAMA_KEEP_ALIVE value: empty string (falling back to 0)" >&2
@@ -77,6 +90,13 @@ elif [[ "$KEEP_ALIVE" =~ ^[0-9]+(\.[0-9]+)?(ns|us|ms|s|m|h)$ ]]; then
 else
   echo "Warning: invalid OLLAMA_KEEP_ALIVE value: $KEEP_ALIVE (negative values mean indefinite retention and are not accepted; falling back to 0)" >&2
   KEEP_ALIVE_JSON=0
+fi
+NUM_PREDICT="${OLLAMA_NUM_PREDICT:-4096}"
+if [[ -v OLLAMA_NUM_PREDICT && "$OLLAMA_NUM_PREDICT" =~ ^[1-9][0-9]*$ ]]; then
+  NUM_PREDICT="$OLLAMA_NUM_PREDICT"
+elif [[ -v OLLAMA_NUM_PREDICT ]]; then
+  echo "Warning: invalid OLLAMA_NUM_PREDICT value: $OLLAMA_NUM_PREDICT (falling back to 4096)" >&2
+  NUM_PREDICT=4096
 fi
 
 # system プロンプトファイルの読み込み（省略可）
@@ -98,6 +118,7 @@ PROMPT="$(cat)"
 _CURL_PID=""
 _RESP=""
 _CLEANED_UP=0
+_LOG_COMPLETED=0
 _cleanup() {
   local _reason="${1:-exit}"
   [[ "$_CLEANED_UP" -eq 1 ]] && return 0
@@ -112,11 +133,26 @@ _cleanup() {
       _unload_model || true
     fi
   fi
+  if [[ -n "${_LOG_START_EPOCH:-}" && "$_LOG_COMPLETED" -eq 0 ]]; then
+    if [[ "$_reason" == "signal" ]]; then
+      if _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"interrupted:${_SIGNAL_NAME:-UNKNOWN}"; then
+        _LOG_COMPLETED=1
+      else
+        echo "Warning: failed to write completion log to ${OLLAMA_RUN_LOG:-/tmp/ollama-run.log}" >&2
+      fi
+    else
+      if _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"error:unexpected"; then
+        _LOG_COMPLETED=1
+      else
+        echo "Warning: failed to write completion log to ${OLLAMA_RUN_LOG:-/tmp/ollama-run.log}" >&2
+      fi
+    fi
+  fi
   exec 9>&- 2>/dev/null || true
   [[ -n "${_RESP:-}" ]] && rm -f "$_RESP" || true
 }
-trap '_cleanup signal; trap - EXIT; exit 130' INT
-trap '_cleanup signal; trap - EXIT; exit 143' TERM
+trap '_SIGNAL_NAME=INT; _cleanup signal; trap - EXIT; exit 130' INT
+trap '_SIGNAL_NAME=TERM; _cleanup signal; trap - EXIT; exit 143' TERM
 trap '_cleanup exit' EXIT
 
 # stale lock チェック（flock ホルダープロセスが死んでいる場合はロックを解放）
@@ -136,6 +172,8 @@ fi
 mkdir -p "$(dirname "$LOCK")"
 exec 9>"$LOCK"
 flock 9
+_LOG_START_EPOCH="$(date +%s)"
+_log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$$"
 
 if [[ -n "$SYSTEM" ]]; then
   JSON="$(jq -n \
@@ -144,16 +182,20 @@ if [[ -n "$SYSTEM" ]]; then
     --arg prompt "$PROMPT" \
     --argjson num_ctx "$CONTEXT_SIZE" \
     --argjson temperature "$TEMPERATURE" \
+    --argjson num_predict "$NUM_PREDICT" \
+    --argjson repeat_penalty "$REPEAT_PENALTY" \
     --argjson keep_alive "$KEEP_ALIVE_JSON" \
-    '{"model":$model,"system":$system,"prompt":$prompt,"stream":false,"keep_alive":$keep_alive,"options":{"num_ctx":$num_ctx,"temperature":$temperature}}')"
+    '{"model":$model,"system":$system,"prompt":$prompt,"stream":false,"keep_alive":$keep_alive,"options":{"num_ctx":$num_ctx,"temperature":$temperature,"num_predict":$num_predict,"repeat_penalty":$repeat_penalty}}')"
 else
   JSON="$(jq -n \
     --arg model "$MODEL" \
     --arg prompt "$PROMPT" \
     --argjson num_ctx "$CONTEXT_SIZE" \
     --argjson temperature "$TEMPERATURE" \
+    --argjson num_predict "$NUM_PREDICT" \
+    --argjson repeat_penalty "$REPEAT_PENALTY" \
     --argjson keep_alive "$KEEP_ALIVE_JSON" \
-    '{"model":$model,"prompt":$prompt,"stream":false,"keep_alive":$keep_alive,"options":{"num_ctx":$num_ctx,"temperature":$temperature}}')"
+    '{"model":$model,"prompt":$prompt,"stream":false,"keep_alive":$keep_alive,"options":{"num_ctx":$num_ctx,"temperature":$temperature,"num_predict":$num_predict,"repeat_penalty":$repeat_penalty}}')"
 fi
 
 _RESP="$(mktemp)"
@@ -165,13 +207,38 @@ _CURL_PID=$!
 _curl_status=0
 wait "$_CURL_PID" || _curl_status=$?
 _CURL_PID=""
-exec 9>&-
 
 if [[ "$_curl_status" -ne 0 ]]; then
+  if _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"error:$_curl_status"; then
+    _LOG_COMPLETED=1
+  else
+    echo "Warning: failed to write completion log to ${OLLAMA_RUN_LOG:-/tmp/ollama-run.log}" >&2
+  fi
+  exec 9>&-
   exit "$_curl_status"
+fi
+
+DONE_REASON="$(jq -r '.done_reason // empty' "$_RESP")"
+if [[ "$DONE_REASON" == "length" ]]; then
+  echo "Warning: Ollama response truncated at num_predict=$NUM_PREDICT tokens (done_reason=length)" >&2
+  rm -f "$_RESP"
+  _RESP=""
+  if _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"truncated"; then
+    _LOG_COMPLETED=1
+  else
+    echo "Warning: failed to write completion log to ${OLLAMA_RUN_LOG:-/tmp/ollama-run.log}" >&2
+  fi
+  exec 9>&-
+  exit 75
 fi
 
 jq -r '.response // empty' "$_RESP" \
   | perl -0777 -pe 's/<think>.*?<\/think>\n?//gs'
+if _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$(( $(date +%s) - _LOG_START_EPOCH ))"$'\t'"ok"; then
+  _LOG_COMPLETED=1
+else
+  echo "Warning: failed to write completion log to ${OLLAMA_RUN_LOG:-/tmp/ollama-run.log}" >&2
+fi
+exec 9>&-
 rm -f "$_RESP"
 _RESP=""
