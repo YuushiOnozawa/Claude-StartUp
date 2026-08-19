@@ -1,0 +1,7 @@
+{
+  "MELCHIOR":  { "candidates": ["qwen2.5-coder:7b", "gemma4:e4b-it-qat"] },
+  "BALTHASAR": { "candidates": ["gemma4:e4b-it-qat"] },
+  "METATRON":  { "candidates": ["devstral:latest", "gemma4:e4b-it-qat"] },
+  "SANDALPHON":{ "candidates": ["granite3.3:8b", "gemma4:e4b-it-qat"] },
+  "LELIEL":    { "candidates": ["lfm2.5:8b", "gemma4:e4b-it-qat"] }
+}
