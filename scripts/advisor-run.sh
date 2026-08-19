@@ -11,6 +11,8 @@
 # 環境変数:
 #   ADVISOR_MAX_DIFF_LINES（デフォルト: 400）
 #   ADVISOR_MAX_DIFF_BYTES（デフォルト: 262144）
+#   ADVISOR_MAX_REQUEST_BYTES（デフォルト: 1048576）
+#   ADVISOR_MAX_REASON_BYTES（デフォルト: 4096）
 #   ADVISOR_RUN_LOG（デフォルト: /tmp/advisor-run.log、0600 の JSONL）
 set -euo pipefail
 
@@ -28,6 +30,8 @@ MAX_CANDIDATES_HARD=10
 TIMEOUT_HARD=1800
 MAX_DIFF_LINES="${ADVISOR_MAX_DIFF_LINES:-400}"
 MAX_DIFF_BYTES="${ADVISOR_MAX_DIFF_BYTES:-262144}"
+MAX_REQUEST_BYTES="${ADVISOR_MAX_REQUEST_BYTES:-1048576}"
+MAX_REASON_BYTES="${ADVISOR_MAX_REASON_BYTES:-4096}"
 LOG_FILE="${ADVISOR_RUN_LOG:-/tmp/advisor-run.log}"
 
 START_NS="$(date +%s%N)"
@@ -127,8 +131,37 @@ invalid_request() {
   exit 0
 }
 
-REQUEST_JSON="$(cat)"
-printf '%s' "$REQUEST_JSON" >"$REQUEST_FILE"
+configuration_failed() {
+  emit_result "failed" "" "$1"
+  exit 0
+}
+
+if ! [[ "$MAX_REQUEST_BYTES" =~ ^[0-9]{1,15}$ ]] || (( 10#$MAX_REQUEST_BYTES == 0 )); then
+  configuration_failed "ADVISOR_MAX_REQUEST_BYTES must be a positive integer with at most 15 digits"
+fi
+if ! [[ "$MAX_REASON_BYTES" =~ ^[0-9]{1,15}$ ]] || (( 10#$MAX_REASON_BYTES == 0 )); then
+  configuration_failed "ADVISOR_MAX_REASON_BYTES must be a positive integer with at most 15 digits"
+fi
+if ! [[ "$MAX_DIFF_LINES" =~ ^[0-9]{1,15}$ ]]; then
+  # 検証不能なサイズ設定で続行すると上限比較を保証できないため、既定値へ戻さず fail-closed にする。
+  configuration_failed "ADVISOR_MAX_DIFF_LINES must be an integer with at most 15 digits"
+fi
+if ! [[ "$MAX_DIFF_BYTES" =~ ^[0-9]{1,15}$ ]]; then
+  # 検証不能なサイズ設定で続行すると上限比較を保証できないため、既定値へ戻さず fail-closed にする。
+  configuration_failed "ADVISOR_MAX_DIFF_BYTES must be an integer with at most 15 digits"
+fi
+MAX_REQUEST_BYTES=$((10#$MAX_REQUEST_BYTES))
+MAX_REASON_BYTES=$((10#$MAX_REASON_BYTES))
+MAX_DIFF_LINES=$((10#$MAX_DIFF_LINES))
+MAX_DIFF_BYTES=$((10#$MAX_DIFF_BYTES))
+
+if ! head -c "$((MAX_REQUEST_BYTES + 1))" >"$REQUEST_FILE"; then
+  invalid_request "could not read request from stdin"
+fi
+request_bytes="$(wc -c <"$REQUEST_FILE" | tr -d '[:space:]')"
+if (( request_bytes > MAX_REQUEST_BYTES )); then
+  invalid_request "request exceeds the configured request size limit"
+fi
 
 if ! jq -e '
   type == "object"
@@ -148,6 +181,10 @@ OUT_PROFILE="$(jq -r '.profile' "$REQUEST_FILE")"
 OUT_MODE="$(jq -r '.mode' "$REQUEST_FILE")"
 jq -j '.scope' "$REQUEST_FILE" >"$SCOPE_FILE"
 jq -j '.reason' "$REQUEST_FILE" >"$REQUEST_REASON_FILE"
+reason_bytes="$(wc -c <"$REQUEST_REASON_FILE" | tr -d '[:space:]')"
+if (( reason_bytes > MAX_REASON_BYTES )); then
+  invalid_request "reason exceeds the configured reason size limit"
+fi
 sed \
   -e 's#<TASK>#\&lt;TASK\&gt;#g' \
   -e 's#</TASK>#\&lt;/TASK\&gt;#g' \
@@ -179,6 +216,9 @@ fi
 
 if jq -e --arg profile "$OUT_PROFILE" 'has($profile)' "$PROFILE_REGISTRY" \
   >/dev/null 2>&1; then
+  # candidates は将来の性能比較評価用の候補リストだが、実行時は常に candidates[0] のみを使う。
+  # 先頭が利用不可でも後続へ自動フォールバックせず、status=unavailable で終了する。
+  # 使用モデルを status から一意に判断できるようにし、既存のサイレントフォールバック回避方針に合わせるため。
   MODEL="$(jq -r --arg profile "$OUT_PROFILE" \
     '.[$profile].candidates[0]' "$PROFILE_REGISTRY")"
 else
@@ -188,13 +228,6 @@ else
     emit_result "unknown_profile" "" "profile is not registered"
   fi
   exit 0
-fi
-
-if ! [[ "$MAX_DIFF_LINES" =~ ^[0-9]+$ ]]; then
-  MAX_DIFF_LINES=400
-fi
-if ! [[ "$MAX_DIFF_BYTES" =~ ^[0-9]+$ ]]; then
-  MAX_DIFF_BYTES=262144
 fi
 
 scope_lines="$(awk 'END { print NR }' "$SCOPE_FILE")"
