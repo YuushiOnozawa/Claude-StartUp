@@ -26,11 +26,11 @@ For full phase instructions with commands and templates, load `references/phases
 
 ```
 /pr-review-respond  → respond to human review comments
-/magi-hard          → MAGI 5-persona PR review
+/magi-hard          → MAGI 6-persona PR review
 /magi-fast          → quality check after fixes (as needed)
 merge
 /finished-pr        → post-merge cleanup (main pull, Issue close, branch delete)
 ```
 
 > **運用メモ**: このルートはCodex単体レビューのため、検出と監査が同一エンジンという構造的な制約がある。実測ベンチマーク(`docs/magi-vs-codex-benchmark-2026-08-18.md`)では、現行MAGIのローカルモデル生出力はfalse positiveが大半かつ大規模diffで完走しないケースがあった一方、Codex単体はMAGIが見落とした入力境界の問題を検出する等、精度面で優位だった。低リスク・時短優先の変更に向く。認証認可・データ移行・並行処理・外部境界・セキュリティ等の高リスク変更は、通常の`/dev-flow`(MAGI-FAST)または事後の`/magi-hard`併用を検討すること。
-`docs/codex-orchestrated-adaptive-review-plan-2026-08-18.md` は、観点別専門モデル・model registry等を含む将来の拡張案（未実装）であり、このスキルはその計画を実装したものではない。このスキルはCodex単体による汎用的な敵対的レビューであり、MAGI-FAST/HARDの各ペルソナ観点を機械的に継承するものではない。
+`docs/codex-orchestrated-adaptive-review-plan-2026-08-18.md` は、観点別専門モデル・model registry等を含む将来の拡張案（未実装）であり、このスキルはその計画を実装したものではない。このスキルはCodex単体による汎用的な敵対的レビューであり、MAGI-FAST/HARDの各ペルソナ観点を機械的に継承するものではない。MELCHIOR等をOllama等で個別に呼び出すことはしない（model registry・専門ローカルモデル呼び出しは対象外）。一方、Codexへの単一プロンプト内では6ペルソナ（MELCHIOR/BALTHASAR/CASPER/METATRON/SANDALPHON/LELIEL）の観点を明示的に列挙し、各指摘に`persona`タグを付与させる構造化を行う。
