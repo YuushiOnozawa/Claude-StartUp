@@ -136,7 +136,7 @@ Codex companionが利用不可、または呼び出し・検証に失敗した�
 判定は `$WAIVED_COUNT > 0` なら `PASS_WITH_WAIVER`、それ以外は通常のLGTM。いずれの場合もPhase 6へ進む。`PASS_WITH_WAIVER`の場合、Phase 7のPR本文にwaiverしたfindingごとのID・根拠・影響範囲・判断者(ユーザー)を明記する。
 
 ### `$BLOCK_COUNT ≥ 1`、または未waiverの `manual` が残る場合
-指摘一覧(`$FINDINGS`、defer含む)を提示する。
+指摘一覧(`$FINDINGS`、defer含む)を提示する。各指摘には`persona`フィールド（MELCHIOR/BALTHASAR/CASPER/METATRON/SANDALPHON/LELIELのいずれか、Codexによる事後分類タグ）が含まれるため、提示時に併記する。
 
 - `block`指摘: 修正内容を提示し、ユーザー承認後 `/codegen` で修正する。
 - `manual`指摘: 自動`/codegen`修正対象にはしない。ユーザーに個別提示し、`AskUserQuestion`で選択を求める(finding単位、一括不可):
