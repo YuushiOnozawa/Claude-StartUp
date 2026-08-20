@@ -179,3 +179,50 @@
 **Recurrence-Count:** 1
 **Status:** pending
 **Knowledge-Status:** pending
+
+### ERR-20260820-001
+**Summary:** `codex-companion.mjs adversarial-review --help` が使い方表示ではなく実際のレビュージョブをフォアグラウンド起動した
+
+**Details:** dev-flow Phase 5 の代替として Codex レビューを起動する前に、コマンドの使い方を確認する目的で `node codex-companion.mjs adversarial-review --help` を実行した。`--help` は認識されないオプションとして無視され、通常の `adversarial-review`（working-tree diff 全体を対象とする本番レビュー）がそのままフォアグラウンドで開始された。Bash ツールのデフォルトタイムアウト（2分）を超えて実行が続いたため呼び出し元コマンドはエラー扱いで返ったが、レビュー本体は codex app-server 側で検知プロセスとして動作し続けており（`state/.../jobs/review-<id>.log` に進捗が書き込まれ続けている）、ジョブ自体は生きていた。結果的に意図せぬタイミングで本番レビューが起動しただけで、対象diffは正しかったため実害はなかったが、`--help` 目的の呼び出しが実コストのかかるジョブを誤爆させる点は再発しうる。
+
+**Suggested Action:** `codex-companion.mjs` のヘルプ確認は `--help` に頼らず、スクリプト本体（`.mjs` ファイル）を直接 grep/read してサブコマンドと引数を確認する。誤って本番コマンドを引数なし/`--help`付きで叩いてしまった場合は、慌てて cancel せず `status <job-id>` とログ mtime でジョブが正常に走っているか確認し、意図した diff を対象にしていれば継続利用して良い。
+
+**Root Cause（Codex自身への調査依頼で判明、2026-08-20）:** 仕様ではなくCLIの安全性バグと確認。`--help` の特別扱いは最上位 subcommand のみで実装されており（`codex-companion.mjs:1024-1028`）、`adversarial-review` サブコマンドの `booleanOptions` には `help` が定義されていない（同:712-719）。引数パーサー（`lib/args.mjs:27-49`）は未知の long option をエラーにせず positionals に入れるため、`--help` がそのまま `focusText`（同:712-729）として本番レビューに渡ってしまう。各サブコマンドで `--help`/`-h` を明示処理するか、未知オプションを reject するのが恒久対応。
+
+**Source:** Issue #389 dev-flow Phase 5 代替レビュー起動
+**Related Files:** /home/ylocal/.claude/plugins/cache/openai-codex/codex/1.0.5/scripts/codex-companion.mjs
+**Tags:** codex-companion, cli-usage, background-job, help-flag
+**Pattern-Key:** codex-companion-help-flag-triggers-real-job
+**Recurrence-Count:** 1
+**Status:** confirmed
+**Knowledge-Status:** documented
+
+### ERR-20260820-002
+**Summary:** `codex-companion.mjs` のバックグラウンドジョブが基盤プロセス死亡後も `status` 上は "running" のまま残る
+
+**Details:** Issue #389 の Codex adversarial-review（`review-mt15ordu-1d2qx9`）で、基盤プロセスが（親のstate永続化より先にworkerが起動し得るrace、またはSIGKILL/OOM/親終了等）死亡した後も `status <job>` は "running" を返し続けた。実データでも state.json 上は running/pid=1435872 のままだったが `ps` にはそのPIDが存在せず、ログの最終更新も止まっていた。原因をCodex自身に調査依頼し判明: `enqueueBackgroundTask` はdetached workerをspawnした後にqueued/running状態を書く実装（`codex-companion.mjs:671-698`）で、workerが起動直後に`readStoredJob`（同:849-852）を行うため親の永続化と競合するrace がある。`runTrackedJob`（`lib/tracked-jobs.mjs:142-152`）はpidを記録するが、正常完了・捕捉可能な例外以外を回収するsupervisor/finallyが存在しない。`status`コマンド自体（`lib/job-control.mjs:213-239`）もstateを読むだけで、pidの生存確認（kill -0）やログmtime監視を一切行っていない。
+
+**Suggested Action:** `status <job>` の "running" 表示を鵜呑みにしない。長時間"running"のままの場合は `ps -p <pid>`（state.jsonのpidフィールド参照）とログファイルのmtimeを直接確認し、プロセス不在またはmtime停滞（目安600秒超）ならスタール扱いで打ち切る。この確認は単発の `Bash run_in_background` ポーリング（完了/スタール判定時のみ1回通知、Monitorツールは毎回通知されるため使わない）で行う。恒久対応（companion側のsupervisor/liveness実装）はこちらでは着手しない。
+
+**Source:** Issue #389 Codex adversarial-review実行、Codexへの`.agmsg`調査依頼
+**Related Files:** /home/ylocal/.claude/plugins/cache/openai-codex/codex/1.0.5/scripts/codex-companion.mjs, lib/tracked-jobs.mjs, lib/job-control.mjs
+**Tags:** codex-companion, background-job, race-condition, process-liveness
+**Pattern-Key:** codex-companion-dead-pid-status-running
+**Recurrence-Count:** 3
+**Status:** confirmed
+**Knowledge-Status:** documented
+
+### ERR-20260820-003
+**Summary:** `codex-companion.mjs` のjob registryから正常完了ジョブのエントリが消失するが、jobファイル自体は残る
+
+**Details:** `status`/`result <job>` が "No job found" を返しjob registryからエントリごと消えているのに、`jobs/<job-id>.log`/`.json` はディスクに残っており、直接読めば正常完了していたと分かるケースが複数回発生した。原因をCodex自身に調査依頼し判明: `updateState`は無ロックのread-modify-write、`saveState`もアトミック書き込みでなく直接`writeFileSync`（`lib/state.mjs:92-122`）。同時書込み中に別プロセスが`loadState`するとJSON parse失敗を握りつぶしてdefault state（jobs=[]）に黙って戻り（同:65-76）、その後のupsert/saveで他ジョブのregistryエントリを落とし得る（正常な同時read-modify-writeでもlast-writer-winsで落ちる）。job本体ファイルは`writeJobFile`（同:166-170）でstate更新とは別経路に書かれ、削除処理は`saveState`が読めた`previousJobs`のみが対象（同:93,105-112）のため、registryだけ消えてもjobファイルは残る。
+
+**Suggested Action:** `status`/`result`が"No job found"を返しても即座に失敗と判断しない。`jobs/<job-id>.log`・`.json`を直接読んで完了状況を確認する（本セッションで確立済みの対処法）。複数のCodexバックグラウンドジョブをほぼ同時に起動しない（registry書き込みが競合するrace自体を避ける）。恒久対応（companion側のロック/アトミック書き込み実装）はこちらでは着手しない。
+
+**Source:** Issue #389 Codex adversarial-review/task実行、Codexへの`.agmsg`調査依頼
+**Related Files:** /home/ylocal/.claude/plugins/cache/openai-codex/codex/1.0.5/scripts/codex-companion.mjs, lib/state.mjs
+**Tags:** codex-companion, background-job, race-condition, state-persistence
+**Pattern-Key:** codex-companion-registry-entry-lost-race
+**Recurrence-Count:** 2
+**Status:** confirmed
+**Knowledge-Status:** documented
