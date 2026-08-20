@@ -194,11 +194,13 @@ Codex 出力の候補は `codex-review.md` ステップ7と同じく、raw全体
       if [ "$REVIEW_TMPDIR_REAL" = "/" ]; then
         PERSONA_FAILED=true
       else
-        CAND_DIR="$REVIEW_TMPDIR_REAL/candidates/$PERSONA_KEY"
-        case "$CAND_DIR" in
-          "$REVIEW_TMPDIR_REAL"/*) ;;
-          *) PERSONA_FAILED=true ;;
-        esac
+        CAND_DIR=$(realpath -m -- "$REVIEW_TMPDIR_REAL/candidates/$PERSONA_KEY" 2>/dev/null) || PERSONA_FAILED=true
+        if [ "$PERSONA_FAILED" = false ]; then
+          case "$CAND_DIR" in
+            "$REVIEW_TMPDIR_REAL"/*) ;;
+            *) PERSONA_FAILED=true ;;
+          esac
+        fi
       fi
     fi
     if [ "$PERSONA_FAILED" = false ]; then

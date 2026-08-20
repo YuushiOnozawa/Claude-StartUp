@@ -102,11 +102,13 @@ for PERSONA in MELCHIOR BALTHASAR; do
       if [ "$REVIEW_TMPDIR_REAL" = "/" ]; then
         PERSONA_FAILED=true
       else
-        CAND_DIR="$REVIEW_TMPDIR_REAL/candidates/$PERSONA_KEY"
-        case "$CAND_DIR" in
-          "$REVIEW_TMPDIR_REAL"/*) ;;
-          *) PERSONA_FAILED=true ;;
-        esac
+        CAND_DIR=$(realpath -m -- "$REVIEW_TMPDIR_REAL/candidates/$PERSONA_KEY" 2>/dev/null) || PERSONA_FAILED=true
+        if [ "$PERSONA_FAILED" = false ]; then
+          case "$CAND_DIR" in
+            "$REVIEW_TMPDIR_REAL"/*) ;;
+            *) PERSONA_FAILED=true ;;
+          esac
+        fi
       fi
     fi
     if [ "$PERSONA_FAILED" = false ]; then
@@ -161,6 +163,7 @@ done
 
 ```bash
 CASPER_RAW_FILE="$REVIEW_TMPDIR/casper-raw.txt"
+unset CASPER_NORMALIZE_ATTEMPTED
 : > "$CASPER_RAW_FILE"
 ```
 
@@ -179,9 +182,18 @@ CASPER呼び出しが成功した場合も失敗した場合も、取得でき�
 
 CASPERが成功した場合だけ、全チャンクの生DETECTION NOTESをヘッダー付きで `$NORMALIZE_INPUT` に連結し、`skills/magi-common/references/normalizer.md` の手順を1回のバッチ呼び出しとして実行する。Normalizer は判断・分類・重複除去・候補削除を行わない。
 
-CASPERが成功した場合だけ、`$CASPER_RAW_FILE` に保持した全チャンクの生DETECTION NOTESを `NORMALIZE_INPUT="$REVIEW_TMPDIR/casper-detection-notes.txt"` に連結し、`skills/magi-common/references/normalizer.md` を Read ツールで読み込んで、記載のステップ1-6に従う1回のバッチNormalizerとして実行する。`MAGI_TMPDIR=$(mktemp -d)` を作成し、正規化結果は `CASPER_NORMALIZED_FILE="$REVIEW_TMPDIR/casper-normalized.json"` に保存する。Ollama可否確認、random/長さ対応fence、`OLLAMA_NUM_CTX=65536`、`OLLAMA_TEMPERATURE=0`、候補抽出、lossless突合を実行し、正規化結果を `{persona,path,line,headline,problem,breakage,evidence}` のJSON配列として保存する。
+CASPERが成功した場合だけ、`$CASPER_RAW_FILE` に保持した全チャンクの生DETECTION NOTESを `NORMALIZE_INPUT="$REVIEW_TMPDIR/casper-detection-notes.txt"` に連結し、`skills/magi-common/references/normalizer.md` を Read ツールで読み込んで、記載のステップ1-6に従う1回のバッチNormalizerとして実行する。Normalizer呼び出し前に、次の順で一時ディレクトリ・出力ファイル・試行フラグを準備する。
 
-`NORMALIZE_ERROR` または `NORMALIZE_SKIPPED` の場合、CASPER findingを0件に丸めず、即座に `CASPER` を `$FAILED_PERSONAS_JSON` に追加する。既存 normalizer.md / magi-fast の Haiku fallback 契約は使わず、フォールバック可否をユーザーへ尋ねない。成功した場合だけ、各要素について `body = "Problem: " + problem + "\nBreakage: " + breakage` を機械的に作る。正規化結果は `$CASPER_NORMALIZED_FILE` に保存し、`evidence` は保持してもよいが、findings table の必須表示フィールドではない。
+```bash
+MAGI_TMPDIR=$(mktemp -d)
+CASPER_NORMALIZED_FILE="$REVIEW_TMPDIR/casper-normalized.json"
+rm -f -- "$CASPER_NORMALIZED_FILE" || return 1
+CASPER_NORMALIZE_ATTEMPTED=true
+```
+
+`CASPER_NORMALIZE_ATTEMPTED=true` は、Normalizerの呼び出しを試みる直前に設定する。Ollama可否確認、random/長さ対応fence、`OLLAMA_NUM_CTX=65536`、`OLLAMA_TEMPERATURE=0`、候補抽出、lossless突合を実行し、正規化結果を `{persona,path,line,headline,problem,breakage,evidence}` のJSON配列として `CASPER_NORMALIZED_FILE` に保存する。
+
+`NORMALIZE_ERROR` または `NORMALIZE_SKIPPED` の場合もCASPER findingを0件に丸めず、ステップ5で `CASPER_NORMALIZE_ATTEMPTED=true` の失敗として `CASPER` を `$FAILED_PERSONAS_JSON` に一度だけ追加する。`CASPER_NORMALIZE_ATTEMPTED` が未セットの場合は、ステップ3のCASPER失敗が既に記録されているため、ステップ5では追加しない。既存 normalizer.md / magi-fast の Haiku fallback 契約は使わず、フォールバック可否をユーザーへ尋ねない。成功した場合だけ、各要素について `body = "Problem: " + problem + "\nBreakage: " + breakage` を機械的に作る。`evidence` は保持してもよいが、findings table の必須表示フィールドではない。
 
 ## ステップ 5: findings table 構築とCASPER gate付与
 
@@ -209,41 +221,44 @@ for PERSONA in MELCHIOR BALTHASAR; do
   jq -s '.[0] + .[1]' "$FINDINGS_TABLE_FILE" "$OUT" > "$REVIEW_TMPDIR/table.next"
   mv "$REVIEW_TMPDIR/table.next" "$FINDINGS_TABLE_FILE"
 done
-if [ -n "${CASPER_NORMALIZED_FILE:-}" ] && [ -r "$CASPER_NORMALIZED_FILE" ] && jq -e '
-  type == "array"
-  and all(.[ ];
-    type == "object"
-    and ((.persona? | type) == "string" and (.persona | length) > 0)
-    and ((.path? | type) == "string" and (.path | length) > 0)
-    and has("line")
-    and ((.line == null) or ((.line | type) == "number" and (.line | floor) == .line and .line > 0))
-    and ((.headline? | type) == "string" and (.headline | length) > 0)
-    and ((.body? | type) == "string" and (.body | length) > 0)
-    and (((.evidence? // null) | type) == "null"
-         or (((.evidence? // null) | type) == "string"
-             and ((.evidence? // null) | length) > 0))
-  )
-' "$CASPER_NORMALIZED_FILE" >/dev/null 2>&1; then
-  TARGETS_JSON_FILE="$REVIEW_TMPDIR/targets.json"
-  jq -Rsc 'split("\n") | map(select(length > 0))' "$TARGETS_FILE" > "$TARGETS_JSON_FILE" || return 1
-  if jq -e --slurpfile targets "$TARGETS_JSON_FILE" \
-    'type == "array" and all(.[]; .path as $p | ($targets[0] | index($p)) != null)' \
-    "$CASPER_NORMALIZED_FILE" >/dev/null 2>&1; then
-    OUT="$REVIEW_TMPDIR/casper-table.json"
-    jq --slurpfile targets "$TARGETS_JSON_FILE" --argjson start "$NEXT_ID" '
-      map(select(.path as $p | ($targets[0] | index($p)) != null))
-      | to_entries | map(. as $e | ($start + $e.key) as $n | $e.value as $f |
-        {id:("F-" + (if $n < 1000 then (("000"+($n|tostring))|.[-3:]) else ($n|tostring) end)),
-         source_persona:"CASPER", path:$f.path, line:$f.line, headline:$f.headline, body:$f.body, gate:"block"})
-    ' "$CASPER_NORMALIZED_FILE" > "$OUT" || return 1
-    NEXT_ID=$((NEXT_ID + $(jq 'length' "$OUT")))
-    jq -s '.[0] + .[1]' "$FINDINGS_TABLE_FILE" "$OUT" > "$REVIEW_TMPDIR/table.next"
-    mv "$REVIEW_TMPDIR/table.next" "$FINDINGS_TABLE_FILE"
-  else
+CASPER_NORMALIZED_VALID=false
+if [ "${CASPER_NORMALIZE_ATTEMPTED:-}" = true ]; then
+  if [ -r "$CASPER_NORMALIZED_FILE" ] && jq -e '
+    type == "array"
+    and all(.[ ];
+      type == "object"
+      and ((.persona? | type) == "string" and (.persona | length) > 0)
+      and ((.path? | type) == "string" and (.path | length) > 0)
+      and has("line")
+      and ((.line == null) or ((.line | type) == "number" and (.line | floor) == .line and .line > 0))
+      and ((.headline? | type) == "string" and (.headline | length) > 0)
+      and ((.body? | type) == "string" and (.body | length) > 0)
+      and (((.evidence? // null) | type) == "null"
+           or (((.evidence? // null) | type) == "string"
+               and ((.evidence? // null) | length) > 0))
+    )
+  ' "$CASPER_NORMALIZED_FILE" >/dev/null 2>&1; then
+    TARGETS_JSON_FILE="$REVIEW_TMPDIR/targets.json"
+    jq -Rsc 'split("\n") | map(select(length > 0))' "$TARGETS_FILE" > "$TARGETS_JSON_FILE" || return 1
+    if jq -e --slurpfile targets "$TARGETS_JSON_FILE" \
+      'type == "array" and all(.[]; .path as $p | ($targets[0] | index($p)) != null)' \
+      "$CASPER_NORMALIZED_FILE" >/dev/null 2>&1; then
+      OUT="$REVIEW_TMPDIR/casper-table.json"
+      jq --slurpfile targets "$TARGETS_JSON_FILE" --argjson start "$NEXT_ID" '
+        map(select(.path as $p | ($targets[0] | index($p)) != null))
+        | to_entries | map(. as $e | ($start + $e.key) as $n | $e.value as $f |
+          {id:("F-" + (if $n < 1000 then (("000"+($n|tostring))|.[-3:]) else ($n|tostring) end)),
+           source_persona:"CASPER", path:$f.path, line:$f.line, headline:$f.headline, body:$f.body, gate:"block"})
+      ' "$CASPER_NORMALIZED_FILE" > "$OUT" || return 1
+      NEXT_ID=$((NEXT_ID + $(jq 'length' "$OUT")))
+      jq -s '.[0] + .[1]' "$FINDINGS_TABLE_FILE" "$OUT" > "$REVIEW_TMPDIR/table.next"
+      mv "$REVIEW_TMPDIR/table.next" "$FINDINGS_TABLE_FILE"
+      CASPER_NORMALIZED_VALID=true
+    fi
+  fi
+  if [ "$CASPER_NORMALIZED_VALID" = false ] && ! jq -e 'index("CASPER") != null' <<<"$FAILED_PERSONAS_JSON" >/dev/null 2>&1; then
     FAILED_PERSONAS_JSON=$(jq --arg p "CASPER" '. + [$p]' <<<"$FAILED_PERSONAS_JSON") || return 1
   fi
-elif [ -n "${CASPER_NORMALIZED_FILE:-}" ] && [ -r "$CASPER_NORMALIZED_FILE" ]; then
-  FAILED_PERSONAS_JSON=$(jq --arg p "CASPER" '. + [$p]' <<<"$FAILED_PERSONAS_JSON") || return 1
 fi
 printf '%s\n' "$FAILED_PERSONAS_JSON" > "$REVIEW_TMPDIR/failed-personas.json"
 ```
