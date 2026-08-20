@@ -189,34 +189,48 @@ Codex 出力の候補は `codex-review.md` ステップ7と同じく、raw全体
 ```bash
   if [ "$PERSONA_FAILED" = false ]; then
     CAND_DIR="$REVIEW_TMPDIR/candidates/$PERSONA_KEY"
-    rm -rf -- "$CAND_DIR"
-    mkdir -p "$CAND_DIR"
-    cp "$RAW_FILE" "$CAND_DIR/01-raw.json"
-    awk '/^[[:space:]]*```/ { if (inside) exit; inside=1; next } inside { print }' "$RAW_FILE" > "$CAND_DIR/02-fence.json"
-    END_LINE=$(grep -n '^[[:space:]]*\][[:space:]]*$' "$RAW_FILE" | tail -1 | cut -d: -f1)
-    if [ -n "$END_LINE" ]; then
-      I=0
-    while IFS= read -r START_LINE; do
-      [ "$START_LINE" -lt "$END_LINE" ] || continue
-      I=$((I + 1))
-      sed -n "${START_LINE},${END_LINE}p" "$RAW_FILE" > "$CAND_DIR/03-$(printf '%02d' "$I").json"
-    done < <(grep -n '^[[:space:]]*\[' "$RAW_FILE" | cut -d: -f1)
-    fi
-    TARGETS_JSON_FILE="$REVIEW_TMPDIR/targets.json"
-    jq -Rsc 'split("\n") | map(select(length > 0))' "$TARGETS_FILE" > "$TARGETS_JSON_FILE" || PERSONA_FAILED=true
-    ADOPTED=""
+    REVIEW_TMPDIR_REAL=$(realpath -- "$REVIEW_TMPDIR" 2>/dev/null) || PERSONA_FAILED=true
     if [ "$PERSONA_FAILED" = false ]; then
-      for CANDIDATE in "$CAND_DIR"/01-raw.json "$CAND_DIR"/02-fence.json "$CAND_DIR"/03-*.json; do
-      [ -s "$CANDIDATE" ] || continue
-      if jq -e --slurpfile targets "$TARGETS_JSON_FILE" 'type == "array" and all(.[]; type == "object" and (.id? | type) == "string" and (.id | length) > 0 and (.path? | type) == "string" and (.path | length) > 0 and has("line") and ((.line == null) or ((.line | type) == "number" and (.line | floor) == .)) and (.headline? | type) == "string" and (.headline | length) > 0 and (.body? | type) == "string" and (.body | length) > 0 and (.gate? | type) == "string" and (.gate | IN("block","defer","manual")) and (.path as $p | ($targets[0] | index($p)) != null))' "$CANDIDATE" >/dev/null 2>&1; then
-        IDS=$(jq -r '.[].id' "$CANDIDATE" | sort)
-        [ "$IDS" = "$(printf '%s\n' "$IDS" | uniq)" ] || continue
-        ADOPTED="$CANDIDATE"
-        break
+      if [ "$REVIEW_TMPDIR_REAL" = "/" ]; then
+        PERSONA_FAILED=true
+      else
+        CAND_DIR="$REVIEW_TMPDIR_REAL/candidates/$PERSONA_KEY"
+        case "$CAND_DIR" in
+          "$REVIEW_TMPDIR_REAL"/*) ;;
+          *) PERSONA_FAILED=true ;;
+        esac
       fi
-      done
     fi
-    [ -n "$ADOPTED" ] || PERSONA_FAILED=true
+    if [ "$PERSONA_FAILED" = false ]; then
+      rm -rf -- "$CAND_DIR"
+      mkdir -p "$CAND_DIR"
+      cp "$RAW_FILE" "$CAND_DIR/01-raw.json"
+      awk '/^[[:space:]]*```/ { if (inside) exit; inside=1; next } inside { print }' "$RAW_FILE" > "$CAND_DIR/02-fence.json"
+      END_LINE=$(grep -n '^[[:space:]]*\][[:space:]]*$' "$RAW_FILE" | tail -1 | cut -d: -f1)
+      if [ -n "$END_LINE" ]; then
+        I=0
+      while IFS= read -r START_LINE; do
+        [ "$START_LINE" -lt "$END_LINE" ] || continue
+        I=$((I + 1))
+        sed -n "${START_LINE},${END_LINE}p" "$RAW_FILE" > "$CAND_DIR/03-$(printf '%02d' "$I").json"
+      done < <(grep -n '^[[:space:]]*\[' "$RAW_FILE" | cut -d: -f1)
+      fi
+      TARGETS_JSON_FILE="$REVIEW_TMPDIR/targets.json"
+      jq -Rsc 'split("\n") | map(select(length > 0))' "$TARGETS_FILE" > "$TARGETS_JSON_FILE" || PERSONA_FAILED=true
+      ADOPTED=""
+      if [ "$PERSONA_FAILED" = false ]; then
+        for CANDIDATE in "$CAND_DIR"/01-raw.json "$CAND_DIR"/02-fence.json "$CAND_DIR"/03-*.json; do
+        [ -s "$CANDIDATE" ] || continue
+        if jq -e --slurpfile targets "$TARGETS_JSON_FILE" 'type == "array" and all(.[]; type == "object" and (.id? | type) == "string" and (.id | length) > 0 and (.path? | type) == "string" and (.path | length) > 0 and has("line") and ((.line == null) or ((.line | type) == "number" and (.line | floor) == .)) and (.headline? | type) == "string" and (.headline | length) > 0 and (.body? | type) == "string" and (.body | length) > 0 and (.gate? | type) == "string" and (.gate | IN("block","defer","manual")) and (.path as $p | ($targets[0] | index($p)) != null))' "$CANDIDATE" >/dev/null 2>&1; then
+          IDS=$(jq -r '.[].id' "$CANDIDATE" | sort)
+          [ "$IDS" = "$(printf '%s\n' "$IDS" | uniq)" ] || continue
+          ADOPTED="$CANDIDATE"
+          break
+        fi
+        done
+      fi
+      [ -n "$ADOPTED" ] || PERSONA_FAILED=true
+    fi
   fi
   if [ "$PERSONA_FAILED" = true ]; then
     FAILED_PERSONAS_JSON=$(jq --arg p "$PERSONA" '. + [$p]' <<<"$FAILED_PERSONAS_JSON")

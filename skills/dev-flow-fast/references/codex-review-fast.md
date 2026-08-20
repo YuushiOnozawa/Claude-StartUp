@@ -97,34 +97,48 @@ for PERSONA in MELCHIOR BALTHASAR; do
   fi
   if [ "$PERSONA_FAILED" = false ]; then
     CAND_DIR="$REVIEW_TMPDIR/candidates/$PERSONA_KEY"
-    rm -rf -- "$CAND_DIR"
-    mkdir -p "$CAND_DIR"
-    cp "$RAW_FILE" "$CAND_DIR/01-raw.json"
-    awk '/^[[:space:]]*```/ { if (inside) exit; inside=1; next } inside { print }' "$RAW_FILE" > "$CAND_DIR/02-fence.json"
-    END_LINE=$(grep -n '^[[:space:]]*\][[:space:]]*$' "$RAW_FILE" | tail -1 | cut -d: -f1)
-    if [ -n "$END_LINE" ]; then
-      I=0
-      while IFS= read -r START_LINE; do
-        [ "$START_LINE" -lt "$END_LINE" ] || continue
-        I=$((I + 1))
-        sed -n "${START_LINE},${END_LINE}p" "$RAW_FILE" > "$CAND_DIR/03-$(printf '%02d' "$I").json"
-      done < <(grep -n '^[[:space:]]*\[' "$RAW_FILE" | cut -d: -f1)
-    fi
-    TARGETS_JSON_FILE="$REVIEW_TMPDIR/targets.json"
-    jq -Rsc 'split("\n") | map(select(length > 0))' "$TARGETS_FILE" > "$TARGETS_JSON_FILE" || PERSONA_FAILED=true
-    ADOPTED=""
+    REVIEW_TMPDIR_REAL=$(realpath -- "$REVIEW_TMPDIR" 2>/dev/null) || PERSONA_FAILED=true
     if [ "$PERSONA_FAILED" = false ]; then
-      for CANDIDATE in "$CAND_DIR"/01-raw.json "$CAND_DIR"/02-fence.json "$CAND_DIR"/03-*.json; do
-        [ -s "$CANDIDATE" ] || continue
-        if jq -e --slurpfile targets "$TARGETS_JSON_FILE" 'type == "array" and all(.[]; type == "object" and (.id? | type) == "string" and (.id | length) > 0 and (.path? | type) == "string" and (.path | length) > 0 and has("line") and ((.line == null) or ((.line | type) == "number" and (.line | floor) == .)) and (.headline? | type) == "string" and (.headline | length) > 0 and (.body? | type) == "string" and (.body | length) > 0 and (.gate? | type) == "string" and (.gate | IN("block","defer","manual")) and (.path as $p | ($targets[0] | index($p)) != null))' "$CANDIDATE" >/dev/null 2>&1; then
-          IDS=$(jq -r '.[].id' "$CANDIDATE" | sort)
-          [ "$IDS" = "$(printf '%s\n' "$IDS" | uniq)" ] || continue
-          ADOPTED="$CANDIDATE"
-          break
-        fi
-      done
+      if [ "$REVIEW_TMPDIR_REAL" = "/" ]; then
+        PERSONA_FAILED=true
+      else
+        CAND_DIR="$REVIEW_TMPDIR_REAL/candidates/$PERSONA_KEY"
+        case "$CAND_DIR" in
+          "$REVIEW_TMPDIR_REAL"/*) ;;
+          *) PERSONA_FAILED=true ;;
+        esac
+      fi
     fi
-    [ -n "$ADOPTED" ] || PERSONA_FAILED=true
+    if [ "$PERSONA_FAILED" = false ]; then
+      rm -rf -- "$CAND_DIR"
+      mkdir -p "$CAND_DIR"
+      cp "$RAW_FILE" "$CAND_DIR/01-raw.json"
+      awk '/^[[:space:]]*```/ { if (inside) exit; inside=1; next } inside { print }' "$RAW_FILE" > "$CAND_DIR/02-fence.json"
+      END_LINE=$(grep -n '^[[:space:]]*\][[:space:]]*$' "$RAW_FILE" | tail -1 | cut -d: -f1)
+      if [ -n "$END_LINE" ]; then
+        I=0
+        while IFS= read -r START_LINE; do
+          [ "$START_LINE" -lt "$END_LINE" ] || continue
+          I=$((I + 1))
+          sed -n "${START_LINE},${END_LINE}p" "$RAW_FILE" > "$CAND_DIR/03-$(printf '%02d' "$I").json"
+        done < <(grep -n '^[[:space:]]*\[' "$RAW_FILE" | cut -d: -f1)
+      fi
+      TARGETS_JSON_FILE="$REVIEW_TMPDIR/targets.json"
+      jq -Rsc 'split("\n") | map(select(length > 0))' "$TARGETS_FILE" > "$TARGETS_JSON_FILE" || PERSONA_FAILED=true
+      ADOPTED=""
+      if [ "$PERSONA_FAILED" = false ]; then
+        for CANDIDATE in "$CAND_DIR"/01-raw.json "$CAND_DIR"/02-fence.json "$CAND_DIR"/03-*.json; do
+          [ -s "$CANDIDATE" ] || continue
+          if jq -e --slurpfile targets "$TARGETS_JSON_FILE" 'type == "array" and all(.[]; type == "object" and (.id? | type) == "string" and (.id | length) > 0 and (.path? | type) == "string" and (.path | length) > 0 and has("line") and ((.line == null) or ((.line | type) == "number" and (.line | floor) == .)) and (.headline? | type) == "string" and (.headline | length) > 0 and (.body? | type) == "string" and (.body | length) > 0 and (.gate? | type) == "string" and (.gate | IN("block","defer","manual")) and (.path as $p | ($targets[0] | index($p)) != null))' "$CANDIDATE" >/dev/null 2>&1; then
+            IDS=$(jq -r '.[].id' "$CANDIDATE" | sort)
+            [ "$IDS" = "$(printf '%s\n' "$IDS" | uniq)" ] || continue
+            ADOPTED="$CANDIDATE"
+            break
+          fi
+        done
+      fi
+      [ -n "$ADOPTED" ] || PERSONA_FAILED=true
+    fi
   fi
   if [ "$PERSONA_FAILED" = true ]; then
     FAILED_PERSONAS_JSON=$(jq --arg p "$PERSONA" '. + [$p]' <<<"$FAILED_PERSONAS_JSON")
@@ -195,16 +209,41 @@ for PERSONA in MELCHIOR BALTHASAR; do
   jq -s '.[0] + .[1]' "$FINDINGS_TABLE_FILE" "$OUT" > "$REVIEW_TMPDIR/table.next"
   mv "$REVIEW_TMPDIR/table.next" "$FINDINGS_TABLE_FILE"
 done
-if [ -n "${CASPER_NORMALIZED_FILE:-}" ] && [ -r "$CASPER_NORMALIZED_FILE" ]; then
-  OUT="$REVIEW_TMPDIR/casper-table.json"
-  jq --argjson start "$NEXT_ID" '
-    to_entries | map(. as $e | ($start + $e.key) as $n | $e.value as $f |
-      {id:("F-" + (if $n < 1000 then (("000"+($n|tostring))|.[-3:]) else ($n|tostring) end)),
-       source_persona:"CASPER", path:$f.path, line:$f.line, headline:$f.headline, body:$f.body, gate:"block"})
-  ' "$CASPER_NORMALIZED_FILE" > "$OUT" || return 1
-  NEXT_ID=$((NEXT_ID + $(jq 'length' "$OUT")))
-  jq -s '.[0] + .[1]' "$FINDINGS_TABLE_FILE" "$OUT" > "$REVIEW_TMPDIR/table.next"
-  mv "$REVIEW_TMPDIR/table.next" "$FINDINGS_TABLE_FILE"
+if [ -n "${CASPER_NORMALIZED_FILE:-}" ] && [ -r "$CASPER_NORMALIZED_FILE" ] && jq -e '
+  type == "array"
+  and all(.[ ];
+    type == "object"
+    and ((.persona? | type) == "string" and (.persona | length) > 0)
+    and ((.path? | type) == "string" and (.path | length) > 0)
+    and has("line")
+    and ((.line == null) or ((.line | type) == "number" and (.line | floor) == .line and .line > 0))
+    and ((.headline? | type) == "string" and (.headline | length) > 0)
+    and ((.body? | type) == "string" and (.body | length) > 0)
+    and (((.evidence? // null) | type) == "null"
+         or (((.evidence? // null) | type) == "string"
+             and ((.evidence? // null) | length) > 0))
+  )
+' "$CASPER_NORMALIZED_FILE" >/dev/null 2>&1; then
+  TARGETS_JSON_FILE="$REVIEW_TMPDIR/targets.json"
+  jq -Rsc 'split("\n") | map(select(length > 0))' "$TARGETS_FILE" > "$TARGETS_JSON_FILE" || return 1
+  if jq -e --slurpfile targets "$TARGETS_JSON_FILE" \
+    'type == "array" and all(.[]; .path as $p | ($targets[0] | index($p)) != null)' \
+    "$CASPER_NORMALIZED_FILE" >/dev/null 2>&1; then
+    OUT="$REVIEW_TMPDIR/casper-table.json"
+    jq --slurpfile targets "$TARGETS_JSON_FILE" --argjson start "$NEXT_ID" '
+      map(select(.path as $p | ($targets[0] | index($p)) != null))
+      | to_entries | map(. as $e | ($start + $e.key) as $n | $e.value as $f |
+        {id:("F-" + (if $n < 1000 then (("000"+($n|tostring))|.[-3:]) else ($n|tostring) end)),
+         source_persona:"CASPER", path:$f.path, line:$f.line, headline:$f.headline, body:$f.body, gate:"block"})
+    ' "$CASPER_NORMALIZED_FILE" > "$OUT" || return 1
+    NEXT_ID=$((NEXT_ID + $(jq 'length' "$OUT")))
+    jq -s '.[0] + .[1]' "$FINDINGS_TABLE_FILE" "$OUT" > "$REVIEW_TMPDIR/table.next"
+    mv "$REVIEW_TMPDIR/table.next" "$FINDINGS_TABLE_FILE"
+  else
+    FAILED_PERSONAS_JSON=$(jq --arg p "CASPER" '. + [$p]' <<<"$FAILED_PERSONAS_JSON") || return 1
+  fi
+elif [ -n "${CASPER_NORMALIZED_FILE:-}" ] && [ -r "$CASPER_NORMALIZED_FILE" ]; then
+  FAILED_PERSONAS_JSON=$(jq --arg p "CASPER" '. + [$p]' <<<"$FAILED_PERSONAS_JSON") || return 1
 fi
 printf '%s\n' "$FAILED_PERSONAS_JSON" > "$REVIEW_TMPDIR/failed-personas.json"
 ```
