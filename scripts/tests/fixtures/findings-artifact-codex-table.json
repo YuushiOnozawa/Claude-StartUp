@@ -1,0 +1,56 @@
+[
+  {
+    "id": "F-001",
+    "source_persona": "MELCHIOR",
+    "path": "scripts/example.sh",
+    "line": 10,
+    "headline": "unquoted input reaches a shell command",
+    "body": "The value is passed without quoting.",
+    "gate": "block"
+  },
+  {
+    "id": "F-002",
+    "source_persona": "BALTHASAR",
+    "path": "src/config.sh",
+    "line": 14,
+    "headline": "configuration fallback hides an error",
+    "body": "The fallback makes the failure indistinguishable from success.",
+    "gate": "defer"
+  },
+  {
+    "id": "F-003",
+    "source_persona": "METATRON",
+    "path": "src/auth.sh",
+    "line": 22,
+    "headline": "authorization is checked after the side effect",
+    "body": "The side effect occurs before authorization is confirmed.",
+    "gate": "block"
+  },
+  {
+    "id": "F-004",
+    "source_persona": "SANDALPHON",
+    "path": "deploy/release.sh",
+    "line": 31,
+    "headline": "release cleanup is not idempotent",
+    "body": "A retry can remove an already replaced resource.",
+    "gate": "manual"
+  },
+  {
+    "id": "F-005",
+    "source_persona": "LELIEL",
+    "path": "src/caller.sh",
+    "line": null,
+    "headline": "caller evidence is outside the changed line",
+    "body": "The finding is valid but has no confident line number.",
+    "gate": "defer"
+  },
+  {
+    "id": "F-006",
+    "source_persona": "CASPER",
+    "path": "scripts/review.sh",
+    "line": 45,
+    "headline": "review boundary is bypassed",
+    "body": "The command bypasses the required review boundary.",
+    "gate": "block"
+  }
+]

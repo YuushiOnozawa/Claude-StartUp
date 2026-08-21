@@ -88,13 +88,14 @@ DIFF_BYTES=$(wc -c < "$DIFF_FILE")
 - `skills/dev-flow-fast/references/codex-review-audit.md`
 - `skills/dev-flow-fast/references/codex-review-hard.md`
 - `skills/dev-flow-fast/references/codex-review-fast.md`
+- `scripts/review-findings-artifact.sh`
 - `scripts/codex-review-merge.sh`
 
 ```bash
 SELF_TAMPER=false
 while IFS= read -r TARGET_PATH; do
   case "$TARGET_PATH" in
-    skills/codex-hard/*|skills/codex-fast/*|skills/dev-flow-fast/references/codex-personas/*|skills/dev-flow-fast/references/codex-review-audit.md|skills/dev-flow-fast/references/codex-review-hard.md|skills/dev-flow-fast/references/codex-review-fast.md|scripts/codex-review-merge.sh)
+    skills/codex-hard/*|skills/codex-fast/*|skills/dev-flow-fast/references/codex-personas/*|skills/dev-flow-fast/references/codex-review-audit.md|skills/dev-flow-fast/references/codex-review-hard.md|skills/dev-flow-fast/references/codex-review-fast.md|scripts/review-findings-artifact.sh|scripts/codex-review-merge.sh)
       SELF_TAMPER=true
       ;;
   esac
@@ -185,7 +186,7 @@ for PERSONA in MELCHIOR BALTHASAR METATRON SANDALPHON LELIEL; do
 
 Codex 出力の候補は `codex-review.md` ステップ7と同じく、raw全体、最初の Markdown fence 内、行頭 `[` から行頭 `]` までの各範囲を順に試す。「最初の `[` から最後の `]`」の切り出しは使わない。空 stdout は失敗だが、構造検証を通った `[]` は成功である。
 
-各候補は `codex-review.md` ステップ8と同じ構造検証を行う。`id`/`path`/`headline`/`body` は非空文字列、`line` は整数または null、`gate` は `block`/`defer`/`manual`、path は対象ファイル一覧に存在することを検証する。ID重複、1件でも不正な finding、抽出不能はペルソナ全体の失敗とする。`persona` フィールドの検証は行わない。
+各候補は `codex-review.md` ステップ8と同じ構造検証を行う。`id`/`path`/`headline`/`body` は非空文字列、`line` は正の整数または null、`gate` は `block`/`defer`/`manual`、path は対象ファイル一覧に存在することを検証する。ID重複、1件でも不正な finding、抽出不能はペルソナ全体の失敗とする。`persona` フィールドの検証は行わない。
 
 ```bash
   if [ "$PERSONA_FAILED" = false ]; then
@@ -224,7 +225,7 @@ Codex 出力の候補は `codex-review.md` ステップ7と同じく、raw全体
       if [ "$PERSONA_FAILED" = false ]; then
         for CANDIDATE in "$CAND_DIR"/01-raw.json "$CAND_DIR"/02-fence.json "$CAND_DIR"/03-*.json; do
         [ -s "$CANDIDATE" ] || continue
-        if jq -e --slurpfile targets "$TARGETS_JSON_FILE" 'type == "array" and all(.[]; type == "object" and (.id? | type) == "string" and (.id | length) > 0 and (.path? | type) == "string" and (.path | length) > 0 and has("line") and ((.line == null) or ((.line | type) == "number" and (.line | floor) == .line)) and (.headline? | type) == "string" and (.headline | length) > 0 and (.body? | type) == "string" and (.body | length) > 0 and (.gate? | type) == "string" and (.gate | IN("block","defer","manual")) and (.path as $p | ($targets[0] | index($p)) != null))' "$CANDIDATE" >/dev/null 2>&1; then
+        if jq -e --slurpfile targets "$TARGETS_JSON_FILE" 'type == "array" and all(.[]; type == "object" and (.id? | type) == "string" and (.id | length) > 0 and (.path? | type) == "string" and (.path | length) > 0 and has("line") and ((.line == null) or ((.line | type) == "number" and (.line | floor) == .line and .line > 0)) and (.headline? | type) == "string" and (.headline | length) > 0 and (.body? | type) == "string" and (.body | length) > 0 and (.gate? | type) == "string" and (.gate | IN("block","defer","manual")) and (.path as $p | ($targets[0] | index($p)) != null))' "$CANDIDATE" >/dev/null 2>&1; then
           IDS=$(jq -r '.[].id' "$CANDIDATE" | sort)
           [ "$IDS" = "$(printf '%s\n' "$IDS" | uniq)" ] || continue
           ADOPTED="$CANDIDATE"
@@ -424,3 +425,39 @@ fi
 ```
 
 GitHubコメント、PR更新、コミット、ファイル編集はこの手順のスコープ外である。
+
+## ステップ 13: canonical findings artifact の出力
+
+ステップ9完了時点の `$FINDINGS_TABLE_FILE` を入力として、
+`$REVIEW_TMPDIR/failed-personas.json` を渡し、`$REVIEW_TMPDIR/findings-artifact.json` に保存する。
+ステップ10〜12は `$FINDINGS_TABLE_FILE` を変更しない（ステップ10は `gate` を除いた別ファイルを作り、
+ステップ11は `merge-result.json` を作り、ステップ12は読むだけ）ため、ステップ9直後の表と同一である。
+
+`merge-result.json` の `pipeline_status` は使わない。artifact の `detection_status` は検出層だけの状態であり、
+`merge-result.json` の `pipeline_status` は監査失敗も含む engine 全体の状態という別概念だからである。
+両者を混ぜると、F2 が監査状態を検出状態として誤読する。
+
+```bash
+# merge-result.json の pipeline_status は監査失敗も含む engine 全体状態であり、
+# artifact の detection_status（検出層だけの状態）とは別概念なので使わない。
+ARTIFACT_NOTE=""
+ARTIFACT_FILE="$REVIEW_TMPDIR/findings-artifact.json"
+rm -f -- "$ARTIFACT_FILE"
+ARTIFACT_EXIT=0
+bash "$WORKTREE_ROOT/scripts/review-findings-artifact.sh" codex \
+  "$FINDINGS_TABLE_FILE" "$REVIEW_TMPDIR/failed-personas.json" \
+  >"$ARTIFACT_FILE" 2>"$REVIEW_TMPDIR/findings-artifact.err" || ARTIFACT_EXIT=$?
+if [ "$ARTIFACT_EXIT" -ne 0 ] \
+  || [ ! -s "$ARTIFACT_FILE" ] \
+  || ! jq -e 'type == "object" and .schema_version == "1" and .engine == "codex"' \
+    "$ARTIFACT_FILE" >/dev/null 2>&1; then
+  ARTIFACT_NOTE="ARTIFACT_FAILED（canonical artifact の生成に失敗した）"
+fi
+
+if [ -n "$ARTIFACT_NOTE" ]; then
+  echo "canonical artifact: 生成失敗（⚠ $ARTIFACT_NOTE）"
+fi
+```
+
+ステップ13はステップ12（結果表示）より後にあるため、`$ARTIFACT_NOTE` の表示まで自身で完結させる。
+変換に失敗しても既存レビュー本体は止めない。
