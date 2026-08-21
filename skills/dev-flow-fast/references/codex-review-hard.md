@@ -88,13 +88,14 @@ DIFF_BYTES=$(wc -c < "$DIFF_FILE")
 - `skills/dev-flow-fast/references/codex-review-audit.md`
 - `skills/dev-flow-fast/references/codex-review-hard.md`
 - `skills/dev-flow-fast/references/codex-review-fast.md`
+- `scripts/review-findings-artifact.sh`
 - `scripts/codex-review-merge.sh`
 
 ```bash
 SELF_TAMPER=false
 while IFS= read -r TARGET_PATH; do
   case "$TARGET_PATH" in
-    skills/codex-hard/*|skills/codex-fast/*|skills/dev-flow-fast/references/codex-personas/*|skills/dev-flow-fast/references/codex-review-audit.md|skills/dev-flow-fast/references/codex-review-hard.md|skills/dev-flow-fast/references/codex-review-fast.md|scripts/codex-review-merge.sh)
+    skills/codex-hard/*|skills/codex-fast/*|skills/dev-flow-fast/references/codex-personas/*|skills/dev-flow-fast/references/codex-review-audit.md|skills/dev-flow-fast/references/codex-review-hard.md|skills/dev-flow-fast/references/codex-review-fast.md|scripts/review-findings-artifact.sh|scripts/codex-review-merge.sh)
       SELF_TAMPER=true
       ;;
   esac
@@ -185,7 +186,7 @@ for PERSONA in MELCHIOR BALTHASAR METATRON SANDALPHON LELIEL; do
 
 Codex 出力の候補は `codex-review.md` ステップ7と同じく、raw全体、最初の Markdown fence 内、行頭 `[` から行頭 `]` までの各範囲を順に試す。「最初の `[` から最後の `]`」の切り出しは使わない。空 stdout は失敗だが、構造検証を通った `[]` は成功である。
 
-各候補は `codex-review.md` ステップ8と同じ構造検証を行う。`id`/`path`/`headline`/`body` は非空文字列、`line` は整数または null、`gate` は `block`/`defer`/`manual`、path は対象ファイル一覧に存在することを検証する。ID重複、1件でも不正な finding、抽出不能はペルソナ全体の失敗とする。`persona` フィールドの検証は行わない。
+各候補は `codex-review.md` ステップ8と同じ構造検証を行う。`id`/`path`/`headline`/`body` は非空文字列、`line` は正の整数または null、`gate` は `block`/`defer`/`manual`、path は対象ファイル一覧に存在することを検証する。ID重複、1件でも不正な finding、抽出不能はペルソナ全体の失敗とする。`persona` フィールドの検証は行わない。
 
 ```bash
   if [ "$PERSONA_FAILED" = false ]; then
@@ -224,7 +225,7 @@ Codex 出力の候補は `codex-review.md` ステップ7と同じく、raw全体
       if [ "$PERSONA_FAILED" = false ]; then
         for CANDIDATE in "$CAND_DIR"/01-raw.json "$CAND_DIR"/02-fence.json "$CAND_DIR"/03-*.json; do
         [ -s "$CANDIDATE" ] || continue
-        if jq -e --slurpfile targets "$TARGETS_JSON_FILE" 'type == "array" and all(.[]; type == "object" and (.id? | type) == "string" and (.id | length) > 0 and (.path? | type) == "string" and (.path | length) > 0 and has("line") and ((.line == null) or ((.line | type) == "number" and (.line | floor) == .line)) and (.headline? | type) == "string" and (.headline | length) > 0 and (.body? | type) == "string" and (.body | length) > 0 and (.gate? | type) == "string" and (.gate | IN("block","defer","manual")) and (.path as $p | ($targets[0] | index($p)) != null))' "$CANDIDATE" >/dev/null 2>&1; then
+        if jq -e --slurpfile targets "$TARGETS_JSON_FILE" 'type == "array" and all(.[]; type == "object" and (.id? | type) == "string" and (.id | length) > 0 and (.path? | type) == "string" and (.path | length) > 0 and has("line") and ((.line == null) or ((.line | type) == "number" and (.line | floor) == .line and .line > 0)) and (.headline? | type) == "string" and (.headline | length) > 0 and (.body? | type) == "string" and (.body | length) > 0 and (.gate? | type) == "string" and (.gate | IN("block","defer","manual")) and (.path as $p | ($targets[0] | index($p)) != null))' "$CANDIDATE" >/dev/null 2>&1; then
           IDS=$(jq -r '.[].id' "$CANDIDATE" | sort)
           [ "$IDS" = "$(printf '%s\n' "$IDS" | uniq)" ] || continue
           ADOPTED="$CANDIDATE"
