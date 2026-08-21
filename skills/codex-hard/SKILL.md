@@ -1,17 +1,17 @@
 ---
 name: codex-hard
-description: 'Codex 5体（MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIEL）でPRレビューを行う。検出は各ペルソナが独立blind実行し、監査Codexが意味的グルーピングとペルソナ帰属を決定する。GitHubへの投稿は行わない。Trigger: "/codex-hard", "codex-hard", "Codexでハードレビュー"'
+description: 'Codex 5体（MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIEL）+ CASPER（Haiku）でPRレビューを行う。検出は各ペルソナが独立blind実行し、監査Codexが意味的グルーピングとペルソナ帰属を決定する。GitHubへの投稿は行わない。Trigger: "/codex-hard", "codex-hard", "Codexでハードレビュー"'
 ---
 
 # CODEX-HARD スキル
 
 ## 実行前の注意
 
-実行前に、Codex最大6回（5ペルソナ+監査）、各600秒timeoutで、最悪ケースでは約60分かかることをユーザーへ伝える。
+実行前に、Codex最大6回（5ペルソナ+監査）、各600秒timeoutで、最悪ケースでは約60分かかることに加え、Haiku 1〜数回（CASPER、diffサイズ依存のチャンク分割）とHaiku/Ollama 1回（CASPER結果のバッチNormalizer）が発生することをユーザーへ伝える。CASPERのHaiku呼び出し回数は固定回数と断定しない。
 
 ## 概要
 
-Codex 5ペルソナ（MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIEL）を逐次blind呼び出しし、監査Codexによる意味的グルーピングとペルソナ帰属の決定まで行う読み取り専用レビューである。
+Codex 5ペルソナ（MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIEL）を逐次blind呼び出しし、既存`/casper`スキル（Haiku）の実行と監査Codexによる意味的グルーピングとペルソナ帰属の決定まで行う読み取り専用レビューである。CASPERの結果はバッチNormalizerを経て統合する。
 既存の`/magi-hard`（ローカルLLM）とは別の独立したCodexベースのレビューであり、必要に応じて両方を実行してよい。
 
 ## 前提
@@ -32,7 +32,3 @@ Codex 5ペルソナ（MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIEL）を逐次b
 - `manual_review`（未監査・要人手確認）セクション。
 
 GitHubへの投稿、PRコメント、コミット、ファイル編集は一切行わない。
-
-## 対象外
-
-CASPER（リポジトリ/エージェントルール遵守チェック）は対象外である。これはCASPER相当の処理を代替したという意味ではなく、既存`codex-review.md`の自己改ざん耐性ルールは別の安全策として保持される。
