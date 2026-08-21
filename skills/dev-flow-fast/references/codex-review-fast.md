@@ -131,7 +131,7 @@ for PERSONA in MELCHIOR BALTHASAR; do
       if [ "$PERSONA_FAILED" = false ]; then
         for CANDIDATE in "$CAND_DIR"/01-raw.json "$CAND_DIR"/02-fence.json "$CAND_DIR"/03-*.json; do
           [ -s "$CANDIDATE" ] || continue
-          if jq -e --slurpfile targets "$TARGETS_JSON_FILE" 'type == "array" and all(.[]; type == "object" and (.id? | type) == "string" and (.id | length) > 0 and (.path? | type) == "string" and (.path | length) > 0 and has("line") and ((.line == null) or ((.line | type) == "number" and (.line | floor) == .)) and (.headline? | type) == "string" and (.headline | length) > 0 and (.body? | type) == "string" and (.body | length) > 0 and (.gate? | type) == "string" and (.gate | IN("block","defer","manual")) and (.path as $p | ($targets[0] | index($p)) != null))' "$CANDIDATE" >/dev/null 2>&1; then
+          if jq -e --slurpfile targets "$TARGETS_JSON_FILE" 'type == "array" and all(.[]; type == "object" and (.id? | type) == "string" and (.id | length) > 0 and (.path? | type) == "string" and (.path | length) > 0 and has("line") and ((.line == null) or ((.line | type) == "number" and (.line | floor) == .line)) and (.headline? | type) == "string" and (.headline | length) > 0 and (.body? | type) == "string" and (.body | length) > 0 and (.gate? | type) == "string" and (.gate | IN("block","defer","manual")) and (.path as $p | ($targets[0] | index($p)) != null))' "$CANDIDATE" >/dev/null 2>&1; then
             IDS=$(jq -r '.[].id' "$CANDIDATE" | sort)
             [ "$IDS" = "$(printf '%s\n' "$IDS" | uniq)" ] || continue
             ADOPTED="$CANDIDATE"
