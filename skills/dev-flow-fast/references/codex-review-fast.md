@@ -152,52 +152,19 @@ done
 
 ## ステップ 3: CASPER 呼び出し（Normalizerなし）
 
-既存 `/casper` スキルを `MAGI_ORCHESTRATED=true` で実行する。`skills/magi-common/references/execution-steps.md` と `skills/casper/` の契約を優先する。
+`codex-review-hard.md` の新ステップ6をそのまま再利用する。既存 `/casper` スキルを `MAGI_ORCHESTRATED=true` で実行する点、CASPERはOllamaを使わずHaikuを標準モデルとして使い `AskUserQuestion` によるfallback確認が不要な点、diffが大きい場合のチャンク分割、CASPER呼び出し自体の失敗を `$FAILED_PERSONAS_JSON` に追加してfinding 0件に丸めない契約を含め、同じ手順をここで重複記述しない。
 
-- CASPERはOllamaを使わずHaikuを標準モデルとして使う。`AskUserQuestion` によるfallback確認は不要。
-- `MAGI_ORCHESTRATED=true` は呼び出し元からCASPERへ明示的に渡す。CASPER自身はNormalizerを呼ばず、生のDETECTION NOTES結果を返す。
-- diffが大きい場合は既存の `scripts/magi-split-hunk.sh` によるチャンク分割が内部で発生する。チャンクは直列に処理する。
-- CASPER呼び出し自体の失敗（チャンク失敗、Haiku失敗、全体出力取得失敗を含む）は `CASPER` を `$FAILED_PERSONAS_JSON` に追加する。失敗をfinding 0件として扱わない。
-
-`CASPER_RAW_FILE="$REVIEW_TMPDIR/casper-raw.txt"` を固定パスとして確保し、`:` で空にする。`skills/casper/SKILL.md` と repo 内の `skills/magi-common/references/execution-steps.md` を Read ツールで読み込み、記載の手順に従って `MAGI_ORCHESTRATED=true` でCASPERを実行する。各チャンクのCASPER stdoutはチャンク単位の一時ファイル（`CASPER_CHUNK_RAW_FILE`）へ捕捉し、終了コードの成否を判定する前に、次の形式のヘッダーとともに `$CASPER_RAW_FILE` へ追記する。
-
-```bash
-CASPER_RAW_FILE="$REVIEW_TMPDIR/casper-raw.txt"
-unset CASPER_NORMALIZE_ATTEMPTED
-: > "$CASPER_RAW_FILE"
-```
-
-各チャンクの呼び出し後（成功・失敗を問わず）に、終了コードを判定する前に次を実行する。
-
-```bash
-printf '%s\n' "=== PERSONA: CASPER / CHUNK: $CHUNK_PATH ($CHUNK_NUMBER) ===" >> "$CASPER_RAW_FILE"
-if [ -r "$CASPER_CHUNK_RAW_FILE" ]; then
-  cat "$CASPER_CHUNK_RAW_FILE" >> "$CASPER_RAW_FILE"
-fi
-```
-
-CASPER呼び出しが成功した場合も失敗した場合も、取得できた生RESULTをこの処理で保持する。CASPERが失敗した場合は `FAILED_PERSONAS_JSON` に `CASPER` を追加し、Normalizerへ進まない。
+`codex-review-hard.md` のステップ6を Read ツールで読み込み、記載の手順に従って実行する。これにより `CASPER_RAW_FILE` を確定する。
 
 ## ステップ 4: CASPER結果のバッチNormalizer
 
-CASPERが成功した場合だけ、全チャンクの生DETECTION NOTESをヘッダー付きで `$NORMALIZE_INPUT` に連結し、`skills/magi-common/references/normalizer.md` の手順を1回のバッチ呼び出しとして実行する。Normalizer は判断・分類・重複除去・候補削除を行わない。
+`codex-review-hard.md` の新ステップ7をそのまま再利用する。全チャンクの生DETECTION NOTESの連結、`skills/magi-common/references/normalizer.md` の1回のバッチ呼び出し、`CASPER_NORMALIZE_ATTEMPTED` フラグによる二重計上防止、`NORMALIZE_ERROR`/`NORMALIZE_SKIPPED` 時の失敗をfinding 0件に丸めない契約を含め、同じ手順をここで重複記述しない。
 
-CASPERが成功した場合だけ、`$CASPER_RAW_FILE` に保持した全チャンクの生DETECTION NOTESを `NORMALIZE_INPUT="$REVIEW_TMPDIR/casper-detection-notes.txt"` に連結し、`skills/magi-common/references/normalizer.md` を Read ツールで読み込んで、記載のステップ1-6に従う1回のバッチNormalizerとして実行する。Normalizer呼び出し前に、次の順で一時ディレクトリ・出力ファイル・試行フラグを準備する。
-
-```bash
-MAGI_TMPDIR=$(mktemp -d)
-CASPER_NORMALIZED_FILE="$REVIEW_TMPDIR/casper-normalized.json"
-rm -f -- "$CASPER_NORMALIZED_FILE" || return 1
-CASPER_NORMALIZE_ATTEMPTED=true
-```
-
-`CASPER_NORMALIZE_ATTEMPTED=true` は、Normalizerの呼び出しを試みる直前に設定する。Ollama可否確認、random/長さ対応fence、`OLLAMA_NUM_CTX=65536`、`OLLAMA_TEMPERATURE=0`、候補抽出、lossless突合を実行し、正規化結果を `{persona,path,line,headline,problem,breakage,evidence}` のJSON配列として `CASPER_NORMALIZED_FILE` に保存する。
-
-`NORMALIZE_ERROR` または `NORMALIZE_SKIPPED` の場合もCASPER findingを0件に丸めず、ステップ5で `CASPER_NORMALIZE_ATTEMPTED=true` の失敗として `CASPER` を `$FAILED_PERSONAS_JSON` に一度だけ追加する。`CASPER_NORMALIZE_ATTEMPTED` が未セットの場合は、ステップ3のCASPER失敗が既に記録されているため、ステップ5では追加しない。既存 normalizer.md / magi-fast の Haiku fallback 契約は使わず、フォールバック可否をユーザーへ尋ねない。成功した場合だけ、各要素について `body = "Problem: " + problem + "\nBreakage: " + breakage` を機械的に作る。`evidence` は保持してもよいが、findings table の必須表示フィールドではない。
+`codex-review-hard.md` のステップ7を Read ツールで読み込み、記載の手順に従って実行する。これにより `CASPER_NORMALIZE_ATTEMPTED`、`CASPER_NORMALIZED_FILE` を確定する。
 
 ## ステップ 5: findings table 構築とCASPER gate付与
 
-MELCHIOR/BALTHASARの成功findingとNormalizer成功後のCASPER findingを、hard ステップ6と同じ実行順のグローバルIDで再採番する。
+MELCHIOR/BALTHASARの成功findingとNormalizer成功後のCASPER findingを、hard ステップ8と同じ実行順のグローバルIDで再採番する。
 
 - CASPER由来の `source_persona` は必ず `CASPER` に上書きする。Normalizerの `persona` は信用しない。
 - CASPER findingの `gate` は全件 `block` 固定。NormalizerやCASPERの本文からgateを推測しない。
@@ -221,51 +188,13 @@ for PERSONA in MELCHIOR BALTHASAR; do
   jq -s '.[0] + .[1]' "$FINDINGS_TABLE_FILE" "$OUT" > "$REVIEW_TMPDIR/table.next"
   mv "$REVIEW_TMPDIR/table.next" "$FINDINGS_TABLE_FILE"
 done
-CASPER_NORMALIZED_VALID=false
-if [ "${CASPER_NORMALIZE_ATTEMPTED:-}" = true ]; then
-  if [ -r "$CASPER_NORMALIZED_FILE" ] && jq -e '
-    type == "array"
-    and all(.[ ];
-      type == "object"
-      and ((.persona? | type) == "string" and (.persona | length) > 0)
-      and ((.path? | type) == "string" and (.path | length) > 0)
-      and has("line")
-      and ((.line == null) or ((.line | type) == "number" and (.line | floor) == .line and .line > 0))
-      and ((.headline? | type) == "string" and (.headline | length) > 0)
-      and ((.body? | type) == "string" and (.body | length) > 0)
-      and (((.evidence? // null) | type) == "null"
-           or (((.evidence? // null) | type) == "string"
-               and ((.evidence? // null) | length) > 0))
-    )
-  ' "$CASPER_NORMALIZED_FILE" >/dev/null 2>&1; then
-    TARGETS_JSON_FILE="$REVIEW_TMPDIR/targets.json"
-    jq -Rsc 'split("\n") | map(select(length > 0))' "$TARGETS_FILE" > "$TARGETS_JSON_FILE" || return 1
-    if jq -e --slurpfile targets "$TARGETS_JSON_FILE" \
-      'type == "array" and all(.[]; .path as $p | ($targets[0] | index($p)) != null)' \
-      "$CASPER_NORMALIZED_FILE" >/dev/null 2>&1; then
-      OUT="$REVIEW_TMPDIR/casper-table.json"
-      jq --slurpfile targets "$TARGETS_JSON_FILE" --argjson start "$NEXT_ID" '
-        map(select(.path as $p | ($targets[0] | index($p)) != null))
-        | to_entries | map(. as $e | ($start + $e.key) as $n | $e.value as $f |
-          {id:("F-" + (if $n < 1000 then (("000"+($n|tostring))|.[-3:]) else ($n|tostring) end)),
-           source_persona:"CASPER", path:$f.path, line:$f.line, headline:$f.headline, body:$f.body, gate:"block"})
-      ' "$CASPER_NORMALIZED_FILE" > "$OUT" || return 1
-      NEXT_ID=$((NEXT_ID + $(jq 'length' "$OUT")))
-      jq -s '.[0] + .[1]' "$FINDINGS_TABLE_FILE" "$OUT" > "$REVIEW_TMPDIR/table.next"
-      mv "$REVIEW_TMPDIR/table.next" "$FINDINGS_TABLE_FILE"
-      CASPER_NORMALIZED_VALID=true
-    fi
-  fi
-  if [ "$CASPER_NORMALIZED_VALID" = false ] && ! jq -e 'index("CASPER") != null' <<<"$FAILED_PERSONAS_JSON" >/dev/null 2>&1; then
-    FAILED_PERSONAS_JSON=$(jq --arg p "CASPER" '. + [$p]' <<<"$FAILED_PERSONAS_JSON") || return 1
-  fi
-fi
-printf '%s\n' "$FAILED_PERSONAS_JSON" > "$REVIEW_TMPDIR/failed-personas.json"
 ```
+
+`codex-review-hard.md` の新ステップ9（CASPER統合）をそのまま再利用する。上記でMELCHIOR/BALTHASARの2ペルソナ分を追記済みの `$FINDINGS_TABLE_FILE`・`$NEXT_ID` の状態を引き継いだ状態で、`codex-review-hard.md` のステップ9を Read ツールで読み込み、記載の手順に従って実行する。ステップ8全体（5ペルソナforループを含む）は実行しないこと。
 
 ## ステップ 6: 共通監査
 
-hard ステップ7と同じ手順で `$FINDINGS_TABLE_FILE` の `gate` を除いた `$AUDIT_FINDINGS_FILE` を作り、`codex-review-audit.md` を呼び出す。監査promptには、`attribution-rules.md` の記載どおり「CASPER findingは独立のルール違反として扱い、同じ場所のコードfindingと自動マージしない」ことを明記する。共通監査手順にも同じ指示を含める。
+hard ステップ10と同じ手順で `$FINDINGS_TABLE_FILE` の `gate` を除いた `$AUDIT_FINDINGS_FILE` を作り、`codex-review-audit.md` を呼び出す。監査promptには、`attribution-rules.md` の記載どおり「CASPER findingは独立のルール違反として扱い、同じ場所のコードfindingと自動マージしない」ことを明記する。共通監査手順にも同じ指示を含める。
 
 ```bash
 AUDIT_TMPDIR="$REVIEW_TMPDIR/audit"
@@ -282,7 +211,7 @@ fi
 
 ## ステップ 7: merge と結果表示
 
-hard ステップ8-9と同じ `scripts/codex-review-merge.sh` の4引数、終了コード処理、結果表示を共有する。終了コード2は `CODEX_FAST_FAILED: findings tableの構築に矛盾があります` として停止し、終了コード1は監査全体失敗のJSONを表示する。
+hard ステップ11-12と同じ `scripts/codex-review-merge.sh` の4引数、終了コード処理、結果表示を共有する。終了コード2は `CODEX_FAST_FAILED: findings tableの構築に矛盾があります` として停止し、終了コード1は監査全体失敗のJSONを表示する。
 
 ```bash
 MERGE_OUTPUT_FILE="$REVIEW_TMPDIR/merge-result.json"
