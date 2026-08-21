@@ -12,7 +12,7 @@ description: 'Codex 5体（MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIEL）+ CAS
 ## 概要
 
 Codex 5ペルソナ（MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIEL）を逐次blind呼び出しし、既存`/casper`スキル（Haiku）の実行と監査Codexによる意味的グルーピングとペルソナ帰属の決定まで行う読み取り専用レビューである。CASPERの結果はバッチNormalizerを経て統合する。
-既存の`/magi-hard`（ローカルLLM）とは別の独立したCodexベースのレビューであり、必要に応じて両方を実行してよい。
+既存の`/magi-hard`（ローカルLLM）とは独立したCodexベースのレビューである。`/magi-hard` とはどちらか一方を選んで実行し、両方の実行は不要である。
 
 ## 前提
 

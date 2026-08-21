@@ -26,8 +26,7 @@ For full phase instructions with commands and templates, load `references/phases
 
 ```
 /pr-review-respond  → respond to human review comments
-/magi-hard          → MAGI 5-persona PR review
-/codex-hard         → Codex 5-persona PR review (optional, alongside /magi-hard)
+/magi-hard または /codex-hard → 5-persona PR review（レビューエンジンをどちらか一方選択。両方の実行は不要）
 /magi-fast          → quality check after fixes (as needed)
 merge
 /finished-pr        → post-merge cleanup (main pull, Issue close, branch delete)
