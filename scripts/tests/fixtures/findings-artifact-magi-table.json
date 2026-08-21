@@ -1,0 +1,35 @@
+{
+  "schema_version": "1",
+  "findings": [
+    {
+      "id": "M-001",
+      "persona": "MELCHIOR",
+      "severity": "HIGH",
+      "headline": "unquoted command arguments can be split",
+      "body": "Problem: the command receives split arguments.\n\n| input | result |\n| --- | --- |\n\n```bash\nprintf \"%s\" \"$value\"\n```",
+      "evidence": "$cmd $arg",
+      "original_path": "scripts/example.sh",
+      "original_line": 17
+    },
+    {
+      "id": "M-002",
+      "persona": "CASPER",
+      "severity": "MEDIUM",
+      "headline": "direct command execution bypasses the review boundary",
+      "body": "Breakage: a direct command is executed without the expected wrapper.",
+      "evidence": null,
+      "original_path": "scripts/review.sh",
+      "original_line": null
+    },
+    {
+      "id": "M-003",
+      "persona": "LELIEL",
+      "severity": "UNRATED",
+      "headline": "caller context is not preserved",
+      "body": "The caller context is lost before the helper is invoked.",
+      "evidence": "helper --input \"$input\"",
+      "original_path": "src/helper.sh",
+      "original_line": 21
+    }
+  ]
+}

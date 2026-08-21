@@ -298,6 +298,7 @@ GROUNDING_NOTE=""
 AUDIT_NOTE=""
 IMPORTANCE_NOTE=""
 FALSE_POSITIVE_IDS=""
+ARTIFACT_NOTE="ARTIFACT_SKIPPED（findings tableの構造検証に失敗したため canonical artifact を生成していない）"
 MAGI_TMPDIR=""        # 4-2 を通らないので作られない
 MAGI_TMPDIR_IMPORTANCE=""  # 4-4 を通らないので作られない
 ```
@@ -322,6 +323,7 @@ MAGI_TMPDIR_IMPORTANCE=""  # 4-4 を通らないので作られない
 
 #### 指摘が 0 件の場合
 
+4-5（canonical findings artifact の出力）は、4-1完了時点で表が構造的に正常であるため、この分岐でも実行する。
 Codex 監査とステップ 5（grounding）をスキップしてステップ 6 に進む。
 このとき次を**明示的に設定する**。未設定のままステップ 7 に到達すると、
 `$POST_INLINE` が `false` でないため投稿処理が走る解釈が残る。
@@ -433,7 +435,8 @@ fi
 立て忘れると、ステップ 6 が構造化失敗の文言（`$NORMALIZED_RESULTS` を出す分岐）へ流れる。
 判定ロジックそのものは変更していない。
 
-`$POST_INLINE` が `false` の場合はステップ 4-4 をスキップしてステップ 5（実質的にはステップ 6）へ進む。
+`$POST_INLINE` が `false` の場合でも、4-5（canonical findings artifact の出力）は4-1完了時点で表が構造的に正常であるため実行する。
+その後、ステップ 4-4 をスキップしてステップ 5（実質的にはステップ 6）へ進む。
 このとき `MAGI_TMPDIR_IMPORTANCE=""`（4-4 を通らないので作られない）と `IMPORTANCE_NOTE=""` を設定する。
 
 ### 4-4. Codex 重要度判定
@@ -442,7 +445,8 @@ fi
 
 **対象:** `$FINDINGS_TABLE`のうち`severity == "UNRATED"`かつステップ4-3で`valid`または`needs_human`と判定されたfindingのみ。`false_positive`のfindingも対象外（無駄なCodex呼び出しを避ける。`severity`は`UNRATED`のまま残るが、ステップ7で`$FALSE_POSITIVE_IDS`により別途除外されるため実害はない）。
 
-対象findingが0件の場合は `MAGI_TMPDIR_IMPORTANCE=""` と `IMPORTANCE_NOTE=""` を設定し、このステップをスキップしてステップ5へ進む。
+対象findingが0件の場合でも、4-5（canonical findings artifact の出力）は4-1完了時点で表が構造的に正常であるため実行する。
+その後、`MAGI_TMPDIR_IMPORTANCE=""` と `IMPORTANCE_NOTE=""` を設定し、このステップをスキップしてステップ5へ進む。
 
 **`$MAGI_TMPDIR`（4-2で作成済み）を再代入してはならない。** 同じ変数名で `mktemp -d` すると
 4-2で作った監査用tmpdirへの参照が失われ、ステップ8の `rm -rf "$MAGI_TMPDIR"` が
@@ -473,7 +477,38 @@ fi
 
 `$MAGI_TMPDIR_IMPORTANCE`は削除せず、失敗時は調査可能な状態を保つ（`codex-audit.md`と同様）。`$IMPORTANCE_NOTE`はステップ6のサマリと8の結果表示に出す。
 
+4-5（canonical findings artifact の出力）は、4-1完了時点で表が構造的に正常であるため、この通常経路でも実行する。
 ステップ 5（grounding）に進む。
+
+### 4-5. canonical findings artifact の出力
+
+4-1 完了時点の `$FINDINGS_TABLE`（dedup・採番済み、`anchored_*` 未投入）を入力として、
+共通変換スクリプトを呼び出し、`$MAGI_RUN_DIR/findings-artifact.json` に保存する。
+4-4 で `severity` が入った後に実行しても artifact に `severity` は含まれないため、内容は4-1時点と同じである。
+
+MAGI にはペルソナ単位の失敗追跡が無いため、`failed-personas.json` は渡さない。このため
+`detection_status="unknown"` になる。これは F1 で表面化した既知ギャップであり、F2 で塞ぐ予定である。
+
+```bash
+# MAGI にはペルソナ単位の失敗追跡が無い既知ギャップがあり、F1 で表面化したため
+# failed-personas.json は渡さず、detection_status="unknown" とする。F2 でこのギャップを塞ぐ。
+ARTIFACT_NOTE=""
+ARTIFACT_FILE="$MAGI_RUN_DIR/findings-artifact.json"
+rm -f -- "$ARTIFACT_FILE"
+ARTIFACT_EXIT=0
+bash scripts/review-findings-artifact.sh magi "$FINDINGS_TABLE" \
+  >"$ARTIFACT_FILE" 2>"$MAGI_RUN_DIR/findings-artifact.err" || ARTIFACT_EXIT=$?
+if [ "$ARTIFACT_EXIT" -ne 0 ] \
+  || [ ! -s "$ARTIFACT_FILE" ] \
+  || ! jq -e 'type == "object" and .schema_version == "1" and .engine == "magi"' \
+    "$ARTIFACT_FILE" >/dev/null 2>&1; then
+  ARTIFACT_NOTE="ARTIFACT_FAILED（canonical artifact の生成に失敗した）"
+fi
+```
+
+変換スクリプトが非0終了、出力ファイルが無い、出力 JSON が不正、または自己検証に落ちた場合も
+同じ `$ARTIFACT_NOTE` に集約する。変換に失敗しても既存レビュー本体は止めない。
+ステップ8の結果表示では、`$ARTIFACT_NOTE` が空でない場合に次を表示する。
 
 ## ステップ 5: grounding（アンカーの確認と補正）
 
@@ -685,6 +720,9 @@ $IMPORTANCE_NOTE が空でない場合はサマリ末尾に以下を追記する
 
 $GROUNDING_NOTE が空でない場合はサマリ末尾に以下を追記する:
 > ⚠ grounding: \`$GROUNDING_NOTE\`
+
+$ARTIFACT_NOTE が空でない場合はサマリ末尾に以下を追記する:
+> ⚠ canonical artifact: \`$ARTIFACT_NOTE\`
 
 Codex 監査で `false_positive` 除外が発生した場合は以下を追記する:
 > Codex 監査除外: N件（誤検知と判定）" \
@@ -917,4 +955,10 @@ grounding: 失敗（⚠ $GROUNDING_NOTE）
 ```
 重要度判定: 失敗（⚠ $IMPORTANCE_NOTE）
   該当指摘 N 件は重要度未確定のためサマリコメント本文にのみ記載（インライン投稿なし）
+```
+
+`$ARTIFACT_NOTE` が空でない場合は、上記に加えて以下を表示する
+
+```
+canonical artifact: 生成失敗（⚠ $ARTIFACT_NOTE）
 ```

@@ -424,3 +424,39 @@ fi
 ```
 
 GitHubコメント、PR更新、コミット、ファイル編集はこの手順のスコープ外である。
+
+## ステップ 13: canonical findings artifact の出力
+
+ステップ9完了時点の `$FINDINGS_TABLE_FILE` を入力として、
+`$REVIEW_TMPDIR/failed-personas.json` を渡し、`$REVIEW_TMPDIR/findings-artifact.json` に保存する。
+ステップ10〜12は `$FINDINGS_TABLE_FILE` を変更しない（ステップ10は `gate` を除いた別ファイルを作り、
+ステップ11は `merge-result.json` を作り、ステップ12は読むだけ）ため、ステップ9直後の表と同一である。
+
+`merge-result.json` の `pipeline_status` は使わない。artifact の `detection_status` は検出層だけの状態であり、
+`merge-result.json` の `pipeline_status` は監査失敗も含む engine 全体の状態という別概念だからである。
+両者を混ぜると、F2 が監査状態を検出状態として誤読する。
+
+```bash
+# merge-result.json の pipeline_status は監査失敗も含む engine 全体状態であり、
+# artifact の detection_status（検出層だけの状態）とは別概念なので使わない。
+ARTIFACT_NOTE=""
+ARTIFACT_FILE="$REVIEW_TMPDIR/findings-artifact.json"
+rm -f -- "$ARTIFACT_FILE"
+ARTIFACT_EXIT=0
+bash "$WORKTREE_ROOT/scripts/review-findings-artifact.sh" codex \
+  "$FINDINGS_TABLE_FILE" "$REVIEW_TMPDIR/failed-personas.json" \
+  >"$ARTIFACT_FILE" 2>"$REVIEW_TMPDIR/findings-artifact.err" || ARTIFACT_EXIT=$?
+if [ "$ARTIFACT_EXIT" -ne 0 ] \
+  || [ ! -s "$ARTIFACT_FILE" ] \
+  || ! jq -e 'type == "object" and .schema_version == "1" and .engine == "codex"' \
+    "$ARTIFACT_FILE" >/dev/null 2>&1; then
+  ARTIFACT_NOTE="ARTIFACT_FAILED（canonical artifact の生成に失敗した）"
+fi
+
+if [ -n "$ARTIFACT_NOTE" ]; then
+  echo "canonical artifact: 生成失敗（⚠ $ARTIFACT_NOTE）"
+fi
+```
+
+ステップ13はステップ12（結果表示）より後にあるため、`$ARTIFACT_NOTE` の表示まで自身で完結させる。
+変換に失敗しても既存レビュー本体は止めない。
