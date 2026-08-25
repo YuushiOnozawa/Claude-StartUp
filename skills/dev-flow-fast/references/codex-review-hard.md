@@ -89,13 +89,14 @@ DIFF_BYTES=$(wc -c < "$DIFF_FILE")
 - `skills/dev-flow-fast/references/codex-review-hard.md`
 - `skills/dev-flow-fast/references/codex-review-fast.md`
 - `scripts/review-findings-artifact.sh`
+- `scripts/review-dedup-findings.sh`
 - `scripts/codex-review-merge.sh`
 
 ```bash
 SELF_TAMPER=false
 while IFS= read -r TARGET_PATH; do
   case "$TARGET_PATH" in
-    skills/codex-hard/*|skills/codex-fast/*|skills/dev-flow-fast/references/codex-personas/*|skills/dev-flow-fast/references/codex-review-audit.md|skills/dev-flow-fast/references/codex-review-hard.md|skills/dev-flow-fast/references/codex-review-fast.md|scripts/review-findings-artifact.sh|scripts/codex-review-merge.sh)
+    skills/codex-hard/*|skills/codex-fast/*|skills/dev-flow-fast/references/codex-personas/*|skills/dev-flow-fast/references/codex-review-audit.md|skills/dev-flow-fast/references/codex-review-hard.md|skills/dev-flow-fast/references/codex-review-fast.md|scripts/review-findings-artifact.sh|scripts/review-dedup-findings.sh|scripts/codex-review-merge.sh)
       SELF_TAMPER=true
       ;;
   esac
