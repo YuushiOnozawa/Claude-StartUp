@@ -94,8 +94,7 @@ record_magi_persona_result() {
   printf '%s' "$result" > "$raw_file"
   if [ "$exit_status" -ne 0 ] \
     || [ -z "$result" ] \
-    || grep -aFq 'NORMALIZE_SKIPPED' "$raw_file" \
-    || grep -aFq 'NORMALIZE_ERROR' "$raw_file"; then
+    || grep -aEq '^NORMALIZE_(SKIPPED|ERROR):' "$raw_file"; then
     persona_failed=true
   fi
   if [ "$persona_failed" = true ]; then
@@ -183,6 +182,7 @@ NORMALIZE_INPUT="$(
     if jq -e --arg p "$PERSONA" 'index($p) == null' <<<"$FAILED_PERSONAS_JSON" >/dev/null 2>&1; then
       PERSONA_KEY=$(printf '%s' "$PERSONA" | tr '[:upper:]' '[:lower:]')
       cat "$MAGI_RUN_DIR/raw/${PERSONA_KEY}.txt"
+      printf '\n'
     fi
   done
 )"
