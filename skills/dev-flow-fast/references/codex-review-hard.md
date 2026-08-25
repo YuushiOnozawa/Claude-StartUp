@@ -89,13 +89,14 @@ DIFF_BYTES=$(wc -c < "$DIFF_FILE")
 - `skills/dev-flow-fast/references/codex-review-hard.md`
 - `skills/dev-flow-fast/references/codex-review-fast.md`
 - `scripts/review-findings-artifact.sh`
+- `scripts/review-dedup-findings.sh`
 - `scripts/codex-review-merge.sh`
 
 ```bash
 SELF_TAMPER=false
 while IFS= read -r TARGET_PATH; do
   case "$TARGET_PATH" in
-    skills/codex-hard/*|skills/codex-fast/*|skills/dev-flow-fast/references/codex-personas/*|skills/dev-flow-fast/references/codex-review-audit.md|skills/dev-flow-fast/references/codex-review-hard.md|skills/dev-flow-fast/references/codex-review-fast.md|scripts/review-findings-artifact.sh|scripts/codex-review-merge.sh)
+    skills/codex-hard/*|skills/codex-fast/*|skills/dev-flow-fast/references/codex-personas/*|skills/dev-flow-fast/references/codex-review-audit.md|skills/dev-flow-fast/references/codex-review-hard.md|skills/dev-flow-fast/references/codex-review-fast.md|scripts/review-findings-artifact.sh|scripts/review-dedup-findings.sh|scripts/codex-review-merge.sh)
       SELF_TAMPER=true
       ;;
   esac
@@ -305,12 +306,14 @@ for PERSONA in MELCHIOR BALTHASAR METATRON SANDALPHON LELIEL; do
   KEY=$(printf '%s' "$PERSONA" | tr '[:upper:]' '[:lower:]')
   INPUT="$SUCCESS_DIR/$KEY.json"
   [ -r "$INPUT" ] || continue
+  DEDUPED_INPUT="$REVIEW_TMPDIR/$KEY-deduped.json"
+  bash "$WORKTREE_ROOT/scripts/review-dedup-findings.sh" headline,path,line,body "$INPUT" > "$DEDUPED_INPUT" || return 1
   OUT="$REVIEW_TMPDIR/$KEY-table.json"
   jq --arg p "$PERSONA" --argjson start "$NEXT_ID" '
     to_entries | map(. as $e | ($start + $e.key) as $n | $e.value as $f |
       {id:("F-" + (if $n < 1000 then (("000"+($n|tostring))|.[-3:]) else ($n|tostring) end)),
        source_persona:$p, path:$f.path, line:$f.line, headline:$f.headline, body:$f.body, gate:$f.gate})
-  ' "$INPUT" > "$OUT" || return 1
+  ' "$DEDUPED_INPUT" > "$OUT" || return 1
   NEXT_ID=$((NEXT_ID + $(jq 'length' "$OUT")))
   jq -s '.[0] + .[1]' "$FINDINGS_TABLE_FILE" "$OUT" > "$REVIEW_TMPDIR/table.next"
   mv "$REVIEW_TMPDIR/table.next" "$FINDINGS_TABLE_FILE"
@@ -339,18 +342,23 @@ if [ "${CASPER_NORMALIZE_ATTEMPTED:-}" = true ]; then
                and ((.evidence? // null) | length) > 0))
     )
   ' "$CASPER_NORMALIZED_FILE" >/dev/null 2>&1; then
+    CASPER_PERSONA_FILE="$REVIEW_TMPDIR/casper-persona.json"
+    jq 'map(.persona = "CASPER")' "$CASPER_NORMALIZED_FILE" > "$CASPER_PERSONA_FILE" || return 1
+    CASPER_DEDUPED_FILE="$REVIEW_TMPDIR/casper-deduped.json"
+    bash "$WORKTREE_ROOT/scripts/review-dedup-findings.sh" persona,headline,path,line,evidence,body \
+      "$CASPER_PERSONA_FILE" > "$CASPER_DEDUPED_FILE" || return 1
     TARGETS_JSON_FILE="$REVIEW_TMPDIR/targets.json"
     jq -Rsc 'split("\n") | map(select(length > 0))' "$TARGETS_FILE" > "$TARGETS_JSON_FILE" || return 1
     if jq -e --slurpfile targets "$TARGETS_JSON_FILE" \
       'type == "array" and all(.[]; .path as $p | ($targets[0] | index($p)) != null)' \
-      "$CASPER_NORMALIZED_FILE" >/dev/null 2>&1; then
+      "$CASPER_DEDUPED_FILE" >/dev/null 2>&1; then
       OUT="$REVIEW_TMPDIR/casper-table.json"
       jq --slurpfile targets "$TARGETS_JSON_FILE" --argjson start "$NEXT_ID" '
         map(select(.path as $p | ($targets[0] | index($p)) != null))
         | to_entries | map(. as $e | ($start + $e.key) as $n | $e.value as $f |
           {id:("F-" + (if $n < 1000 then (("000"+($n|tostring))|.[-3:]) else ($n|tostring) end)),
            source_persona:"CASPER", path:$f.path, line:$f.line, headline:$f.headline, body:$f.body, gate:"block"})
-      ' "$CASPER_NORMALIZED_FILE" > "$OUT" || return 1
+      ' "$CASPER_DEDUPED_FILE" > "$OUT" || return 1
       NEXT_ID=$((NEXT_ID + $(jq 'length' "$OUT")))
       jq -s '.[0] + .[1]' "$FINDINGS_TABLE_FILE" "$OUT" > "$REVIEW_TMPDIR/table.next"
       mv "$REVIEW_TMPDIR/table.next" "$FINDINGS_TABLE_FILE"

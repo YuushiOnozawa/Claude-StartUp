@@ -193,6 +193,30 @@ else
 fi
 record_result "failed-personas 空配列時に complete を保持する" "$result"
 
+run_transform magi-incomplete magi "$MAGI_FIXTURE" "$FAILED_NONEMPTY"
+if [[ "$CASE_EXIT" -eq 0 ]] && jq -e '
+  .engine == "magi"
+  and .detection_status == "incomplete"
+  and .failed_personas == ["CASPER"]
+' "$CASE_RESULT" >/dev/null; then
+  result=0
+else
+  result=1
+fi
+record_result "MAGIのfailed-personas 非空時に incomplete と配列を保持する" "$result"
+
+run_transform magi-complete magi "$MAGI_FIXTURE" "$FAILED_EMPTY"
+if [[ "$CASE_EXIT" -eq 0 ]] && jq -e '
+  .engine == "magi"
+  and .detection_status == "complete"
+  and .failed_personas == []
+' "$CASE_RESULT" >/dev/null; then
+  result=0
+else
+  result=1
+fi
+record_result "MAGIのfailed-personas 空配列時に complete を保持する" "$result"
+
 # 6. canonical artifact の組合せ規則違反はすべて validator の exit 2 になる。
 MUTATION_SOURCE="$TEST_ROOT/codex-incomplete/result.json"
 BAD_STATUS="$TEST_ROOT/bad-status.json"

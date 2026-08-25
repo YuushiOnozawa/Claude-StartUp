@@ -178,19 +178,36 @@ for PERSONA in MELCHIOR BALTHASAR; do
   KEY=$(printf '%s' "$PERSONA" | tr '[:upper:]' '[:lower:]')
   INPUT="$SUCCESS_DIR/$KEY.json"
   [ -r "$INPUT" ] || continue
+  DEDUPED_INPUT="$REVIEW_TMPDIR/$KEY-deduped.json"
+  bash "$WORKTREE_ROOT/scripts/review-dedup-findings.sh" headline,path,line,body "$INPUT" > "$DEDUPED_INPUT" || return 1
   OUT="$REVIEW_TMPDIR/$KEY-table.json"
   jq --arg p "$PERSONA" --argjson start "$NEXT_ID" '
     to_entries | map(. as $e | ($start + $e.key) as $n | $e.value as $f |
       {id:("F-" + (if $n < 1000 then (("000"+($n|tostring))|.[-3:]) else ($n|tostring) end)),
        source_persona:$p, path:$f.path, line:$f.line, headline:$f.headline, body:$f.body, gate:$f.gate})
-  ' "$INPUT" > "$OUT" || return 1
+  ' "$DEDUPED_INPUT" > "$OUT" || return 1
   NEXT_ID=$((NEXT_ID + $(jq 'length' "$OUT")))
   jq -s '.[0] + .[1]' "$FINDINGS_TABLE_FILE" "$OUT" > "$REVIEW_TMPDIR/table.next"
   mv "$REVIEW_TMPDIR/table.next" "$FINDINGS_TABLE_FILE"
 done
 ```
 
-`codex-review-hard.md` の新ステップ9（CASPER統合）をそのまま再利用する。上記でMELCHIOR/BALTHASARの2ペルソナ分を追記済みの `$FINDINGS_TABLE_FILE`・`$NEXT_ID` の状態を引き継いだ状態で、`codex-review-hard.md` のステップ9を Read ツールで読み込み、記載の手順に従って実行する。ステップ8全体（5ペルソナforループを含む）は実行しないこと。
+`codex-review-hard.md` の新ステップ9（CASPER統合）を再利用する。上記でMELCHIOR/BALTHASARの2ペルソナ分を追記済みの `$FINDINGS_TABLE_FILE`・`$NEXT_ID` の状態を引き継ぐ前に、Normalizerの申告personaを信用せず固定化し、共通dedupを適用する。
+
+```bash
+if [ "${CASPER_NORMALIZE_ATTEMPTED:-}" = true ] && [ -r "$CASPER_NORMALIZED_FILE" ]; then
+  CASPER_PERSONA_FILE="$REVIEW_TMPDIR/casper-persona.json"
+  if jq 'map(.persona = "CASPER")' "$CASPER_NORMALIZED_FILE" > "$CASPER_PERSONA_FILE"; then
+    CASPER_DEDUPED_FILE="$REVIEW_TMPDIR/casper-deduped.json"
+    if bash "$WORKTREE_ROOT/scripts/review-dedup-findings.sh" persona,headline,path,line,evidence,body \
+      "$CASPER_PERSONA_FILE" > "$CASPER_DEDUPED_FILE"; then
+      CASPER_NORMALIZED_FILE="$CASPER_DEDUPED_FILE"
+    fi
+  fi
+fi
+```
+
+この前処理後の `$CASPER_NORMALIZED_FILE` を入力として、`codex-review-hard.md` のステップ9の構造検証・採番処理を実行する。ステップ8全体（5ペルソナforループを含む）は実行しないこと。
 
 ## ステップ 6: 共通監査
 
