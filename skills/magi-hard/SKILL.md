@@ -41,6 +41,9 @@ PR 全体で使う作業ディレクトリを作る：
 ```bash
 MAGI_RUN_DIR=$(mktemp -d)
 printf '%s\n' "$DIFF" > "$MAGI_RUN_DIR/pr.diff"
+mkdir -p "$MAGI_RUN_DIR/raw"
+FAILED_PERSONAS_JSON='[]'
+printf '%s\n' "$FAILED_PERSONAS_JSON" > "$MAGI_RUN_DIR/failed-personas.json"
 ```
 
 `$MAGI_RUN_DIR/pr.diff` は**ステップ 5（grounding）の第2引数**になる。
@@ -71,47 +74,119 @@ IMPACT_CONTEXT=$(bash scripts/magi-impact-context.sh "$DIFF" 2>/dev/null || true
 MAGI_ORCHESTRATED=true
 ```
 
+各ペルソナの呼び出し元は、実行の終了ステータスを `<PERSONA>_EXIT`、取得した結果テキストを
+`<PERSONA>_RESULT` として保持する。Ollama呼び出しが `execution-steps.md` ステップ2の
+`exit 1` 相当の分岐を通った場合は非0の終了ステータスを保持する。各呼び出しは `if ...; then ...; else ...; fi` 相当で捕捉し、非0終了を呼び出し元へ再送出せず、失敗しても次のペルソナへ進む。
+各結果は次の共通処理で raw ファイルへ保存し、空結果または `NORMALIZE_SKIPPED` / `NORMALIZE_ERROR`
+を含む結果も失敗として記録する。finding 0件を表す正常な非空結果は成功として扱う。
+
+```bash
+record_magi_persona_result() {
+  local persona="$1"
+  local result="$2"
+  local exit_status="$3"
+  local persona_key
+  local raw_file
+  local persona_failed=false
+
+  persona_key=$(printf '%s' "$persona" | tr '[:upper:]' '[:lower:]')
+  raw_file="$MAGI_RUN_DIR/raw/${persona_key}.txt"
+  printf '%s' "$result" > "$raw_file"
+  if [ "$exit_status" -ne 0 ] \
+    || [ -z "$result" ] \
+    || grep -aFq 'NORMALIZE_SKIPPED' "$raw_file" \
+    || grep -aFq 'NORMALIZE_ERROR' "$raw_file"; then
+    persona_failed=true
+  fi
+  if [ "$persona_failed" = true ]; then
+    FAILED_PERSONAS_JSON=$(jq --arg p "$persona" '. + [$p]' <<<"$FAILED_PERSONAS_JSON")
+    printf '%s\n' "$FAILED_PERSONAS_JSON" > "$MAGI_RUN_DIR/failed-personas.json"
+  fi
+}
+```
+
 ## ステップ 3.1: MELCHIOR 実行（最初）
 
 `/melchior` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
 実行が**完全に完了**した後、結果を `$MELCHIOR_RESULT` として保持してからステップ 3.2 に進む。
+実行終了ステータスは `$MELCHIOR_EXIT` として保持し、成功・失敗を問わず次を実行してからステップ 3.2 に進む。
+
+```bash
+record_magi_persona_result "MELCHIOR" "$MELCHIOR_RESULT" "$MELCHIOR_EXIT"
+```
 
 ## ステップ 3.2: BALTHASAR 実行（`$MELCHIOR_RESULT` 取得後）
 
 `$MELCHIOR_RESULT` が得られたことを確認してから起動する。
 `MAGI_IMPACT_CONTEXT="$IMPACT_CONTEXT"` を設定して `/balthasar` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
 実行が**完全に完了**した後、結果を `$BALTHASAR_RESULT` として保持してからステップ 3.3 に進む。
+実行終了ステータスは `$BALTHASAR_EXIT` として保持し、成功・失敗を問わず次を実行してからステップ 3.3 に進む。
+
+```bash
+record_magi_persona_result "BALTHASAR" "$BALTHASAR_RESULT" "$BALTHASAR_EXIT"
+```
 
 ## ステップ 3.3: CASPER 実行（`$BALTHASAR_RESULT` 取得後）
 
 `$BALTHASAR_RESULT` が得られたことを確認してから起動する。
 `/casper` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
 実行が**完全に完了**した後、結果を `$CASPER_RESULT` として保持してからステップ 3.4 に進む。
+実行終了ステータスは `$CASPER_EXIT` として保持し、成功・失敗を問わず次を実行してからステップ 3.4 に進む。
+
+```bash
+record_magi_persona_result "CASPER" "$CASPER_RESULT" "$CASPER_EXIT"
+```
 
 ## ステップ 3.4: METATRON 実行（`$CASPER_RESULT` 取得後）
 
 `$CASPER_RESULT` が得られたことを確認してから起動する。
 `/metatron` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
 実行が**完全に完了**した後、結果を `$METATRON_RESULT` として保持してからステップ 3.5 に進む。
+実行終了ステータスは `$METATRON_EXIT` として保持し、成功・失敗を問わず次を実行してからステップ 3.5 に進む。
+
+```bash
+record_magi_persona_result "METATRON" "$METATRON_RESULT" "$METATRON_EXIT"
+```
 
 ## ステップ 3.5: SANDALPHON 実行（`$METATRON_RESULT` 取得後）
 
 `$METATRON_RESULT` が得られたことを確認してから起動する。
 `/sandalphon` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
 実行が**完全に完了**した後、結果を `$SANDALPHON_RESULT` として保持してからステップ 3.6 に進む。
+実行終了ステータスは `$SANDALPHON_EXIT` として保持し、成功・失敗を問わず次を実行してからステップ 3.6 に進む。
+
+```bash
+record_magi_persona_result "SANDALPHON" "$SANDALPHON_RESULT" "$SANDALPHON_EXIT"
+```
 
 ## ステップ 3.6: LELIEL 実行（`$SANDALPHON_RESULT` 取得後）
 
 `$SANDALPHON_RESULT` が得られたことを確認してから起動する。
 `MAGI_IMPACT_CONTEXT="$IMPACT_CONTEXT"` を設定して `/leliel` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
-実行が**完全に完了**した後、結果を `$LELIEL_RESULT` として保持してからステップ 4 に進む。
+実行が**完全に完了**した後、結果を `$LELIEL_RESULT` として保持してからステップ 3.7 に進む。
+実行終了ステータスは `$LELIEL_EXIT` として保持し、成功・失敗を問わず次を実行してからステップ 3.7 に進む。
+
+```bash
+record_magi_persona_result "LELIEL" "$LELIEL_RESULT" "$LELIEL_EXIT"
+```
 
 ## ステップ 3.7: 指摘の正規化
 
-6体は`$MAGI_ORCHESTRATED=true`で実行済みのため、各自ではNormalizerを呼ばず生の結果（`$MELCHIOR_RESULT`/`$BALTHASAR_RESULT`/`$CASPER_RESULT`/`$METATRON_RESULT`/`$SANDALPHON_RESULT`/`$LELIEL_RESULT`、チャンクヘッダー込み）を返している。ここで1回のバッチ呼び出しにまとめてNormalizerへ渡す（呼び出し回数削減のため。モデルロード・推論のオーバーヘッドを削減する）。
+6体は`$MAGI_ORCHESTRATED=true`で実行済みのため、各自ではNormalizerを呼ばず生の結果（`$MELCHIOR_RESULT`/`$BALTHASAR_RESULT`/`$CASPER_RESULT`/`$METATRON_RESULT`/`$SANDALPHON_RESULT`/`$LELIEL_RESULT`、チャンクヘッダー込み）を返している。ここで失敗ペルソナの raw は除外し、成功したペルソナの結果だけを1回のバッチ呼び出しにまとめてNormalizerへ渡す（呼び出し回数削減のため。モデルロード・推論のオーバーヘッドを削減する）。
 
 1. `MAGI_TMPDIR=$(mktemp -d)` で作業ディレクトリを作成する。
-2. 6体の生結果を、それぞれ `=== PERSONA: <name> / CHUNK: <path> (<n>) ===` ヘッダーを保ったまま連結し、`$NORMALIZE_INPUT` として保持する。
+2. `$FAILED_PERSONAS_JSON` に含まれない成功ペルソナの raw ファイルだけを、それぞれ `=== PERSONA: <name> / CHUNK: <path> (<n>) ===` ヘッダーを保ったまま連結し、`$NORMALIZE_INPUT` として保持する。失敗ペルソナの raw ファイルは診断用に残すが、Normalizerには渡さない。
+
+```bash
+NORMALIZE_INPUT="$(
+  for PERSONA in MELCHIOR BALTHASAR CASPER METATRON SANDALPHON LELIEL; do
+    if jq -e --arg p "$PERSONA" 'index($p) == null' <<<"$FAILED_PERSONAS_JSON" >/dev/null 2>&1; then
+      PERSONA_KEY=$(printf '%s' "$PERSONA" | tr '[:upper:]' '[:lower:]')
+      cat "$MAGI_RUN_DIR/raw/${PERSONA_KEY}.txt"
+    fi
+  done
+)"
+```
 3. `skills/magi-common/references/normalizer.md`（repo 内）または `~/.claude/skills/magi-common/references/normalizer.md` を Read ツールで読み込み、記載の手順に従ってNormalizerを実行する。
 4. 成功した場合、`$MAGI_TMPDIR/normalizer.json` の内容を `$NORMALIZED_V2_JSON` として `$MAGI_RUN_DIR/normalized-v2.json` にコピーし保持する（`$MAGI_TMPDIR` はチャンク単位ではなくこのバッチ呼び出し専用なので、コピー後に削除してよい）。
 5. 失敗（`NORMALIZE_SKIPPED`/`NORMALIZE_ERROR`）した場合は、`normalizer.md`の契約に従いHaiku fallbackを試みる。それでも失敗する場合は、ステップ4-1の構造検証失敗と同様の扱い（`BLOCK_LAYER=structure`相当とし、6体分は`$NORMALIZED_RESULTS`にraw結果をそのまま出す）とする。
@@ -147,7 +222,7 @@ PRE_ID_CANDIDATES="$MAGI_RUN_DIR/pre-id-candidates.json"
 
 #### 採番前の重複統合（機械的完全一致dedup）
 
-`skills/magi-common/references/normalizer.md` 15行目は、重複除去を Normalizer の責務ではなく呼び出し元の責務としている。ここで行うのがその実装である。
+`skills/magi-common/references/normalizer.md` 15行目は、重複除去を Normalizer の責務ではなく呼び出し元の責務としている。ここで共通dedupスクリプトを呼び出して実装する。
 
 6体分をマージした **pre-ID candidate list** に対し、採番前に機械的な重複統合を1回だけ行う。重複キーは `persona` / `headline` / `original_path` / `original_line` / `evidence` / `body` の6フィールドの byte-for-byte 完全一致とし、6つすべてが一致する場合だけ同一候補として扱う。`body` を含めるのは、同じ persona / line / headline / evidence を共有しても Problem / Breakage の内容が異なる正当な別 finding を潰さないため。
 
@@ -164,19 +239,7 @@ DEDUPED_CANDIDATES="$MAGI_RUN_DIR/deduped-candidates.json"
 `$DEDUPED_CANDIDATES` は、`$PRE_ID_CANDIDATES` と同じ field shape の JSON 配列として、重複統合後・採番前の候補だけを保持する。
 
 ```bash
-jq -e '
-      reduce .[] as $finding (
-        {findings: [], seen_keys: []};
-        ($finding | [.persona, .headline, .original_path, .original_line, .evidence, .body] | @json) as $key
-        | if (.seen_keys | index($key)) then
-            .
-          else
-            .findings += [$finding]
-            | .seen_keys += [$key]
-          end
-      )
-      | .findings
-    ' "$PRE_ID_CANDIDATES" > "$DEDUPED_CANDIDATES"
+bash scripts/review-dedup-findings.sh persona,headline,original_path,original_line,evidence,body "$PRE_ID_CANDIDATES" > "$DEDUPED_CANDIDATES"
 ```
 
 この dedup は **`M-001`, `M-002`, ... の採番より前**、かつ後述の **表の構造検証より前**に行う。構造検証の意味は変えず、重複統合済みの小さい配列を同じ条件で検証する。
@@ -486,17 +549,14 @@ fi
 共通変換スクリプトを呼び出し、`$MAGI_RUN_DIR/findings-artifact.json` に保存する。
 4-4 で `severity` が入った後に実行しても artifact に `severity` は含まれないため、内容は4-1時点と同じである。
 
-MAGI にはペルソナ単位の失敗追跡が無いため、`failed-personas.json` は渡さない。このため
-`detection_status="unknown"` になる。これは F1 で表面化した既知ギャップであり、F2 で塞ぐ予定である。
+ステップ3で作成した `$MAGI_RUN_DIR/failed-personas.json` を渡し、ペルソナ単位の検出完了状態を canonical artifact に反映する。
 
 ```bash
-# MAGI にはペルソナ単位の失敗追跡が無い既知ギャップがあり、F1 で表面化したため
-# failed-personas.json は渡さず、detection_status="unknown" とする。F2 でこのギャップを塞ぐ。
 ARTIFACT_NOTE=""
 ARTIFACT_FILE="$MAGI_RUN_DIR/findings-artifact.json"
 rm -f -- "$ARTIFACT_FILE"
 ARTIFACT_EXIT=0
-bash scripts/review-findings-artifact.sh magi "$FINDINGS_TABLE" \
+bash scripts/review-findings-artifact.sh magi "$FINDINGS_TABLE" "$MAGI_RUN_DIR/failed-personas.json" \
   >"$ARTIFACT_FILE" 2>"$MAGI_RUN_DIR/findings-artifact.err" || ARTIFACT_EXIT=$?
 if [ "$ARTIFACT_EXIT" -ne 0 ] \
   || [ ! -s "$ARTIFACT_FILE" ] \
