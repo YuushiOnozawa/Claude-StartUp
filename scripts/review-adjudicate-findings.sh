@@ -53,11 +53,6 @@ if jq -e 'length == 0' <<<"$findings_meta_json" >/dev/null 2>&1; then
   exit 0
 fi
 
-[[ -r "$IMPORTANCE_FILE" ]] || {
-  echo "重要度判定ファイルを読み取れません: $IMPORTANCE_FILE" >&2
-  exit 2
-}
-
 validity_global_failure=0
 validity_json='[]'
 if [[ ! -r "$VALIDITY_FILE" ]]; then

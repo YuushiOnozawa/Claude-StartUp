@@ -118,6 +118,21 @@ if [[ "$MODE" == "hard" ]]; then
       def valid_result:
         type == "object"
         and has("id") and (.id | nonempty_string)
+        and has("verdict")
+        and ((.verdict | type) == "null"
+             or ((.verdict | type) == "string"
+                 and (.verdict | IN("valid", "false_positive", "needs_human"))))
+        and has("importance")
+        and ((.importance | type) == "null"
+             or ((.importance | type) == "string"
+                 and (.importance | IN("HIGH", "MEDIUM", "LOW"))))
+        and has("importance_status")
+        and ((.importance_status | type) == "string"
+             and (.importance_status | IN("ok", "failed", "not_applicable")))
+        and has("reported_gate")
+        and ((.reported_gate | type) == "null"
+             or ((.reported_gate | type) == "string"
+                 and (.reported_gate | IN("block", "defer", "manual"))))
         and has("final_gate")
         and ((.final_gate | type) == "null"
              or ((.final_gate | type) == "string"

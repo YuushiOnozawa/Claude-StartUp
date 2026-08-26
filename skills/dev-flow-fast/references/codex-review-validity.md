@@ -1,6 +1,6 @@
-# `/codex-hard` / `/codex-fast` 共通 Codex 妥当性監査手順
+# `/codex-hard` Codex 妥当性監査手順
 
-`codex-review-hard.md` と `codex-review-fast.md` から呼び出される、finding 単位の妥当性判定だけを担当する読み取り専用手順である。各 finding について `valid` / `false_positive` / `needs_human` の verdict と理由を返す。gate、重要度、グルーピング、`canonical_persona` の判定、finding の再生成、要約、書き換え、ID の採番は行わない。
+`codex-review-hard.md` から呼び出される、finding 単位の妥当性判定だけを担当する読み取り専用手順である。各 finding について `valid` / `false_positive` / `needs_human` の verdict と理由を返す。gate、重要度、グルーピング、`canonical_persona` の判定、finding の再生成、要約、書き換え、ID の採番は行わない。
 
 以下の bash コードブロックは、実行エージェントが1ステップずつ解釈する手順であり、単一スクリプトとしてそのまま実行するものではない。`return` はこの手順を打ち切り、呼び出し元へ監査結果ファイルを返すことを意味する。
 
@@ -211,4 +211,4 @@ return 0
 
 ## 呼び出し回数
 
-`/codex-hard` と `/codex-fast` の両方で、妥当性監査は Codex 1回（timeout 600秒）である。監査対象が0件の場合は呼び出さず、`[]` を返す。
+`/codex-hard` では、妥当性監査は Codex 1回（timeout 600秒）である。`/codex-fast` ではこのステップを実行しない。監査対象が0件の場合は呼び出さず、`[]` を返す。
