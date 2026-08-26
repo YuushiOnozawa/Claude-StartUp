@@ -11,9 +11,10 @@
 
 この手順は `$WORKTREE_PATH` のような Phase 由来の外部変数を要求しない。カレントディレクトリが Git リポジトリであることを `git rev-parse --show-toplevel` で自己解決する。
 
-- merge 出力は `{pipeline_status, findings, manual_review, failed_personas}`。
+- merge 出力は fast では `{pipeline_status, findings, manual_review, failed_personas}`、hard では `{artifact_type, pipeline_status, grouping_global_failure, validity_global_failure, findings, manual_review, failed_personas}`。
 - merge の終了コード `0` は正常、`1` は監査全体失敗（全件 raw/manual）、`2` は入力契約違反。
-- `/codex-hard` は Codex 最大6回（5ペルソナ+監査）。各600秒 timeout、最悪ケース約60分。
+- `/codex-hard` は Codex 最大8回（5ペルソナ+監査+妥当性監査+重要度判定）。各600秒 timeout、想定最悪ケース約80分。
+- hard mode の終了コード `2` は findings table・監査など既存入力に加え、adjudication artifact の入力契約違反でも発生する。
 - CASPER（Haiku、diffサイズ依存のチャンク分割）1〜数回 + CASPER結果のバッチNormalizer（Haiku/Ollama）1回が別途発生する。チャンク数によりCASPERのHaiku呼び出し数は変動するため、固定回数と断定しない。
 - GitHub への投稿は行わない。
 
@@ -390,23 +391,139 @@ else
 fi
 ```
 
+## ステップ 10.1: 妥当性監査
+
+`$FINDINGS_TABLE_FILE` の `gate` を除いた finding-level 配列を `$VALIDITY_FINDINGS_FILE` として作り、`codex-review-validity.md` の手順1-5を実行する。入力は `id`、`source_persona`、`path`、`line`、`headline`、`body`（必要なら `evidence`）だけとし、`gate`、`group_id`、`canonical_persona` は渡さない。妥当性監査の結果は後続の gate 判定で使うため、raw 出力を含めて `$VALIDITY_TMPDIR` に保持する。
+
+```bash
+VALIDITY_TMPDIR="$REVIEW_TMPDIR/validity"
+mkdir -p "$VALIDITY_TMPDIR"
+VALIDITY_FINDINGS_FILE="$VALIDITY_TMPDIR/findings.json"
+jq 'map(del(.gate))' "$FINDINGS_TABLE_FILE" > "$VALIDITY_FINDINGS_FILE" || return 1
+if jq -e 'length == 0' "$FINDINGS_TABLE_FILE" >/dev/null 2>&1; then
+  printf '%s\n' '[]' > "$VALIDITY_TMPDIR/codex-validity-result.json"
+else
+  DIFF_FILE="$REVIEW_TMPDIR/review.diff"
+  # codex-review-validity.md を読み、$VALIDITY_TMPDIR を作業ディレクトリ、
+  # $VALIDITY_FINDINGS_FILE と $DIFF_FILE を入力として手順1-5を解釈する。
+fi
+```
+
+finding が0件の場合は Codex を呼ばず、`$VALIDITY_TMPDIR/codex-validity-result.json` に `[]` を書く。
+
+## ステップ 10.2: 重要度判定
+
+対象は `$FINDINGS_TABLE_FILE` のうち `source_persona != "CASPER"` で、かつステップ10.1の妥当性結果が有効な配列として当該IDを `false_positive` と判定していない finding である。妥当性結果がエラーオブジェクト、壊れた配列、または当該IDについて安全に `false_positive` と確認できない状態なら、そのIDを重要度判定へ含める。これにより対象を過少選択せず、壊れた妥当性結果は `review-adjudicate-findings.sh` の `validity_global_failure` で fail-closed に扱える。
+
+```bash
+IMPORTANCE_TMPDIR="$REVIEW_TMPDIR/importance"
+mkdir -p "$IMPORTANCE_TMPDIR"
+IMPORTANCE_TARGET_FINDINGS_FILE="$IMPORTANCE_TMPDIR/findings.json"
+if ! jq --slurpfile validity "$VALIDITY_TMPDIR/codex-validity-result.json" '
+  ($validity[0]
+   | if type == "array"
+        and all(.[];
+          type == "object"
+          and (.id? | type) == "string"
+          and (.id | length) > 0
+          and (.verdict? | type) == "string"
+          and (.verdict | IN("valid", "false_positive", "needs_human")))
+        and ([.[].id] | length) == ([.[].id] | unique | length)
+     then
+       [ .[]
+         | select(.verdict == "false_positive")
+         | .id ]
+     else []
+     end) as $false_positive_ids
+  | [ .[] as $finding
+      | select($finding.source_persona != "CASPER")
+      | select(($false_positive_ids | index($finding.id)) == null)
+      | $finding ]
+' "$FINDINGS_TABLE_FILE" > "$IMPORTANCE_TARGET_FINDINGS_FILE"; then
+  jq 'map(select(.source_persona != "CASPER"))' "$FINDINGS_TABLE_FILE" > "$IMPORTANCE_TARGET_FINDINGS_FILE" || return 1
+fi
+
+if jq -e 'length == 0' "$IMPORTANCE_TARGET_FINDINGS_FILE" >/dev/null 2>&1; then
+  # 重要度判定対象が0件なのは正常な空配列ケースである。
+  printf '%s\n' '[]' > "$IMPORTANCE_TMPDIR/codex-importance.json"
+else
+  IMPORTANCE_INPUT=$(jq -r '.[] | "\(.id): \(.source_persona) — \(.path):\(.line) — \(.headline)\n  body: \(.body)"' "$IMPORTANCE_TARGET_FINDINGS_FILE") || return 1
+  EXPECTED_IMPORTANCE_IDS=$(jq -r '.[].id' "$IMPORTANCE_TARGET_FINDINGS_FILE") || return 1
+  TARGET_PERSONAS=$(jq -r 'map(.source_persona) | unique[]' "$IMPORTANCE_TARGET_FINDINGS_FILE") || return 1
+  SEVERITY_STANDARDS=""
+  while IFS= read -r PERSONA; do
+    PERSONA_KEY=$(printf '%s' "$PERSONA" | tr '[:upper:]' '[:lower:]')
+    PERSONA_FILE="$WORKTREE_ROOT/skills/dev-flow-fast/references/codex-personas/${PERSONA_KEY}.md"
+    [ -r "$PERSONA_FILE" ] || return 1
+    SEVERITY_BLOCK=$(awk '
+      /^## Severity Standards[[:space:]]*$/ { in_section=1; print; next }
+      in_section && /^## / { exit }
+      in_section { print }
+    ' "$PERSONA_FILE")
+    if [ -z "$SEVERITY_BLOCK" ]; then
+      SOURCE_PERSONA_FILE="$WORKTREE_ROOT/skills/${PERSONA_KEY}/references/review-criteria.md"
+      [ -r "$SOURCE_PERSONA_FILE" ] || return 1
+      SEVERITY_BLOCK=$(awk '
+        /^## Severity Standards[[:space:]]*$/ { in_section=1; print; next }
+        in_section && /^## / { exit }
+        in_section { print }
+      ' "$SOURCE_PERSONA_FILE")
+    fi
+    [ -n "$SEVERITY_BLOCK" ] || return 1
+    SEVERITY_STANDARDS="${SEVERITY_STANDARDS}$(printf '### %s\n' "$PERSONA")${SEVERITY_BLOCK}"$'\n\n'
+  done <<< "$TARGET_PERSONAS"
+
+  # codex-importance.md を読み、手順中の $MAGI_TMPDIR を $IMPORTANCE_TMPDIR に
+  # 読み替え、$IMPORTANCE_INPUT、$EXPECTED_IMPORTANCE_IDS、$SEVERITY_STANDARDS を
+  # 入力として手順1-6を解釈する。結果は codex-importance.json に保存する。
+fi
+```
+
+重要度判定の入力は、対象 finding ごとに `id: source_persona — path:line — headline` と `  body: ...` を並べた `$IMPORTANCE_INPUT`、対象IDだけを改行で並べた `$EXPECTED_IMPORTANCE_IDS`、各対象ペルソナの `## Severity Standards` 節をペルソナ名付きで連結した `$SEVERITY_STANDARDS` である。
+
+## ステップ 10.3: gate 判定の統合
+
+ステップ10.1/10.2の結果と findings table の自己申告 gate を、`review-adjudicate-findings.sh` で統合する。`$FINDINGS_TABLE_FILE` はこのステップでも変更しない。
+
+```bash
+ADJUDICATE_META_FILE="$REVIEW_TMPDIR/adjudicate-findings-meta.json"
+jq 'map({id, source_persona, reported_gate: .gate})' "$FINDINGS_TABLE_FILE" > "$ADJUDICATE_META_FILE" || return 1
+
+ADJUDICATION_FILE="$REVIEW_TMPDIR/adjudication-result.json"
+ADJUDICATE_EXIT=0
+bash "$WORKTREE_ROOT/scripts/review-adjudicate-findings.sh" codex \
+  "$ADJUDICATE_META_FILE" \
+  "$VALIDITY_TMPDIR/codex-validity-result.json" \
+  "$IMPORTANCE_TMPDIR/codex-importance.json" \
+  > "$ADJUDICATION_FILE" 2> "$REVIEW_TMPDIR/adjudicate.err" || ADJUDICATE_EXIT=$?
+if [ "$ADJUDICATE_EXIT" -eq 2 ]; then
+  echo "CODEX_HARD_FAILED: gate判定の入力に矛盾があります"
+  return 1
+fi
+[ "$ADJUDICATE_EXIT" -eq 0 ] || [ "$ADJUDICATE_EXIT" -eq 1 ] || return 1
+```
+
+終了コード `1` は `validity_global_failure:true` というデータ状態であり、ここでは停止せずステップ11の `--mode hard` へ渡す。adjudication の終了コード `2` は入力契約違反として停止する。10.1、10.2、10.3 はいずれも `$FINDINGS_TABLE_FILE` を変更しないため、ステップ13の canonical artifact はステップ9直後の表と同一である。
+
 ## ステップ 11: merge
 
-merge の4引数は findings table、監査結果、self-tamper bool、failed personas 配列の順で固定する。終了コード2は入力契約違反なので fail-open せず停止する。終了コード1は監査全体失敗の結果JSONを表示するため、そのままステップ12へ進む。
+merge は `--mode hard` と、findings table、監査結果、self-tamper bool、failed personas 配列、adjudication artifact の順の5引数で呼び出す。終了コード2は入力契約違反なので fail-open せず停止する。終了コード1は grouping または validity の全体失敗を含む結果JSONを表示するため、そのままステップ12へ進む。
 
 ```bash
 MERGE_OUTPUT_FILE="$REVIEW_TMPDIR/merge-result.json"
 MERGE_EXIT=0
-bash "$WORKTREE_ROOT/scripts/codex-review-merge.sh" \
+ADJUDICATION_FILE="$REVIEW_TMPDIR/adjudication-result.json"
+bash "$WORKTREE_ROOT/scripts/codex-review-merge.sh" --mode hard \
   "$FINDINGS_TABLE_FILE" "$AUDIT_TMPDIR/codex-audit-result.json" \
   "$REVIEW_TMPDIR/self-tamper.json" "$REVIEW_TMPDIR/failed-personas.json" \
+  "$ADJUDICATION_FILE" \
   > "$MERGE_OUTPUT_FILE" 2> "$REVIEW_TMPDIR/merge.err" || MERGE_EXIT=$?
 if [ "$MERGE_EXIT" -eq 2 ]; then
   echo "CODEX_HARD_FAILED: findings tableの構築に矛盾があります"
   return 1
 fi
 [ "$MERGE_EXIT" -eq 0 ] || [ "$MERGE_EXIT" -eq 1 ] || return 1
-jq -e 'type == "object" and has("pipeline_status") and has("findings") and has("manual_review") and has("failed_personas")' "$MERGE_OUTPUT_FILE" >/dev/null || return 1
+jq -e 'type == "object" and has("pipeline_status") and has("findings") and has("manual_review") and has("failed_personas") and has("artifact_type") and has("validity_global_failure")' "$MERGE_OUTPUT_FILE" >/dev/null || return 1
 ```
 
 ## ステップ 12: 結果表示
@@ -419,7 +536,7 @@ jq -r '"pipeline_status: " + .pipeline_status' "$MERGE_OUTPUT_FILE"
 echo "--- ペルソナ別 gate 件数 ---"
 jq -r 'group_by(.source_persona)[] | .[0].source_persona as $p | "\($p): block=\([.[]|select(.gate=="block")]|length) defer=\([.[]|select(.gate=="defer")]|length) manual=\([.[]|select(.gate=="manual")]|length)"' "$FINDINGS_TABLE_FILE"
 echo "--- canonical_persona 別集計 ---"
-jq -r '.findings | group_by(.canonical_persona)[] | .[0].canonical_persona as $p | "\($p): block=\([.[]|select(.gate=="block")]|length) defer=\([.[]|select(.gate=="defer")]|length) manual=\([.[]|select(.gate=="manual")]|length)"' "$MERGE_OUTPUT_FILE"
+jq -r '.findings | group_by(.canonical_persona)[] | .[0].canonical_persona as $p | "\($p): block=\([.[]|select(.final_gate=="block")]|length) defer=\([.[]|select(.final_gate=="defer")]|length)"' "$MERGE_OUTPUT_FILE"
 echo "--- 未監査/要人手確認（manual_review） ---"
 jq '.manual_review' "$MERGE_OUTPUT_FILE"
 if jq -e '.pipeline_status == "incomplete"' "$MERGE_OUTPUT_FILE" >/dev/null; then
@@ -438,8 +555,8 @@ GitHubコメント、PR更新、コミット、ファイル編集はこの手順
 
 ステップ9完了時点の `$FINDINGS_TABLE_FILE` を入力として、
 `$REVIEW_TMPDIR/failed-personas.json` を渡し、`$REVIEW_TMPDIR/findings-artifact.json` に保存する。
-ステップ10〜12は `$FINDINGS_TABLE_FILE` を変更しない（ステップ10は `gate` を除いた別ファイルを作り、
-ステップ11は `merge-result.json` を作り、ステップ12は読むだけ）ため、ステップ9直後の表と同一である。
+ステップ10、10.1〜10.3、11〜12は `$FINDINGS_TABLE_FILE` を変更しない（ステップ10/10.1は別の入力ファイルを作り、
+ステップ10.2/10.3は判定結果を別ファイルへ保存し、ステップ11は `merge-result.json` を作り、ステップ12は読むだけ）ため、ステップ9直後の表と同一である。
 
 `merge-result.json` の `pipeline_status` は使わない。artifact の `detection_status` は検出層だけの状態であり、
 `merge-result.json` の `pipeline_status` は監査失敗も含む engine 全体の状態という別概念だからである。
