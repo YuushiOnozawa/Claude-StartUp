@@ -29,11 +29,15 @@ see `references/spec-template.md`.
 ## Read-only contract
 
 Always omit `--write`; never attach it to any Codex invocation. Sol must not edit files, run
-commands, or communicate externally. Its output is only a draft, and Claude is responsible
-for validation and adoption.
+commands, or communicate externally. These are prompt-level instructions, not restrictions
+enforced at runtime. The enforceable guarantee is limited to omitting `--write`, so the Codex
+companion sandbox does not permit workspace file changes. Its output is only a draft, and
+Claude is responsible for validation and adoption.
 
-The same read-only contract applies to Luna and Haiku fallbacks: they produce a plan draft
-only and do not edit files, execute commands, or make external communications.
+The same prompt-level read-only instruction applies to Luna and Haiku fallbacks: they should
+produce a plan draft only and should not edit files, execute commands, or make external
+communications. Omitting `--write` provides the same workspace-write protection for Codex
+fallbacks; Haiku has no corresponding runtime enforcement.
 
 ## Fallback and report contract
 
