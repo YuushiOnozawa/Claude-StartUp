@@ -490,7 +490,7 @@ fi
 | `false` | 要素が object でない / `id` または `verdict` を欠く | インライン投稿しない |
 | `false` | `verdict` が `valid` / `false_positive` / `needs_human` 以外 | インライン投稿しない |
 | `false` | `$FINDING_LIST` の finding ID を過不足なくカバーしていない | インライン投稿しない |
-| `true` | 上記すべてを満たす | `$FALSE_POSITIVE_IDS` を除いて投稿 |
+| `true` | 上記すべてを満たす | `$BLOCK_IDS` に含まれる ID（`final_gate == "block"`）だけを投稿 |
 
 `needs_human` は `valid` と同じく**投稿対象**とする（人間が判断できる形で PR に出す）。
 
@@ -541,7 +541,7 @@ fi
 `$MAGI_TMPDIR_IMPORTANCE`は削除せず、失敗時は調査可能な状態を保つ（`codex-audit.md`と同様）。`$IMPORTANCE_NOTE`はステップ6のサマリと8の結果表示に出す。
 
 4-5（canonical findings artifact の出力）は、4-1完了時点で表が構造的に正常であるため、この通常経路でも実行する。
-ステップ 5（grounding）に進む。
+4-5 の後、ステップ 4-6（gate 判定の統合）に進む。
 
 ### 4-5. canonical findings artifact の出力
 
@@ -569,6 +569,62 @@ fi
 変換スクリプトが非0終了、出力ファイルが無い、出力 JSON が不正、または自己検証に落ちた場合も
 同じ `$ARTIFACT_NOTE` に集約する。変換に失敗しても既存レビュー本体は止めない。
 ステップ8の結果表示では、`$ARTIFACT_NOTE` が空でない場合に次を表示する。
+
+### 4-6. gate 判定の統合
+
+このステップは、4-3 が `$POST_INLINE=false` に設定済みか、4-4 が実行済みか、または重要度判定対象が0件で4-4をスキップしたかにかかわらず、常に実行する。`scripts/review-adjudicate-findings.sh` は `$AUDIT_JSON` の形状と finding ID の完全性を消費者側で独立に再検証するため、4-3 が先に検証済みでもこの呼び出しを省略しない。4-3/4-4 が失敗または未実行でも、妥当性結果が信頼できない場合は `validity_global_failure:true` となり、後続で `final_gate:"block"` の finding を作らない fail-closed 経路になる。
+
+まず `$FINDINGS_TABLE` から adjudication 用のメタデータを作る。MAGI findings には自己申告 gate がないため、`reported_gate` は常に `null` とする。
+
+```bash
+MAGI_TMPDIR_ADJUDICATE="$MAGI_RUN_DIR/adjudicate"
+mkdir -p "$MAGI_TMPDIR_ADJUDICATE"
+ADJUDICATE_META_FILE="$MAGI_TMPDIR_ADJUDICATE/findings-meta.json"
+jq '[.findings[] | {id, source_persona: .persona, reported_gate: null}]' "$FINDINGS_TABLE" \
+  > "$ADJUDICATE_META_FILE" || return 1
+```
+
+4-4 が実行されて `$MAGI_TMPDIR_IMPORTANCE` が空でない場合は、そのディレクトリの `codex-importance.json` を直接渡す。4-4 が0件対象または4-3の失敗でスキップされた場合は、重要度判定が不要な正常な空配列として新しいファイルを作り、それを渡す。
+
+```bash
+if [ -n "${MAGI_TMPDIR_IMPORTANCE:-}" ]; then
+  IMPORTANCE_RESULT_FOR_ADJUDICATE="$MAGI_TMPDIR_IMPORTANCE/codex-importance.json"
+else
+  IMPORTANCE_RESULT_FOR_ADJUDICATE="$MAGI_TMPDIR_ADJUDICATE/empty-importance.json"
+  printf '%s\n' '[]' > "$IMPORTANCE_RESULT_FOR_ADJUDICATE"
+fi
+```
+
+妥当性結果には、4-2で設定した `$AUDIT_JSON`（`$MAGI_TMPDIR/codex-audit.json`）をそのまま渡す。4-2が実行されなかった場合やファイルが存在しない場合もパスは変換せず、adjudication 層が読み取り失敗を妥当性失敗として扱う。
+
+```bash
+AUDIT_JSON="${AUDIT_JSON:-${MAGI_TMPDIR:-}/codex-audit.json}"
+ADJUDICATION_RESULT="$MAGI_TMPDIR_ADJUDICATE/adjudication-result.json"
+ADJUDICATE_EXIT=0
+bash scripts/review-adjudicate-findings.sh magi \
+  "$ADJUDICATE_META_FILE" "$AUDIT_JSON" "$IMPORTANCE_RESULT_FOR_ADJUDICATE" \
+  > "$ADJUDICATION_RESULT" 2> "$MAGI_TMPDIR_ADJUDICATE/adjudicate.err" || ADJUDICATE_EXIT=$?
+if [ "$ADJUDICATE_EXIT" -eq 2 ]; then
+  echo "MAGI_HARD_FAILED: gate判定の入力に矛盾があります"
+  return 1
+fi
+[ "$ADJUDICATE_EXIT" -eq 0 ] || [ "$ADJUDICATE_EXIT" -eq 1 ] || return 1
+```
+
+終了コード `2` は、この段階では構造検証済みのはずの `$FINDINGS_TABLE` が不正だった場合などの防御的な契約違反として扱い、診断を出して停止する。終了コード `0` または `1` は正常なデータ結果として `$ADJUDICATION_RESULT` を保存し、ステップ7で読む。`$ADJUDICATION_RESULT` の `validity_global_failure` が `true` で、かつ4-3自身は成功して `$POST_INLINE` がまだ `true` の場合は、消費者側の独立検証結果を優先して監査層を停止する。この場合だけ `BLOCK_LAYER=audit` とし、既存の `$AUDIT_NOTE` / `$BLOCK_LAYER` は上書きしない。
+
+```bash
+if [ "$POST_INLINE" = "true" ] \
+  && [ -z "$AUDIT_NOTE" ] \
+  && [ -z "$BLOCK_LAYER" ] \
+  && jq -e '.validity_global_failure == true' "$ADJUDICATION_RESULT" >/dev/null 2>&1; then
+  POST_INLINE=false
+  BLOCK_LAYER=audit
+  AUDIT_NOTE="AUDIT_ERROR（gate判定統合層で妥当性判定が信頼できないと判定された）"
+fi
+```
+
+この統合結果を保存したら、ステップ 5（grounding）に進む。
 
 ## ステップ 5: grounding（アンカーの確認と補正）
 
@@ -709,7 +765,7 @@ grounding が失敗した場合や `unanchorable` の場合、`anchored_*` は�
   フィールドが無いと**退避経路が未定義になり、指摘が PR から消える**
 - インライン投稿はせず、通常 PR コメントに出す
 - **`$POST_INLINE` は変更しない。** anchor 層の失敗は位置が確定しないだけで、投稿自体は可能
-- **`$FALSE_POSITIVE_IDS` の除外と `$POST_INLINE=false` のスキップは通常どおり適用する。**
+- **`$BLOCK_IDS` に含まれない ID（`final_gate != "block"`）の除外と `$POST_INLINE=false` のスキップは通常どおり適用する。**
   「全 finding」は「監査を通過した投稿対象の全件」の意味であって、
   誤検知と判定されたものまで出すという意味ではない
 - `$GROUNDING_NOTE` を設定する（無言でスキップしない）:
@@ -865,14 +921,12 @@ body も anchor 情報も同じ表の同じ行から取るので、**取り違�
 
 ### 投稿対象の判定順序
 
-1. **`$FALSE_POSITIVE_IDS` に含まれる ID は投稿しない**（`false_positive` 判定済み）。
-   これは `anchor_status` の分岐より**前**に適用する。
-   anchor 情報の追加は投稿対象の判断を変えるものではない
-2. **`severity == "LOW"` または `severity == "UNRATED"` の ID は投稿しない。**
-   全候補を一度テーブルに入れるため、ここで明示的に除外する（`$FALSE_POSITIVE_IDS`と同様の扱いで、除外理由を分けて記録する）。
-   `UNRATED`はステップ4-4の重要度判定が失敗したまま残ったfindingであり、サマリには「重要度判定失敗」
-   として記載済みだが、インラインには出さない
-3. 残った ID について `anchor_status` で**事前分岐**する（422 エラーを待たない）
+```bash
+BLOCK_IDS=$(jq -r '.results[] | select(.final_gate == "block") | .id' "$ADJUDICATION_RESULT" 2>/dev/null)
+```
+
+1. **`$BLOCK_IDS` に含まれる ID だけを投稿対象とする。** それ以外の ID は投稿しない。`final_gate` の導出規則により、`needs_human` でも `importance` が `HIGH`/`MEDIUM` なら `block` として投稿対象になる。
+2. `$BLOCK_IDS` に含まれる ID について `anchor_status` で**事前分岐**する（422 エラーを待たない）。
 
 | `anchor_status` | 経路 |
 |---|---|

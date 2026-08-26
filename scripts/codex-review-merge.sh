@@ -3,16 +3,36 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 FINDINGS_TABLE_JSON AUDIT_JSON SELF_TAMPER_JSON FAILED_PERSONAS_JSON" >&2
+  echo "usage: $0 --mode fast FINDINGS_TABLE_JSON AUDIT_JSON SELF_TAMPER_JSON FAILED_PERSONAS_JSON" >&2
+  echo "       $0 --mode hard FINDINGS_TABLE_JSON AUDIT_JSON SELF_TAMPER_JSON FAILED_PERSONAS_JSON ADJUDICATION_JSON" >&2
   exit 2
 }
 
-[[ $# -eq 4 ]] || usage
+MODE=fast
+if [[ $# -gt 0 && "$1" == "--mode" ]]; then
+  [[ $# -ge 2 ]] || usage
+  MODE="$2"
+  case "$MODE" in
+    fast|hard) ;;
+    *) usage ;;
+  esac
+  shift 2
+fi
+
+if [[ "$MODE" == "fast" ]]; then
+  [[ $# -eq 4 ]] || usage
+else
+  [[ $# -eq 5 ]] || usage
+fi
 
 FINDINGS_FILE="$1"
 AUDIT_FILE="$2"
 SELF_TAMPER_FILE="$3"
 FAILED_PERSONAS_FILE="$4"
+ADJUDICATION_FILE=""
+if [[ "$MODE" == "hard" ]]; then
+  ADJUDICATION_FILE="$5"
+fi
 
 for input_file in "$FINDINGS_FILE" "$AUDIT_FILE" "$SELF_TAMPER_FILE" "$FAILED_PERSONAS_FILE"; do
   [[ -r "$input_file" ]] || {
@@ -79,6 +99,56 @@ if ! jq -e 'type == "boolean"' <<<"$self_tamper_json" >/dev/null 2>&1; then
   exit 2
 fi
 
+adjudication_json='{}'
+adjudication_by_id='{}'
+validity_global_failure=0
+if [[ "$MODE" == "hard" ]]; then
+  if [[ ! -r "$ADJUDICATION_FILE" ]]; then
+    echo "gate判定統合結果を読み取れません: $ADJUDICATION_FILE" >&2
+    exit 2
+  fi
+  if ! adjudication_json="$(strict_json "$ADJUDICATION_FILE" 2>/dev/null)"; then
+    echo "gate判定統合結果の JSON が不正です" >&2
+    exit 2
+  fi
+  if ! jq -n -e \
+    --argjson adjudication "$adjudication_json" \
+    --argjson findings "$findings_json" '
+      def nonempty_string: type == "string" and length > 0;
+      def valid_result:
+        type == "object"
+        and has("id") and (.id | nonempty_string)
+        and has("final_gate")
+        and ((.final_gate | type) == "null"
+             or ((.final_gate | type) == "string"
+                 and (.final_gate | IN("block", "defer"))));
+      if ($adjudication | type) != "object"
+         or $adjudication.artifact_type != "review-adjudication"
+         or $adjudication.schema_version != "1"
+         or ($adjudication.validity_global_failure | type) != "boolean"
+         or ($adjudication.results | type) != "array" then
+        false
+      else
+        ($adjudication.results) as $results
+        | ($findings | map(.id) | sort) as $expected
+        | ($results | map(.id) | sort) as $actual
+        | ($results | map(.id) | unique | sort) as $unique
+        | all($results[]; valid_result)
+          and ($actual == $unique)
+          and ($unique == $expected)
+          and (if $adjudication.validity_global_failure == false
+               then all($results[]; .final_gate != null)
+               else true
+               end)
+      end
+    ' >/dev/null 2>&1; then
+    echo "gate判定統合結果の構造またはfinding ID集合が不正です" >&2
+    exit 2
+  fi
+  validity_global_failure="$(jq -r 'if .validity_global_failure then 1 else 0 end' <<<"$adjudication_json")"
+  adjudication_by_id="$(jq -c '.results | reduce .[] as $r ({}; .[$r.id] = $r)' <<<"$adjudication_json")"
+fi
+
 # 監査 JSON の parse error / 非配列は監査全体失敗として扱う。
 audit_global_failure=0
 if ! audit_json="$(strict_json "$AUDIT_FILE" 2>/dev/null)"; then
@@ -118,11 +188,14 @@ if [[ "$audit_global_failure" -eq 0 ]] && ! jq -n -e \
 fi
 
 result_json="$(jq -n \
+  --arg mode "$MODE" \
   --argjson table "$findings_json" \
   --argjson audit "$audit_json" \
   --argjson failed "$failed_personas_json" \
   --argjson self_tamper "$self_tamper_json" \
-  --argjson audit_global_failed "$audit_global_failure" '
+  --argjson audit_global_failed "$audit_global_failure" \
+  --argjson adjudication_by_id "$adjudication_by_id" \
+  --argjson validity_global_failed "$validity_global_failure" '
   def nonempty_string: type == "string" and length > 0;
   def allowed_noncasper: ["MELCHIOR", "BALTHASAR", "METATRON", "SANDALPHON", "LELIEL"];
   def gate_rank($gate):
@@ -135,6 +208,10 @@ result_json="$(jq -n \
     elif any(.[]; . == "manual") then "manual"
     else "defer"
     end;
+  def final_gate_rank($gate):
+    if $gate == "block" then 2 else 1 end;
+  def strongest_final_gate:
+    if any(.[]; . == "block") then "block" else "defer" end;
   def unique_preserving:
     reduce .[] as $item ({items: [], seen: []};
       if ((.seen | index($item)) != null) then .
@@ -238,16 +315,32 @@ result_json="$(jq -n \
         }
     )) as $classified
   | (if $self_tamper then self_id($existing_ids) else null end) as $self_tamper_id
-  | if ($audit_global_failed == 1) then
-      {
-        pipeline_status: "incomplete",
-        findings: [],
-        manual_review: (
-          ($table | map(raw_manual))
-          + (if $self_tamper then [synthetic_self_tamper($self_tamper_id)] else [] end)
-        ),
-        failed_personas: $failed
-      }
+  | if (($mode == "hard" and (($audit_global_failed == 1) or ($validity_global_failed == 1)))
+       or ($mode == "fast" and $audit_global_failed == 1)) then
+      if ($mode == "hard") then
+        {
+          artifact_type: "review-final",
+          pipeline_status: "incomplete",
+          grouping_global_failure: ($audit_global_failed == 1),
+          validity_global_failure: ($validity_global_failed == 1),
+          findings: [],
+          manual_review: (
+            ($table | map(raw_manual))
+            + (if $self_tamper then [synthetic_self_tamper($self_tamper_id)] else [] end)
+          ),
+          failed_personas: $failed
+        }
+      else
+        {
+          pipeline_status: "incomplete",
+          findings: [],
+          manual_review: (
+            ($table | map(raw_manual))
+            + (if $self_tamper then [synthetic_self_tamper($self_tamper_id)] else [] end)
+          ),
+          failed_personas: $failed
+        }
+      end
     else
       ($classified | map(select(.rejected | not))) as $valid_groups
       | ($classified | map(select(.rejected) | .member_ids[])) as $rejected_ids
@@ -258,31 +351,63 @@ result_json="$(jq -n \
           | ($group.member_ids | map($by_id[.])) as $members
           | ($members
              | to_entries
-             | sort_by([0 - (.value.gate | gate_rank(.)), .key])
+             | sort_by([0 - (if $mode == "hard"
+                             then final_gate_rank($adjudication_by_id[.value.id].final_gate)
+                             else (.value.gate | gate_rank(.))
+                             end), .key])
              | .[0].value) as $representative
-          | {
-              group_id: $group.group_id,
-              canonical_persona: $group.canonical,
-              source_personas: ($members | map(.source_persona) | unique_preserving),
-              path: $representative.path,
-              line: $representative.line,
-              headline: $representative.headline,
-              body: $representative.body,
-              gate: ($members | map(.gate) | strongest_gate)
-            }
+          | if $mode == "hard" then
+              {
+                group_id: $group.group_id,
+                canonical_persona: $group.canonical,
+                source_personas: ($members | map(.source_persona) | unique_preserving),
+                path: $representative.path,
+                line: $representative.line,
+                headline: $representative.headline,
+                body: $representative.body,
+                final_gate: ($members | map($adjudication_by_id[.id].final_gate) | strongest_final_gate)
+              }
+            else
+              {
+                group_id: $group.group_id,
+                canonical_persona: $group.canonical,
+                source_personas: ($members | map(.source_persona) | unique_preserving),
+                path: $representative.path,
+                line: $representative.line,
+                headline: $representative.headline,
+                body: $representative.body,
+                gate: ($members | map(.gate) | strongest_gate)
+              }
+            end
         )) as $final_findings
-      | {
-          pipeline_status: (if (($failed | length) > 0) then "incomplete" else "complete" end),
-          findings: $final_findings,
-          manual_review: ($manual + (if $self_tamper then [synthetic_self_tamper($self_tamper_id)] else [] end)),
-          failed_personas: $failed
-        }
+      | if $mode == "hard" then
+          {
+            artifact_type: "review-final",
+            pipeline_status: (if (($failed | length) > 0) then "incomplete" else "complete" end),
+            grouping_global_failure: false,
+            validity_global_failure: false,
+            findings: $final_findings,
+            manual_review: ($manual + (if $self_tamper then [synthetic_self_tamper($self_tamper_id)] else [] end)),
+            failed_personas: $failed
+          }
+        else
+          {
+            pipeline_status: (if (($failed | length) > 0) then "incomplete" else "complete" end),
+            findings: $final_findings,
+            manual_review: ($manual + (if $self_tamper then [synthetic_self_tamper($self_tamper_id)] else [] end)),
+            failed_personas: $failed
+          }
+        end
     end
 ' )"
 
 printf '%s\n' "$result_json"
 
-if [[ "$audit_global_failure" -eq 1 ]]; then
+if [[ "$MODE" == "hard" ]]; then
+  if [[ "$audit_global_failure" -eq 1 ]] || [[ "$validity_global_failure" -eq 1 ]]; then
+    exit 1
+  fi
+elif [[ "$audit_global_failure" -eq 1 ]]; then
   exit 1
 fi
 exit 0

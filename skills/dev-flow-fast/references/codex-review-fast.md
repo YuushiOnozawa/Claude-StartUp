@@ -10,7 +10,7 @@
 ## 実行回数と共通契約
 
 - **Codex 3回（MELCHIOR/BALTHASAR/監査）+ Haiku 1〜数回（CASPER、diffサイズ依存のチャンク分割）+ Haiku/Ollama 1回（CASPER結果のバッチNormalizer）**。チャンク数によりCASPERのHaiku呼び出し数は変動するため、固定回数と断定しない。
-- hard の findings table、監査、merge の契約を共有する。CodexのIDは信用せず、オーケストレーターがグローバルIDを振る。
+- hard の findings table と共通監査の基本契約を共有する。merge は fast mode の4引数契約を独立に適用する。CodexのIDは信用せず、オーケストレーターがグローバルIDを振る。
 - CASPER finding は Normalizer成功時に全件 `gate=block` とする。追加のCodex gate判定は行わない。
 - GitHubへの投稿は行わない。
 
@@ -211,7 +211,7 @@ fi
 
 ## ステップ 6: 共通監査
 
-hard ステップ10と同じ手順で `$FINDINGS_TABLE_FILE` の `gate` を除いた `$AUDIT_FINDINGS_FILE` を作り、`codex-review-audit.md` を呼び出す。監査promptには、`attribution-rules.md` の記載どおり「CASPER findingは独立のルール違反として扱い、同じ場所のコードfindingと自動マージしない」ことを明記する。共通監査手順にも同じ指示を含める。
+hard のステップ10（グルーピング監査）と同じ手順で `$FINDINGS_TABLE_FILE` の `gate` を除いた `$AUDIT_FINDINGS_FILE` を作り、`codex-review-audit.md` を呼び出す。これは hard のグルーピング部分だけを指し、`/codex-fast` は hard のステップ10.1〜10.3（妥当性監査・重要度判定・gate判定統合）を一切実行しない。監査promptには、`attribution-rules.md` の記載どおり「CASPER findingは独立のルール違反として扱い、同じ場所のコードfindingと自動マージしない」ことを明記する。共通監査手順にも同じ指示を含める。
 
 ```bash
 AUDIT_TMPDIR="$REVIEW_TMPDIR/audit"
@@ -228,12 +228,12 @@ fi
 
 ## ステップ 7: merge と結果表示
 
-hard ステップ11-12と同じ `scripts/codex-review-merge.sh` の4引数、終了コード処理、結果表示を共有する。終了コード2は `CODEX_FAST_FAILED: findings tableの構築に矛盾があります` として停止し、終了コード1は監査全体失敗のJSONを表示する。
+`/codex-fast` は `scripts/codex-review-merge.sh` を `--mode fast` で呼び出し、常に同じ4つの位置引数 `$FINDINGS_TABLE_FILE`、`$AUDIT_TMPDIR/codex-audit-result.json`、`$REVIEW_TMPDIR/self-tamper.json`、`$REVIEW_TMPDIR/failed-personas.json` だけを渡す。fast mode は adjudication artifact を受け取らず、要求もしない。hard へのステップ番号だけの参照では、hard 側で将来必須引数などの契約が変わった際に fast が意図せずその変更を継承するおそれがあるため、fast の呼び出し契約・終了コード処理・結果表示をここで独立に明記する。終了コード2は `CODEX_FAST_FAILED: findings tableの構築に矛盾があります` として停止し、終了コード1は監査全体失敗のJSONを表示する。
 
 ```bash
 MERGE_OUTPUT_FILE="$REVIEW_TMPDIR/merge-result.json"
 MERGE_EXIT=0
-bash "$WORKTREE_ROOT/scripts/codex-review-merge.sh" \
+bash "$WORKTREE_ROOT/scripts/codex-review-merge.sh" --mode fast \
   "$FINDINGS_TABLE_FILE" "$AUDIT_TMPDIR/codex-audit-result.json" \
   "$REVIEW_TMPDIR/self-tamper.json" "$REVIEW_TMPDIR/failed-personas.json" \
   > "$MERGE_OUTPUT_FILE" 2> "$REVIEW_TMPDIR/merge.err" || MERGE_EXIT=$?
