@@ -63,7 +63,10 @@ if [ -z "$CODEX_COMPANION" ]; then
 fi
 
 PLANGEN_PROMPT_B64='REPLACE_WITH_PROMPT_BASE64'
-PLANGEN_TMPDIR=$(mktemp -d)
+if ! PLANGEN_TMPDIR=$(mktemp -d) || [ -z "$PLANGEN_TMPDIR" ] || [ ! -d "$PLANGEN_TMPDIR" ]; then
+  echo "REPORT: FAILURE (temporary directory creation failed)"
+  exit 0
+fi
 _plangen_cleanup() {
   rm -rf -- "$PLANGEN_TMPDIR"
 }
@@ -80,7 +83,7 @@ _plangen_output_ok() {
   local exit_code="$1" raw_file="$2"
   [ "$exit_code" -eq 0 ] || return 1
   [ -s "$raw_file" ] || return 1
-  if head -n 5 "$raw_file" | grep -Eiq '^[[:space:]]*(error|fatal|failed|unavailable|rate limit|timed out)(:|[[:space:]]|$)|^[[:space:]]*モデル(エラー|が利用できません)'; then
+  if head -n 5 "$raw_file" | grep -Eiq '^[[:space:]]*#{0,6}[[:space:]]*(error|fatal|failed|unavailable|rate limit|timed out)(:|[[:space:]]|$)|^[[:space:]]*#{0,6}[[:space:]]*モデル(エラー|が利用できません)'; then
     return 1
   fi
   grep -Eq '^[[:space:]]{0,3}#{1,6}[[:space:]]+' "$raw_file" || return 1
@@ -91,14 +94,14 @@ PLANGEN_ENGINE=""
 PLANGEN_MODEL=""
 PLANGEN_RAW=""
 if [ -n "$CODEX_COMPANION" ]; then
-  node "$CODEX_COMPANION" task --model gpt-5.6-sol --prompt-file "$BRIEF_FILE" > "$PLANGEN_TMPDIR/sol-raw.txt" 2>&1
+  node "$CODEX_COMPANION" task --model gpt-5.6-sol --prompt-file "$BRIEF_FILE" > "$PLANGEN_TMPDIR/sol-raw.txt" 2> "$PLANGEN_TMPDIR/sol-stderr.txt"
   SOL_EXIT=$?
   if _plangen_output_ok "$SOL_EXIT" "$PLANGEN_TMPDIR/sol-raw.txt"; then
     PLANGEN_ENGINE="Sol"
     PLANGEN_MODEL="gpt-5.6-sol"
     PLANGEN_RAW="$PLANGEN_TMPDIR/sol-raw.txt"
   else
-    node "$CODEX_COMPANION" task --model gpt-5.6-luna --prompt-file "$BRIEF_FILE" > "$PLANGEN_TMPDIR/luna-raw.txt" 2>&1
+    node "$CODEX_COMPANION" task --model gpt-5.6-luna --prompt-file "$BRIEF_FILE" > "$PLANGEN_TMPDIR/luna-raw.txt" 2> "$PLANGEN_TMPDIR/luna-stderr.txt"
     LUNA_EXIT=$?
     if _plangen_output_ok "$LUNA_EXIT" "$PLANGEN_TMPDIR/luna-raw.txt"; then
       PLANGEN_ENGINE="Luna"
