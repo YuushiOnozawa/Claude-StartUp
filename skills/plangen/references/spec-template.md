@@ -81,11 +81,10 @@ fi
 
 _plangen_output_ok() {
   local exit_code="$1" raw_file="$2"
+  # Model failure is determined only by a non-zero exit code or empty stdout;
+  # plan-content checks below validate minimum structure, not model-error wording.
   [ "$exit_code" -eq 0 ] || return 1
   [ -s "$raw_file" ] || return 1
-  if head -n 5 "$raw_file" | grep -Eiq '^[[:space:]]*#{0,6}[[:space:]]*(error|fatal|failed|unavailable|rate limit|timed out)(:|[[:space:]]|$)|^[[:space:]]*#{0,6}[[:space:]]*モデル(エラー|が利用できません)'; then
-    return 1
-  fi
   grep -Eq '^[[:space:]]{0,3}#{1,6}[[:space:]]+' "$raw_file" || return 1
   grep -Eiq '(implement|implementation|change|modify|file|test|実装|変更|テスト|手順|計画)' "$raw_file" || return 1
 }
@@ -94,14 +93,16 @@ PLANGEN_ENGINE=""
 PLANGEN_MODEL=""
 PLANGEN_RAW=""
 if [ -n "$CODEX_COMPANION" ]; then
-  node "$CODEX_COMPANION" task --model gpt-5.6-sol --prompt-file "$BRIEF_FILE" > "$PLANGEN_TMPDIR/sol-raw.txt" 2> "$PLANGEN_TMPDIR/sol-stderr.txt"
+  # Bound each model call so a hung model still reaches the Luna/Haiku fallback.
+  # timeout normally returns 124 on SIGTERM, which is a non-zero failure above.
+  timeout 300 node "$CODEX_COMPANION" task --model gpt-5.6-sol --prompt-file "$BRIEF_FILE" > "$PLANGEN_TMPDIR/sol-raw.txt" 2> "$PLANGEN_TMPDIR/sol-stderr.txt"
   SOL_EXIT=$?
   if _plangen_output_ok "$SOL_EXIT" "$PLANGEN_TMPDIR/sol-raw.txt"; then
     PLANGEN_ENGINE="Sol"
     PLANGEN_MODEL="gpt-5.6-sol"
     PLANGEN_RAW="$PLANGEN_TMPDIR/sol-raw.txt"
   else
-    node "$CODEX_COMPANION" task --model gpt-5.6-luna --prompt-file "$BRIEF_FILE" > "$PLANGEN_TMPDIR/luna-raw.txt" 2> "$PLANGEN_TMPDIR/luna-stderr.txt"
+    timeout 300 node "$CODEX_COMPANION" task --model gpt-5.6-luna --prompt-file "$BRIEF_FILE" > "$PLANGEN_TMPDIR/luna-raw.txt" 2> "$PLANGEN_TMPDIR/luna-stderr.txt"
     LUNA_EXIT=$?
     if _plangen_output_ok "$LUNA_EXIT" "$PLANGEN_TMPDIR/luna-raw.txt"; then
       PLANGEN_ENGINE="Luna"
