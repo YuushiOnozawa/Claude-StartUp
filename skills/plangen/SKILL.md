@@ -47,12 +47,20 @@ Try each stage at most once, in this order, with the model explicitly specified:
 2. `--model gpt-5.6-luna` (Luna)
 3. `Agent(subagent_type="general-purpose", model="haiku")` (Haiku)
 
-Cascade only when the current stage has a non-zero exit, empty stdout, obvious model-error
-wording, or output that lacks the minimum plan structure of headings plus implementation-like
-content. Stop as soon as a valid draft is available; do not rely on the CLI default model.
+Cascade only when the current stage has a non-zero exit, empty stdout, or output that lacks the
+minimum plan structure of headings plus implementation-like content. Do not use model-error
+wording as a cascade condition. Stop as soon as a valid draft is available; do not rely on the
+CLI default model.
 
 The REPORT must state which engine/model produced the adopted or presented draft: Sol /
 `gpt-5.6-sol`, Luna / `gpt-5.6-luna`, or Haiku / `haiku`.
+
+`_plangen_output_ok` (and the equivalent Haiku check) verifies only minimum structural validity:
+non-empty output with a heading and implementation-like content. Whether the draft is actually
+a useful plan, including whether it is a refusal or error message, is a content-quality check
+that Claude must always perform during ADOPT. This separation is intentional; do not restore
+wording-based content validation to GENERATE, since normal plan headings such as `# Error
+handling` can trigger false cascades.
 
 In Plan Mode, Claude must validate the draft against the curated context and then reflect the
 accepted content in the plan file whose path is present in context. Outside Plan Mode, Claude

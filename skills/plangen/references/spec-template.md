@@ -125,11 +125,19 @@ fi
 ```
 
 The block tries Sol once and, only when Sol fails the same checks, Luna once. A non-zero exit,
-empty raw output, obvious model-error wording in the first five lines, or missing minimum plan
-structure triggers the next stage; a valid draft stops the cascade immediately. The
-`--prompt-file` input is reused for Luna. When Sol or Luna succeeds, the block prints the
-engine/model REPORT and then `cat`s the selected raw file; cleanup is deliberately performed
-only after that output, and the trap is disabled after explicit cleanup.
+empty raw output, or missing minimum plan structure (a heading plus implementation-like content)
+triggers the next stage; a valid draft stops the cascade immediately. Model-error wording is not
+inspected as a cascade condition. The `--prompt-file` input is reused for Luna. When Sol or Luna
+succeeds, the block prints the engine/model REPORT and then `cat`s the selected raw file; cleanup
+is deliberately performed only after that output, and the trap is disabled after explicit
+cleanup.
+
+Known limitation: `timeout 300` stops only the local `codex-companion` client process; it does
+not cancel the turn running on the shared broker because `codex-companion.mjs` currently provides
+no client API equivalent to `turn/interrupt`. After a timeout, the model call may therefore
+continue on the broker while the subsequent Luna call starts, so Sol and Luna may run in
+parallel. Resolving this requires a feature addition to `codex-companion.mjs` itself and cannot
+be handled by the plangen skill alone.
 
 If the block reports `CODEX_FAILURE` (including an unavailable companion), call
 `Agent(subagent_type="general-purpose", model="haiku")` exactly once with the same complete
@@ -139,12 +147,19 @@ text itself as the Haiku raw output, since the Bash process and its temporary di
 already ended; do not refer to `$PLANGEN_RAW`, `$BRIEF_FILE`, or `$PLANGEN_TMPDIR` from a later
 tool call.
 
-Apply the exact same `_plangen_output_ok` checks to that returned text: the Agent call must
-succeed, the text must be non-empty, its first five lines must not match the anchored
-error/failure/unavailable wording, and it must contain both a Markdown heading and
-implementation-like content. If it passes, report `REPORT: Haiku / haiku` and present the
-returned draft unchanged for ADOPT. If it fails, prohibit adoption of every raw output and
-report `REPORT: FAILURE` because Sol, Luna, and Haiku all failed to produce a valid plan draft.
+Apply the equivalent minimum structural checks to that returned text: the Agent call must
+succeed, the text must be non-empty, and it must contain both a Markdown heading and
+implementation-like content. Do not apply any text-based model-error rejection; wording-based
+model-error detection is intentionally not part of this check. If it passes, report
+`REPORT: Haiku / haiku` and present the returned draft unchanged for ADOPT. If it fails, prohibit
+adoption of every raw output and report `REPORT: FAILURE` because Sol, Luna, and Haiku all failed
+to produce a valid plan draft.
+
+The structural checks above are not a judgment that the draft is genuinely useful or that it is
+not a refusal or error message. Claude must always perform that content-quality review during
+ADOPT. This role separation is intentional, and wording-based content validation must not be
+returned to GENERATE because it can falsely cascade on valid plan headings such as `# Error
+handling`.
 
 ## ADOPT Phase: Review and adoption
 
