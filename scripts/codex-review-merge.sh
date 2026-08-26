@@ -152,9 +152,10 @@ if [[ "$MODE" == "hard" ]]; then
           and ($actual == $unique)
           and ($unique == $expected)
           and (if $adjudication.validity_global_failure == false
-               then all($results[]; .final_gate != null)
+               then all($results[]; .final_gate != null and .verdict != null)
                else true
                end)
+          and all($results[]; .verdict != "false_positive" or .final_gate == "defer")
       end
     ' >/dev/null 2>&1; then
     echo "gate判定統合結果の構造またはfinding ID集合が不正です" >&2
