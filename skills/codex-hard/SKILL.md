@@ -7,7 +7,7 @@ description: 'Codex 5体（MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIEL）+ CAS
 
 ## 実行前の注意
 
-実行前に、Codex最大6回（5ペルソナ+監査）、各600秒timeoutで、最悪ケースでは約60分かかることに加え、Haiku 1〜数回（CASPER、diffサイズ依存のチャンク分割）とHaiku/Ollama 1回（CASPER結果のバッチNormalizer）が発生することをユーザーへ伝える。CASPERのHaiku呼び出し回数は固定回数と断定しない。
+実行前に、Codex最大8回（5ペルソナ+監査）、各600秒timeoutで、最悪ケースでは約80分かかることに加え、Haiku 1〜数回（CASPER、diffサイズ依存のチャンク分割）とHaiku/Ollama 1回（CASPER結果のバッチNormalizer）が発生することをユーザーへ伝える。CASPERのHaiku呼び出し回数は固定回数と断定しない。
 
 ## 概要
 

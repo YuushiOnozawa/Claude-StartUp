@@ -75,6 +75,7 @@ Normalizer の出力は JSON array でなければならない。空配列 `[]` 
 構造検証は、`[]` を有効な成功として許容しつつ、配列内の1件でも不適合なら全体を失敗にする。
 
 ```bash
+jq -s -c 'if length == 1 then .[0] else error("expected exactly one JSON value") end' "$NORMALIZED_FILE" 2>/dev/null |
 jq -e '
   type == "array"
   and all(.[];
@@ -90,7 +91,7 @@ jq -e '
          or (((.evidence? // null) | type) == "string"
              and ((.evidence? // null) | length) > 0))
   )
-' "$NORMALIZED_FILE" >/dev/null 2>&1
+' >/dev/null 2>&1
 ```
 
 次はすべて失敗として記録する。

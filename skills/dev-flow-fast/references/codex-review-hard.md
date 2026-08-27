@@ -367,6 +367,10 @@ if [ "$CASPER_ENGINE_STATUS" = "complete" ] && [ -r "$CASPER_NORMALIZED_FILE" ];
     NEXT_ID=$((NEXT_ID + $(jq 'length' "$OUT")))
     jq -s '.[0] + .[1]' "$FINDINGS_TABLE_FILE" "$OUT" > "$REVIEW_TMPDIR/table.next"
     mv "$REVIEW_TMPDIR/table.next" "$FINDINGS_TABLE_FILE"
+  else
+    FAILED_PERSONAS_JSON=$(jq -cn --argjson failed "$FAILED_PERSONAS_JSON" \
+      'if ($failed | index("CASPER")) == null then $failed + ["CASPER"] else $failed end')
+    printf '%s\n' "$FAILED_PERSONAS_JSON" > "$REVIEW_TMPDIR/failed-personas.json"
   fi
 fi
 ```
