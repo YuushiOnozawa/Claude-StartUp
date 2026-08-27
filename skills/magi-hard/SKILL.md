@@ -98,8 +98,10 @@ record_magi_persona_result() {
     persona_failed=true
   fi
   if [ "$persona_failed" = true ]; then
-    FAILED_PERSONAS_JSON=$(jq --arg p "$persona" '. + [$p]' <<<"$FAILED_PERSONAS_JSON")
-    printf '%s\n' "$FAILED_PERSONAS_JSON" > "$MAGI_RUN_DIR/failed-personas.json"
+    if ! jq -e --arg p "$persona" 'index($p) != null' <<<"$FAILED_PERSONAS_JSON" >/dev/null 2>&1; then
+      FAILED_PERSONAS_JSON=$(jq --arg p "$persona" '. + [$p]' <<<"$FAILED_PERSONAS_JSON")
+      printf '%s\n' "$FAILED_PERSONAS_JSON" > "$MAGI_RUN_DIR/failed-personas.json"
+    fi
   fi
 }
 ```
@@ -128,11 +130,49 @@ record_magi_persona_result "BALTHASAR" "$BALTHASAR_RESULT" "$BALTHASAR_EXIT"
 ## ステップ 3.3: CASPER 実行（`$BALTHASAR_RESULT` 取得後）
 
 `$BALTHASAR_RESULT` が得られたことを確認してから起動する。
-`/casper` スキルの手順に従い、`$DIFF` を渡してレビューを実行する。
-実行が**完全に完了**した後、結果を `$CASPER_RESULT` として保持してからステップ 3.4 に進む。
-実行終了ステータスは `$CASPER_EXIT` として保持し、成功・失敗を問わず次を実行してからステップ 3.4 に進む。
+`skills/flow-common/references/casper-engine.md` の共通契約を Read し、
+`engine=magi`、`diff_source=$DIFF`、raw 出力先、Normalizer 一時ディレクトリ、失敗記録の受け口、
+および `persona,headline,path,line,evidence,body`（MAGI downstream で写像する場合は
+`persona,headline,original_path,original_line,evidence,body`）の dedup キーを渡して実行する。
+入力の実体と failure sink は次のように確保する。
 
 ```bash
+CASPER_RAW_FILE="$MAGI_RUN_DIR/raw/casper.txt"
+CASPER_NORMALIZER_TMPDIR="$MAGI_RUN_DIR/casper-normalizer"
+CASPER_FAILURE_SINK="$MAGI_RUN_DIR/casper-failure.json"
+mkdir -p "$CASPER_NORMALIZER_TMPDIR"
+printf '%s\n' '{"failed_personas":[],"failure_stage":null}' > "$CASPER_FAILURE_SINK"
+```
+
+契約の `raw_output_path="$CASPER_RAW_FILE"` の内容（CASPER のチャンクヘッダー付き raw stdout）を
+`$CASPER_RESULT` に渡す。raw ファイルが生成されない場合に限り、`$CASPER_ENGINE_FINDINGS` の JSON
+文字列表現（未設定なら `[]`）を `$CASPER_RESULT` として使い、LGTM 表示・失敗時の診断本文を空にしない。
+契約の `status` を `$CASPER_ENGINE_STATUS`、`failure_stage` を `$CASPER_ENGINE_FAILURE_STAGE`、
+正規化済み dedup 後の配列を `$CASPER_ENGINE_FINDINGS` として保持する。
+契約は `/casper` を `MAGI_ORCHESTRATED=true` で呼び出し、Haiku/no-confirmation、チャンク直列化、
+Normalizer、`source_persona=CASPER` 固定、失敗段階の記録までを担当する。
+成功・失敗を問わず次を実行してからステップ 3.4 に進む。
+
+```bash
+if [ -r "$CASPER_FAILURE_SINK" ]; then
+  CASPER_FAILED_PERSONAS=$(jq -c '.failed_personas // []' "$CASPER_FAILURE_SINK" 2>/dev/null || printf '%s\n' '[]')
+  FAILED_PERSONAS_JSON=$(jq -cn \
+    --argjson existing "$FAILED_PERSONAS_JSON" \
+    --argjson additions "$CASPER_FAILED_PERSONAS" \
+    'reduce ($additions[]) as $p ($existing; if index($p) == null then . + [$p] else . end)')
+  printf '%s\n' "$FAILED_PERSONAS_JSON" > "$MAGI_RUN_DIR/failed-personas.json"
+fi
+CASPER_ENGINE_FAILURE_STAGE=$(jq -r '.failure_stage // "null"' "$CASPER_FAILURE_SINK" 2>/dev/null || printf '%s\n' 'null')
+if [ -r "$CASPER_RAW_FILE" ]; then
+  CASPER_RESULT=$(cat "$CASPER_RAW_FILE")
+else
+  CASPER_RESULT=$(printf '%s\n' "${CASPER_ENGINE_FINDINGS:-[]}")
+fi
+if [ "$CASPER_ENGINE_STATUS" = "complete" ]; then
+  CASPER_EXIT=0
+else
+  CASPER_EXIT=1
+fi
 record_magi_persona_result "CASPER" "$CASPER_RESULT" "$CASPER_EXIT"
 ```
 
@@ -171,14 +211,17 @@ record_magi_persona_result "LELIEL" "$LELIEL_RESULT" "$LELIEL_EXIT"
 
 ## ステップ 3.7: 指摘の正規化
 
-6体は`$MAGI_ORCHESTRATED=true`で実行済みのため、各自ではNormalizerを呼ばず生の結果（`$MELCHIOR_RESULT`/`$BALTHASAR_RESULT`/`$CASPER_RESULT`/`$METATRON_RESULT`/`$SANDALPHON_RESULT`/`$LELIEL_RESULT`、チャンクヘッダー込み）を返している。ここで失敗ペルソナの raw は除外し、成功したペルソナの結果だけを1回のバッチ呼び出しにまとめてNormalizerへ渡す（呼び出し回数削減のため。モデルロード・推論のオーバーヘッドを削減する）。
+MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIELは`$MAGI_ORCHESTRATED=true`で実行済みのため、
+各自ではNormalizerを呼ばず生の結果（チャンクヘッダー込み）を返している。CASPER はステップ3.3の
+共通契約で正規化済みのため、CASPER raw をこのバッチへ重ねて渡さない。失敗ペルソナの raw は除外し、
+残り5体の結果だけを1回のバッチ呼び出しにまとめてNormalizerへ渡す。
 
 1. `MAGI_TMPDIR=$(mktemp -d)` で作業ディレクトリを作成する。
 2. `$FAILED_PERSONAS_JSON` に含まれない成功ペルソナの raw ファイルだけを、それぞれ `=== PERSONA: <name> / CHUNK: <path> (<n>) ===` ヘッダーを保ったまま連結し、`$NORMALIZE_INPUT` として保持する。失敗ペルソナの raw ファイルは診断用に残すが、Normalizerには渡さない。
 
 ```bash
 NORMALIZE_INPUT="$(
-  for PERSONA in MELCHIOR BALTHASAR CASPER METATRON SANDALPHON LELIEL; do
+  for PERSONA in MELCHIOR BALTHASAR METATRON SANDALPHON LELIEL; do
     if jq -e --arg p "$PERSONA" 'index($p) == null' <<<"$FAILED_PERSONAS_JSON" >/dev/null 2>&1; then
       PERSONA_KEY=$(printf '%s' "$PERSONA" | tr '[:upper:]' '[:lower:]')
       cat "$MAGI_RUN_DIR/raw/${PERSONA_KEY}.txt"
@@ -188,7 +231,20 @@ NORMALIZE_INPUT="$(
 )"
 ```
 3. `skills/magi-common/references/normalizer.md`（repo 内）または `~/.claude/skills/magi-common/references/normalizer.md` を Read ツールで読み込み、記載の手順に従ってNormalizerを実行する。
-4. 成功した場合、`$MAGI_TMPDIR/normalizer.json` の内容を `$NORMALIZED_V2_JSON` として `$MAGI_RUN_DIR/normalized-v2.json` にコピーし保持する（`$MAGI_TMPDIR` はチャンク単位ではなくこのバッチ呼び出し専用なので、コピー後に削除してよい）。
+4. 成功した場合、`$MAGI_TMPDIR/normalizer.json` に CASPER engine の
+`$CASPER_ENGINE_FINDINGS` を追加した内容を `$NORMALIZED_V2_JSON` として
+`$MAGI_RUN_DIR/normalized-v2.json` にコピーし保持する（`$MAGI_TMPDIR` はチャンク単位ではなくこの
+バッチ呼び出し専用なので、コピー後に削除してよい）。CASPER の `persona`/`source_persona` は
+共通契約が固定した値をそのまま使い、ここで再度 Normalizer や dedup を呼び出さない。
+
+```bash
+if [ "$CASPER_ENGINE_STATUS" = "complete" ]; then
+  jq -s '.[0] + .[1]' "$MAGI_TMPDIR/normalizer.json" \
+    <(printf '%s\n' "$CASPER_ENGINE_FINDINGS") > "$MAGI_RUN_DIR/normalized-v2.json"
+else
+  cp "$MAGI_TMPDIR/normalizer.json" "$MAGI_RUN_DIR/normalized-v2.json"
+fi
+```
 5. 失敗（`NORMALIZE_SKIPPED`/`NORMALIZE_ERROR`）した場合は、`normalizer.md`の契約に従いHaiku fallbackを試みる。それでも失敗する場合は、ステップ4-1の構造検証失敗と同様の扱い（`BLOCK_LAYER=structure`相当とし、6体分は`$NORMALIZED_RESULTS`にraw結果をそのまま出す）とする。
 
 ### 正規化結果の書き出し
@@ -218,13 +274,21 @@ NORMALIZED_RESULTS="$MAGI_RUN_DIR/normalized.md"
 PRE_ID_CANDIDATES="$MAGI_RUN_DIR/pre-id-candidates.json"
 ```
 
-`$PRE_ID_CANDIDATES` は、6体分の候補を連結した単一の JSON 配列として保持する。`normalized-v2.json` の各要素について `path` を `original_path`、`line` を `original_line` にリネームし（元の `path`/`line` キーは残さない）、`severity: "UNRATED"` を持つ同じ形の object にする。
+`$PRE_ID_CANDIDATES` は、5体分の通常 Normalizer 結果と CASPER engine の正規化済み結果を連結した
+単一の JSON 配列として保持する。`normalized-v2.json` の各要素について `path` を `original_path`、
+`line` を `original_line` にリネームし（元の `path`/`line` キーは残さない）、`severity: "UNRATED"` を
+持つ同じ形の object にする。
 
 #### 採番前の重複統合（機械的完全一致dedup）
 
 `skills/magi-common/references/normalizer.md` 15行目は、重複除去を Normalizer の責務ではなく呼び出し元の責務としている。ここで共通dedupスクリプトを呼び出して実装する。
 
-6体分をマージした **pre-ID candidate list** に対し、採番前に機械的な重複統合を1回だけ行う。重複キーは `persona` / `headline` / `original_path` / `original_line` / `evidence` / `body` の6フィールドの byte-for-byte 完全一致とし、6つすべてが一致する場合だけ同一候補として扱う。`body` を含めるのは、同じ persona / line / headline / evidence を共有しても Problem / Breakage の内容が異なる正当な別 finding を潰さないため。
+通常5体分をマージした **pre-ID candidate list** に対し、採番前に機械的な重複統合を1回だけ行う。
+CASPER 候補は共通契約ですでに同じ処理を終えているため、この downstream dedup へ再投入しない。
+重複キーは `persona` / `headline` / `original_path` / `original_line` / `evidence` / `body` の6フィールドの
+byte-for-byte 完全一致とし、6つすべてが一致する場合だけ同一候補として扱う。`body` を含めるのは、同じ
+persona / line / headline / evidence を共有しても Problem / Breakage の内容が異なる正当な別 finding を
+潰さないため。
 
 dedup は **同一 `persona` 内だけ**で行う。異なる persona が同じ場所を指すことは有用な corroboration signal なので、persona をまたいで統合してはならない。
 
@@ -236,10 +300,17 @@ dedup は **同一 `persona` 内だけ**で行う。異なる persona が同じ�
 DEDUPED_CANDIDATES="$MAGI_RUN_DIR/deduped-candidates.json"
 ```
 
-`$DEDUPED_CANDIDATES` は、`$PRE_ID_CANDIDATES` と同じ field shape の JSON 配列として、重複統合後・採番前の候補だけを保持する。
+`$DEDUPED_CANDIDATES` は通常5体分の重複統合後・採番前の候補を保持する。CASPER engine の配列は
+first-occurrence order を維持したまま、dedup 済み候補としてここへ追加する。
 
 ```bash
-bash scripts/review-dedup-findings.sh persona,headline,original_path,original_line,evidence,body "$PRE_ID_CANDIDATES" > "$DEDUPED_CANDIDATES"
+PRE_ID_NON_CASPER="$MAGI_RUN_DIR/pre-id-non-casper.json"
+jq 'map(select(.persona != "CASPER"))' "$PRE_ID_CANDIDATES" > "$PRE_ID_NON_CASPER"
+bash scripts/review-dedup-findings.sh persona,headline,original_path,original_line,evidence,body \
+  "$PRE_ID_NON_CASPER" > "$MAGI_RUN_DIR/deduped-non-casper.json"
+jq 'map(select(.persona == "CASPER"))' "$PRE_ID_CANDIDATES" > "$MAGI_RUN_DIR/deduped-casper.json"
+jq -s '.[0] + .[1]' "$MAGI_RUN_DIR/deduped-non-casper.json" \
+  "$MAGI_RUN_DIR/deduped-casper.json" > "$DEDUPED_CANDIDATES"
 ```
 
 この dedup は **`M-001`, `M-002`, ... の採番より前**、かつ後述の **表の構造検証より前**に行う。構造検証の意味は変えず、重複統合済みの小さい配列を同じ条件で検証する。

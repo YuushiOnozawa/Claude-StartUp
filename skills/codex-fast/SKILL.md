@@ -1,6 +1,6 @@
 ---
 name: codex-fast
-description: 'Codex 2体（MELCHIOR/BALTHASAR）+ CASPER（Haiku）の軽量版でPRレビューを行う。CASPER findingは全件block固定。GitHubへの投稿は行わない。Trigger: "/codex-fast", "codex-fast", "Codexでファストレビュー"'
+description: 'Codex 2体（MELCHIOR/BALTHASAR）+ CASPER（Haiku）の軽量版でPRレビューを行う。CASPER連携は共通engine契約に従う。GitHubへの投稿は行わない。Trigger: "/codex-fast", "codex-fast", "Codexでファストレビュー"'
 ---
 
 # CODEX-FAST スキル
@@ -23,9 +23,11 @@ CASPERの結果はバッチNormalizerを経て統合し、hardと同じレビュ
 
 `skills/dev-flow-fast/references/codex-review-fast.md`をReadツールで読み込み、記載の手順に従って実行する。
 
-## CASPERのgate
+## CASPER連携
 
-CASPER findingは全件`gate=block`固定とし、CASPER findingに対する追加のCodex gate判定は行わない。
+CASPER の呼び出し・検出・正規化・persona固定・失敗捕捉・dedup は
+`skills/flow-common/references/casper-engine.md` の共通契約を参照する。
+Codex 側の downstream 接続では、CASPER finding に `gate=block` を付与し、追加の Codex gate 判定は行わない。
 
 ## 出力
 

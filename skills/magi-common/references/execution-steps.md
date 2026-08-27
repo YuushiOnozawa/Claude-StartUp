@@ -5,7 +5,10 @@
 呼び出し元 SKILL.md で定義された以下の変数を使用する:
 - `$OLLAMA_MODEL` — Ollama モデル名（例: `qwen2.5-coder:7b`）
 - `$PERSONA_NAME` — ペルソナ名（例: `MELCHIOR`）
-- `$AGENT_PATH` — Haiku fallback 時のエージェント定義パス（例: `agents/melchior.md`）
+- `$AGENT_PATH` — Haiku fallback 時に呼び出し元が解決したペルソナ定義の実体。単一ファイルの場合と、
+  `SKILL.md` と `references/` を組み合わせた定義セットの場合がある
+- `$AGENT_REFERENCES_PATH`（省略可）— `$AGENT_PATH` が `SKILL.md` と `references/` を組み合わせた
+  定義セットの場合に、呼び出し元が解決した references ディレクトリ
 - `$OUTPUT_FORMAT_PATH`（省略可） — 出力契約ファイルのパス。省略時は `skills/magi-common/references/output-format-v2.md`（DETECTION NOTES契約）を使う。全6ペルソナがこの契約を使う
 - `$MAGI_ORCHESTRATED`（省略可） — 呼び出し元が `magi-fast`/`magi-hard` 等のオーケストレーターであることを示すフラグ。**文字列 `true` との完全一致のみ有効**とする。設定されている場合、v2ペルソナは自分ではNormalizerを呼ばず生の結果を返す（呼び出し元がバッチでNormalizerを呼ぶ）。未設定（単体実行）の場合、v2ペルソナは自分でNormalizerを呼ぶ。**この変数は呼び出し元がペルソナSKILL.mdを呼ぶときにのみ設定するものであり、ペルソナ実行の内部で発生する他のサブ処理へ暗黙に引き継いではならない**（単体実行での二重Normalizer呼び出しを防ぐため）
 
@@ -16,12 +19,6 @@
 1. ユーザーがファイルパスを指定した場合 → そのファイルをレビュー
 2. 何も指定がない場合 → `git diff --staged` でステージ済み差分を取得
 3. ステージ済み差分がない場合 → `git diff HEAD` で最新コミットとの差分を取得
-
-**CASPER のみ:** 以下を追加で取得し `$CLAUDE_RULES` として保持する:
-```bash
-ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo .)
-CLAUDE_RULES=$(cat ~/.claude/CLAUDE.md 2>/dev/null; cat "$ROOT/CLAUDE.md" 2>/dev/null; cat "$ROOT/CLAUDE.local.md" 2>/dev/null)
-```
 
 4. ロールプレイ指示ファイルを除外する（magi-hard/fast 経由時はフィルタ済みだが、単独実行時の防御として再適用する二層構造）:
    ```bash
@@ -48,8 +45,8 @@ CLAUDE_RULES=$(cat ~/.claude/CLAUDE.md 2>/dev/null; cat "$ROOT/CLAUDE.md" 2>/dev
    途中でレビューを中止する場合も、中止を報告する前にこの解放を実行する。
 
    > **この項目は Ollama パスを実行した場合にのみ行う。**
-   > ステップ 2 で Haiku パス（フォールバック、および CASPER のように Ollama を使わない設定）に
-   > 入った場合は**実行しない**。CASPER には `$OLLAMA_MODEL` が定義されておらず、
+   > ステップ 2 で Haiku パス（フォールバックまたは Ollama を使わない設定）に
+   > 入った場合は**実行しない**。Haiku パスでは `$OLLAMA_MODEL` が定義されておらず、
    > 空の値で `--unload` を呼ぶと usage エラーになる。ロード済みのモデルも存在しない。
 
    > **`--unload` は失敗しても終了コード 0 を返す。**
@@ -99,11 +96,6 @@ curl -sf --max-time 5 "${_magi_base_url:-http://localhost:11434}/api/tags" 2>/de
    ```
    [task-instruction.md の内容をそのまま展開]
    [review-criteria.md の内容をそのまま展開]
-   ```
-   **CASPER のみ:** system.txt に `$OUTPUT_FORMAT_PATH` の内容より前に以下を追加:
-   ```
-   ---CLAUDE.md---
-   [CLAUDE_RULES の内容]
    ```
    **$MAGI_TMPDIR/system.txt（出力契約）:**
    ```
@@ -157,11 +149,12 @@ Haiku にフォールバックする前に、**`AskUserQuestion` ツールを呼
 - options: ["はい（Haiku で続行）", "いいえ（中止）"]
 「いいえ」の場合はレビューを中止し、「Ollama を確認して再実行してください」と案内する。
 
-**前提条件**: `setup.sh` で `agents/` が `~/.claude/agents/` にコピー済みであること。
-
 エージェント定義の読み込み（以下の順で試みる）:
-1. `$AGENT_PATH`（repo 内: `agents/<persona>.md`）
-2. `/home/<user>/.claude/agents/<persona>.md`（setup.sh でデプロイ済みのもの）
+1. `$AGENT_PATH` の解決結果を Read する。単一ファイルを指す場合はそのファイル全体を、
+   `SKILL.md` と `references/` を組み合わせる場合は `$AGENT_REFERENCES_PATH`（設定されていれば）も
+   含めた定義セット全体を使う
+2. `$AGENT_PATH` が単一ファイルの repo 内定義を指し、そこで解決できない場合だけ、
+   `/home/<user>/.claude/agents/<persona>.md`（setup.sh でデプロイ済みのもの）を使う
 
 Read ツールで以下も読み込む（repo 内を優先、なければ絶対パスで `~/.claude/` を使用）:
 - `skills/magi-common/references/task-base.md`
@@ -170,15 +163,13 @@ Read ツールで以下も読み込む（repo 内を優先、なければ絶対�
 - `$OUTPUT_FORMAT_PATH`（省略時は `skills/magi-common/references/output-format-v2.md`）
 
 取得したコード・差分とペルソナ定義・references/ の内容を合わせて `Agent(subagent_type="general-purpose", model="haiku")` に渡す:
-- `agents/<persona>.md` の全内容（ペルソナ・人格）
+- `$AGENT_PATH` の解決結果の全内容（単一ファイルならその全内容、定義セットなら `SKILL.md` と
+  `$AGENT_REFERENCES_PATH` の内容）
 - `skills/magi-common/references/task-base.md` の内容（共通タスク指示）
 - `skills/<persona>/references/task-instruction.md` の内容（ロール定義・few-shot例）
 - `skills/<persona>/references/review-criteria.md` の内容（レビュー観点・重大度基準）
 - `$OUTPUT_FORMAT_PATH` の内容（出力形式）
 - 「上記の $PERSONA_NAME ペルソナに従い、担当観点でレビューしてください」という指示
-
-**CASPER のみ:** エージェントへの指示に以下を追加:
-> CLAUDE.md 群の読み込みは agents/casper.md のステップ 1 で CASPER 自身が行う（`~/.claude/CLAUDE.md`、`./CLAUDE.md`、`./CLAUDE.local.md`）。
 
 **BALTHASAR のみ:** $MAGI_IMPACT_CONTEXT が設定されている場合、エージェントへの指示に以下を追加:
 > システムコンテキストとして以下の呼び出し元情報を参照してください: [MAGI_IMPACT_CONTEXT]
