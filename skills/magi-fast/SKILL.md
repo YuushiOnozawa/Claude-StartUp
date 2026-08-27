@@ -50,14 +50,58 @@ MAGI_ORCHESTRATED=true
 ## ステップ 4: CASPER 実行（`$BALTHASAR_RESULT` 取得後）
 
 `$BALTHASAR_RESULT` が得られたことを確認してから起動する。
-`/casper` スキルの手順に従い、同じ `$DIFF` を渡してレビューを実行する。
-実行が**完全に完了**した後、結果を `$CASPER_RESULT` として保持してからステップ 5 に進む。
+`skills/flow-common/references/casper-engine.md` の共通契約を Read し、
+`engine=magi`、`diff_source=$DIFF`、raw 出力先、Normalizer 一時ディレクトリ、失敗記録の受け口、
+および MAGI の同一 persona 内 dedup キーを渡して CASPER engine を実行する。magi-hard の
+`failed-personas.json` 基盤は使わず、CASPER 専用の軽量な実行ディレクトリを次のように作る。
+
+```bash
+CASPER_RUN_DIR=$(mktemp -d)
+CASPER_RAW_FILE="$CASPER_RUN_DIR/casper-raw.txt"
+CASPER_NORMALIZER_TMPDIR="$CASPER_RUN_DIR/normalizer"
+CASPER_NORMALIZED_FILE="$CASPER_RUN_DIR/casper-normalized.json"
+CASPER_FAILURE_SINK="$CASPER_RUN_DIR/failure-sink.json"
+mkdir -p "$CASPER_NORMALIZER_TMPDIR"
+rm -f -- "$CASPER_RAW_FILE" "$CASPER_NORMALIZED_FILE"
+printf '%s\n' '{"failed_personas":[],"failure_stage":null}' > "$CASPER_FAILURE_SINK"
+```
+
+engine には `raw_output_path="$CASPER_RAW_FILE"`、
+`normalizer_tmpdir="$CASPER_NORMALIZER_TMPDIR"`、`failure_sink="$CASPER_FAILURE_SINK"` を渡す。
+failure sink は `{"failed_personas":[...],"failure_stage":"..."}` 形式の JSON ファイルであり、
+成功時（`[]` を含む）は `failed_personas:[]` と `failure_stage:null`、失敗時は `CASPER` と
+`invoke_failed` / `normalize_failed` / `structure_failed` の段階を記録する。
+
+契約の raw 出力を `$CASPER_RESULT`、`status` を `$CASPER_ENGINE_STATUS`、
+`failure_stage` を `$CASPER_ENGINE_FAILURE_STAGE`、正規化済み dedup 後の配列を
+`$CASPER_ENGINE_FINDINGS` として保持してからステップ 5 に進む。ファイル受け渡しを使う場合の
+failure stage は次で復元する。
+
+```bash
+if [ -r "$CASPER_NORMALIZED_FILE" ]; then
+  CASPER_ENGINE_FINDINGS=$(cat "$CASPER_NORMALIZED_FILE")
+else
+  CASPER_ENGINE_FINDINGS=${CASPER_ENGINE_FINDINGS:-[]}
+  printf '%s\n' "$CASPER_ENGINE_FINDINGS" > "$CASPER_NORMALIZED_FILE"
+fi
+CASPER_ENGINE_FAILURE_STAGE=$(jq -r '.failure_stage // "null"' "$CASPER_FAILURE_SINK" 2>/dev/null || printf '%s\n' 'null')
+if [ -r "$CASPER_RAW_FILE" ]; then
+  CASPER_RESULT=$(cat "$CASPER_RAW_FILE")
+else
+  CASPER_RESULT=$(printf '%s\n' "${CASPER_ENGINE_FINDINGS:-[]}")
+fi
+```
+
+CASPER engine 内では `/casper` を `MAGI_ORCHESTRATED=true` で呼び出し、Haiku/no-confirmation、
+チャンク直列化、Normalizer、`source_persona=CASPER` 固定、失敗段階の記録までを完了する。
 
 ## ステップ 5: 結果の集計と判定
 
-### 5-1. 3体のバッチNormalizer呼び出し
+### 5-1. MELCHIOR/BALTHASAR のバッチNormalizer と CASPER 結果の接続
 
-MELCHIOR/BALTHASAR/CASPERは`$MAGI_ORCHESTRATED=true`で実行済みのため、生の結果（`$MELCHIOR_RESULT`/`$BALTHASAR_RESULT`/`$CASPER_RESULT`、チャンクヘッダー込み）を返している。1回のバッチ呼び出しにまとめてNormalizerへ渡す。
+MELCHIOR/BALTHASAR は `$MAGI_ORCHESTRATED=true` で実行済みのため、生の結果を1回のバッチ呼び出しに
+まとめて Normalizer へ渡す。CASPER の raw はこのバッチへ重ねて渡さず、ステップ 4 の共通契約が返した
+`$CASPER_ENGINE_FINDINGS` を正規化済み配列へ追加する。
 
 ```bash
 MAGI_TMPDIR_NORM=$(mktemp -d)
@@ -65,10 +109,17 @@ MAGI_TMPDIR_NORM=$(mktemp -d)
 
 `skills/magi-common/references/normalizer.md`（repo 内）または `~/.claude/skills/magi-common/references/normalizer.md` を Read ツールで読み込み、記載の手順に従ってNormalizerを実行する（手順中の `$MAGI_TMPDIR` は `$MAGI_TMPDIR_NORM` に読み替える）。
 
-- 入力: 3体の生結果を`=== PERSONA: <name> / CHUNK: <path> (<n>) ===`ヘッダーで連結したもの
+- 入力: MELCHIOR/BALTHASAR の生結果を`=== PERSONA: <name> / CHUNK: <path> (<n>) ===`ヘッダーで連結したもの
 - 出力: `$MAGI_TMPDIR_NORM/normalizer.json`
 
-失敗（`NORMALIZE_SKIPPED`/`NORMALIZE_ERROR`）した場合は、Haiku fallbackを試みる。それでも失敗する場合は3体すべて未判定として扱い、5-3のフォールバックへ進む。
+MELCHIOR/BALTHASAR の Normalizer が失敗（`NORMALIZE_SKIPPED`/`NORMALIZE_ERROR`）した場合は、Haiku
+fallbackを試みる。それでも失敗する場合は従来どおり3体すべて未判定として扱い、5-3のフォールバックへ進む。
+CASPER の `invoke_failed` / `normalize_failed` / `structure_failed` はこの経路へ合流させず、
+下記の CASPER 単体失敗として扱う。
+
+Normalizer が成功した場合は、MELCHIOR/BALTHASAR の配列に `$CASPER_ENGINE_FINDINGS` を追加して
+既存の `$GATE_INPUT` を組み立てる。CASPER の `source_persona` と dedup 結果は共通契約の値を使い、
+この段階で再度 CASPER の Normalizer や dedup を呼び出さない。
 
 ### 5-2. Codex軽量ゲート判定
 
@@ -111,6 +162,20 @@ MAGI_TMPDIR_GATE=$(mktemp -d)
 ブロック指摘: N件 / 要確認: M件 / 見送り: K件
 ```
 
+### CASPER 単体の失敗
+
+`$CASPER_ENGINE_STATUS` が `complete` 以外の場合は、MELCHIOR/BALTHASAR の結果を通常どおり表示した
+うえで、次を表示する。これは3体すべて未判定の5-3フォールバックへ合流させない。
+
+```
+⚠ CASPER の判定ができていないため LGTM は出しません。
+MELCHIOR/BALTHASAR の結果は以下のとおりです。
+理由: <invoke_failed/normalize_failed/structure_failed>
+```
+
+CASPER 単体失敗時は、MELCHIOR/BALTHASAR の block/defer/manual 件数を通常どおり提示するが、
+`✓ MAGI-FAST: 全体 LGTM` は出力してはならない。
+
 ### ブロック指摘（`$BLOCK_COUNT`）が 1 件以上の場合
 
 ```
@@ -120,11 +185,13 @@ MAGI_TMPDIR_GATE=$(mktemp -d)
 ブロック指摘の修正は `/codegen` で実装すること。Ollama が使えない場合のみ直接修正する。
 `gate=defer`の指摘は表示するがブロック対象にしない。`gate=manual`/`needs_human`の指摘はLGTMを妨げるが自動`/codegen`対象にはしない（ユーザー確認を促す）。
 
-### ブロック指摘が 0 件、かつ `$MANUAL_COUNT` も 0 件の場合
+### ブロック指摘が 0 件、`$MANUAL_COUNT` も 0 件、かつ CASPER が正常終了した場合
 
 ```
 ✓ MAGI-FAST: 全体 LGTM。/commit できます。
 ```
+
+`$CASPER_ENGINE_STATUS` が `complete` でない場合は、この LGTM 分岐を必ず抑止する。
 
 ### 5-1または5-2で判定に失敗した場合のフォールバック
 
