@@ -17,6 +17,7 @@
 - hard mode の終了コード `2` は findings table・監査など既存入力に加え、adjudication artifact の入力契約違反でも発生する。
 - CASPER（Haiku、diffサイズ依存のチャンク分割）1〜数回 + CASPER結果のバッチNormalizer（Haiku/Ollama）1回が別途発生する。チャンク数によりCASPERのHaiku呼び出し数は変動するため、固定回数と断定しない。
 - GitHub への投稿は行わない。
+- このスキル単独では投稿しない。投稿は生成した `review-post-request.json` を `/review-post` へ明示的に渡す別段階で行う。
 
 ## ステップ 1: diff の取得
 
@@ -551,7 +552,8 @@ if jq -e '.pipeline_status == "incomplete"' "$MERGE_OUTPUT_FILE" >/dev/null; the
 fi
 ```
 
-GitHubコメント、PR更新、コミット、ファイル編集はこの手順のスコープ外である。
+GitHubコメント、PR更新、コミット、ファイル編集はこの手順のスコープ外である。ステップ13で生成する request を
+`/review-post` に明示的に渡した場合だけ、別段階で GitHub 投稿を行う。
 
 ## ステップ 13: canonical findings artifact の出力
 
@@ -583,6 +585,127 @@ fi
 
 if [ -n "$ARTIFACT_NOTE" ]; then
   echo "canonical artifact: 生成失敗（⚠ $ARTIFACT_NOTE）"
+fi
+
+if [ -z "$ARTIFACT_NOTE" ]; then
+# merge の監査・妥当性監査が投稿可能な状態かを、engine の成果物から導出する。
+# pipeline_status=incomplete、監査/妥当性の全体失敗、または manual_review が残る場合は
+# audit 層として扱い、指摘をインライン/通常コメントへ送らず summary の一覧へ退避する。
+REVIEW_POST_POST_INLINE=true
+REVIEW_POST_BLOCK_LAYER=""
+REVIEW_POST_AUDIT_NOTE=""
+REVIEW_POST_FINDING_LIST_FILE="$REVIEW_TMPDIR/finding-list.txt"
+jq -r 'map("\(.id): [\(.gate)] \(.source_persona) — \(.path):\(.line // "?") — \(.headline)") | join("\n")' "$FINDINGS_TABLE_FILE" > "$REVIEW_POST_FINDING_LIST_FILE" || return 1
+if [ ! -s "$REVIEW_POST_FINDING_LIST_FILE" ]; then
+  printf '%s' "(集計対象の指摘がありません)" > "$REVIEW_POST_FINDING_LIST_FILE"
+fi
+
+if jq -e '
+  .pipeline_status == "incomplete"
+  or .grouping_global_failure == true
+  or .validity_global_failure == true
+  or ((.manual_review | type) == "array" and (.manual_review | length) > 0)
+' "$MERGE_OUTPUT_FILE" >/dev/null 2>&1; then
+  REVIEW_POST_POST_INLINE=false
+  REVIEW_POST_BLOCK_LAYER="audit"
+  REVIEW_POST_AUDIT_NOTE="AUDIT_SKIPPED（監査・妥当性監査または merge の結果を信頼できないため投稿を停止した）"
+fi
+
+for REVIEW_POST_REQUIRED_VAR in OWNER REPO PR_NUM HEAD_SHA; do
+  if [ -z "${!REVIEW_POST_REQUIRED_VAR:-}" ]; then
+    echo "review-post request に必要な PR 識別情報がありません: $REVIEW_POST_REQUIRED_VAR" >&2
+    return 1
+  fi
+done
+case "$PR_NUM" in ''|*[!0-9]*|0) return 1 ;; esac
+
+REVIEW_POST_REQUEST="$REVIEW_TMPDIR/review-post-request.json"
+REVIEW_POST_RESULT="$REVIEW_TMPDIR/review-post-result.json"
+jq -n \
+  --arg engine "codex" \
+  --arg owner "$OWNER" \
+  --arg repo "$REPO" \
+  --argjson number "$PR_NUM" \
+  --arg head_sha "$HEAD_SHA" \
+  --arg artifact "$ARTIFACT_FILE" \
+  --arg adjudication "$ADJUDICATION_FILE" \
+  --arg diff "$DIFF_FILE" \
+  --argjson post_inline "$REVIEW_POST_POST_INLINE" \
+  --arg block_layer "$REVIEW_POST_BLOCK_LAYER" \
+  --arg audit_note "$REVIEW_POST_AUDIT_NOTE" \
+  --arg importance_note "" \
+  --arg artifact_note "${ARTIFACT_NOTE:-}" \
+  --rawfile finding_list "$REVIEW_POST_FINDING_LIST_FILE" \
+  --arg result_path "$REVIEW_POST_RESULT" \
+  '{
+    schema_version:"1", artifact_type:"review-post-request", engine:$engine,
+    pr:{owner:$owner, repo:$repo, number:$number, head_sha:$head_sha},
+    inputs:{findings_artifact:$artifact, adjudication_result:$adjudication, diff:$diff},
+    engine_state:{
+      post_inline:$post_inline,
+      block_layer:(if $block_layer == "" then null else $block_layer end),
+      audit_note:(if $audit_note == "" then null else $audit_note end),
+      importance_note:null,
+      artifact_note:(if $artifact_note == "" then null else $artifact_note end),
+      normalized_results:null,
+      finding_list:(if $finding_list == "" then null else $finding_list end)
+    },
+    result_path:$result_path
+  }' > "$REVIEW_POST_REQUEST" || return 1
+
+echo "review-post request を生成しました: $REVIEW_POST_REQUEST"
+else
+  REVIEW_POST_REQUIRED_VAR=""
+  for REVIEW_POST_REQUIRED_VAR in OWNER REPO PR_NUM HEAD_SHA; do
+    if [ -z "${!REVIEW_POST_REQUIRED_VAR:-}" ]; then
+      echo "review-post request に必要な PR 識別情報がありません: $REVIEW_POST_REQUIRED_VAR" >&2
+      return 1
+    fi
+  done
+  case "$PR_NUM" in ''|*[!0-9]*|0) return 1 ;; esac
+
+  REVIEW_POST_REQUEST="$REVIEW_TMPDIR/review-post-request.json"
+  REVIEW_POST_RESULT="$REVIEW_TMPDIR/review-post-result.json"
+  REVIEW_POST_DIAGNOSTIC_FILE="$REVIEW_TMPDIR/artifact-failure-report.txt"
+  {
+    printf 'canonical artifact の生成に失敗しました（⚠ %s）\n\nFINDINGS_TABLE_FILE の内容:\n' "$ARTIFACT_NOTE"
+    if [ -r "${FINDINGS_TABLE_FILE:-}" ]; then
+      if [ -s "$FINDINGS_TABLE_FILE" ]; then
+        cat "$FINDINGS_TABLE_FILE" || true
+      else
+        printf '%s' "(空です)"
+      fi
+    else
+      printf '%s' "(読み取れません)"
+    fi
+  } > "$REVIEW_POST_DIAGNOSTIC_FILE"
+
+  jq -n \
+    --arg engine "codex" \
+    --arg owner "$OWNER" \
+    --arg repo "$REPO" \
+    --argjson number "$PR_NUM" \
+    --arg head_sha "$HEAD_SHA" \
+    --arg diff "$DIFF_FILE" \
+    --rawfile normalized_results "$REVIEW_POST_DIAGNOSTIC_FILE" \
+    --arg artifact_note "$ARTIFACT_NOTE" \
+    --arg result_path "$REVIEW_POST_RESULT" \
+    '{
+      schema_version:"1", artifact_type:"review-post-request", engine:$engine,
+      pr:{owner:$owner, repo:$repo, number:$number, head_sha:$head_sha},
+      inputs:{findings_artifact:null, adjudication_result:null, diff:$diff},
+      engine_state:{
+        post_inline:false,
+        block_layer:"structure",
+        audit_note:null,
+        importance_note:null,
+        artifact_note:$artifact_note,
+        normalized_results:$normalized_results,
+        finding_list:null
+      },
+      result_path:$result_path
+    }' > "$REVIEW_POST_REQUEST" || return 1
+  echo "review-post request を生成しました（report-only）: $REVIEW_POST_REQUEST"
 fi
 ```
 
