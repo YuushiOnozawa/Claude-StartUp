@@ -187,7 +187,6 @@ failure sink の `failure_stage` は JSON の `null`（成功）または
 `invoke_failed` / `normalize_failed` / `structure_failed`（失敗）として受け渡す。
 
 ```bash
-printf '%s\n' "${CASPER_ENGINE_FINDINGS:-[]}" > "$CASPER_NORMALIZED_FILE"
 CASPER_ENGINE_FAILURE_STAGE=$(jq -r '.failure_stage // "null"' "$CASPER_FAILURE_SINK" 2>/dev/null || printf '%s\n' 'null')
 if [ -r "$CASPER_RAW_FILE" ]; then
   CASPER_RESULT=$(cat "$CASPER_RAW_FILE")
