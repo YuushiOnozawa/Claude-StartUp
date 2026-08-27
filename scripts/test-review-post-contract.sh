@@ -231,7 +231,8 @@ run_post "$CASE_DIR/request.json" 422
 if [[ "$POST_EXIT" -eq 0 ]] \
   && assert_result "$CASE_DIR/result.json" '.status == "posted" and .counts.inline_posted == 0 and .counts.fallback_posted == 1 and (.items[] | select(.id=="M-001") | .delivery == "pr_comment")' \
   && [[ "$(count_kind inline)" -eq 1 ]] && [[ "$(count_kind issue)" -eq 2 ]] \
-  && grep -Fq 'PATH:new.sh' "$GH_LOG" && grep -Fq 'old.sh:1' "$GH_LOG"; then
+  && grep -Fq 'PATH:new.sh' "$GH_LOG" && grep -Fq 'old.sh:1' "$GH_LOG" \
+  && grep -Fq 'quote "x"' "$GH_LOG"; then
   result=0
 else
   result=1
