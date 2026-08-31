@@ -93,6 +93,10 @@ ISSUE_NUM=$(echo "$ISSUE_URL" | grep -oE '[0-9]+$')
 
 Append `$ISSUE_NUM` to `$ISSUE_LIST` (e.g., `ISSUE_LIST+=("$ISSUE_NUM")`). Repeat for all Features, then present the Issue list to the user.
 
+### Fast backend default
+
+Phase 3 完了後、Phase 4 開始前に `AskUserQuestion` を 1 回だけ呼び、fast backend の既定値を選択して `$REVIEW_FAST_BACKEND` に `magi` または `codex` を設定する。ここでは hard backend を選択しない。
+
 ## Phase 4: FEATURE LOOP
 
 Process `$ISSUE_LIST` from the top, one at a time.
@@ -105,7 +109,11 @@ Process `$ISSUE_LIST` from the top, one at a time.
 
 ### Execute /dev-flow
 
-Execute `/dev-flow`, using the relevant Issue's content as the Phase 1 (PLAN) requirements.
+関連 Issue の内容を Phase 1 (PLAN) の要件として使い、呼び出しコンテキスト / `ARGUMENTS` 文面に `review fast backend=<magi|codex>` の形で実際の `$REVIEW_FAST_BACKEND` の値を明示して `/dev-flow` を実行する。`/dev-flow` はその値を使い、backend 選択 UI を表示しない。Feature 開始時や PR 作成時に backend を再質問しない。
+
+ユーザーが明示的に fast override を求めた場合だけ `AskUserQuestion` を呼び、`$REVIEW_FAST_BACKEND_OVERRIDE` に設定する。この `/dev-flow` 呼び出しにだけ渡し、戻ったら破棄して次の Feature に持ち越さない。
+
+epic-flow のスコープは fast の既定値と fast override のみである。hard は Feature loop で実行されないため、epic-flow は hard backend の状態変数を設定も破棄もしない。hard backend の確定・保持・破棄は `/pr-review` 経由の `/review-hard` 側の責務である。
 
 > Design review inside dev-flow targets the plan (as normal).
 
@@ -133,5 +141,5 @@ After all Issues are processed:
 
 次のステップ：
 - /pr-review-respond でレビュー対応
-- /magi-hard で PR レビュー
+- /review-hard で PR レビュー
 ```
