@@ -16,6 +16,7 @@ Codex 5ペルソナ（MELCHIOR/BALTHASAR/METATRON/SANDALPHON/LELIEL）を逐次b
 監査Codexによる意味的グルーピングとペルソナ帰属の決定まで行う読み取り専用レビューである。
 CASPER の呼び出し・検出・正規化・persona固定・失敗捕捉・dedup は同共通契約を参照し、結果を downstream へ渡す。
 既存の`/magi-hard`（ローカルLLM）とは独立したCodexベースのレビューである。`/magi-hard` とはどちらか一方を選んで実行し、両方の実行は不要である。
+このスキルは成果物として `review-post-request.json` を生成するが、単独では投稿しない。GitHubへ投稿するには、別途その request を `/review-post` に明示的に渡す必要がある。
 
 ## 前提
 

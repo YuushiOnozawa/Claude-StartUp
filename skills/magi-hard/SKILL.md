@@ -7,7 +7,7 @@ description: MAGI 6体（melchior→balthasar→casper→metatron→sandalphon�
 
 MAGI の6体を順次実行し、PR の全差分を深くレビューする。
 各体は担当ドメインに専念し、ドメイン分離によって重複を防ぐ。
-HIGH/MEDIUM 指摘を GitHub PR のインラインコメントとして投稿し、サマリも別途投稿する。
+`final_gate:"block"` の指摘を GitHub PR へ投稿し、サマリも別途投稿する。
 
 ## 前提
 
@@ -46,8 +46,8 @@ FAILED_PERSONAS_JSON='[]'
 printf '%s\n' "$FAILED_PERSONAS_JSON" > "$MAGI_RUN_DIR/failed-personas.json"
 ```
 
-`$MAGI_RUN_DIR/pr.diff` は**ステップ 5（grounding）の第2引数**になる。
-ここで書き出さないと grounding の呼び出しが毎回非ゼロになり、
+`$MAGI_RUN_DIR/pr.diff` は**ステップ 5 で生成する review-post request の diff 入力**になる。
+ここで書き出さないと review-post が grounding を実行できず、
 **常時失敗経路へ落ちて全件 `unanchorable` になり、インライン補正が一度も機能しない**。
 
 > ⚠ **`$MAGI_TMPDIR` を PR 全体用に流用してはならない。**
@@ -699,362 +699,103 @@ fi
 
 ## ステップ 5: grounding（アンカーの確認と補正）
 
-**`$POST_INLINE` が `false` の場合はこのステップを丸ごとスキップし、ステップ 6 に進む。**
-HIGH/MEDIUM 指摘が 0 件の場合も同様にスキップする（4-1 で `$GROUNDING_NOTE=""` を設定済み）。
-
-grounding は **監査の代替ではなく補助検査**である。担当するのは
-**アンカーの確認と行ズレの補正**（`ok` / `corrected` / `unverified` / `unanchorable` の判定）だけで、
-**semantic な妥当性判定と、幻覚の断定・finding の除外は行わない**（どちらも Codex 監査の責務）。
-
-> **grounding は finding を1件も消さない。`dropped` という状態を持たない。**
-> 引用候補が全部見つからなくても、それを幻覚と断定してはならない。
-> 「`subprocess.run([...])` に置き換えるべき」のように**修正案だけ**をコードスパンにする
-> 妥当な指摘は普通にあり、その修正案は diff にも作業ツリーにも存在しない。
-> 「全候補が不在＝幻覚」は成立しない。**アンカーできなければ通常 PR コメントへ退避するだけ**にする。
-
-**`original_line`が`null`のfinding（Normalizerがline番号を確信を持って抽出できなかったもの）は、`scripts/magi-ground-findings.sh`に渡す前に除外する。** このスクリプトは`original_line`の型が`number`であることを全件に要求しており、`null`が1件でも混じると**表全体が拒否されてスクリプトが失敗し、他の全findingまで`unanchorable`に巻き込まれる**（5-3の失敗経路）。これを避けるため、`null`のfindingは直接`anchor_status: "unanchorable"`として扱い、スクリプトの入力には含めない。
+grounding と GitHub 投稿は、共通後段の `/review-post` に委譲する。このステップでは、4-1 完了時点の
+`$FINDINGS_TABLE`、4-5/4-6 の成果物、PR diff、層別状態を request JSON にまとめる。
+`POST_INLINE` はステップ7相当の投稿可否だけを表し、サマリ投稿の可否には使わない。
 
 ```bash
-GROUNDING_NOTE=""
-ANCHORS_JSON="$MAGI_RUN_DIR/anchors.json"
+REVIEW_POST_REQUEST="$MAGI_RUN_DIR/review-post-request.json"
+REVIEW_POST_RESULT="$MAGI_RUN_DIR/review-post-result.json"
+REVIEW_POST_DIFF="$MAGI_RUN_DIR/pr.diff"
+REVIEW_POST_NORMALIZED="$MAGI_RUN_DIR/normalized-results.txt"
+REVIEW_POST_FINDING_LIST="$MAGI_RUN_DIR/finding-list.txt"
 
-# original_line が null の finding を分離し、直接 unanchorable にする
-NULL_LINE_ANCHORS=$(jq -c '[.findings[] | select(.original_line == null) | {id, anchored_path: "", anchored_line: 0, side: "", anchor_status: "unanchorable"}]' "$FINDINGS_TABLE")
-GROUNDABLE_TABLE="$MAGI_RUN_DIR/findings-table-groundable.json"
-jq '{schema_version, findings: [.findings[] | select(.original_line != null)]}' "$FINDINGS_TABLE" > "$GROUNDABLE_TABLE"
-
-if [ "$(jq '.findings | length' "$GROUNDABLE_TABLE")" = "0" ]; then
-  # groundable な finding が無い（全件 null-line）場合はスクリプトを呼ばず、
-  # NULL_LINE_ANCHORS だけを anchors とする
-  jq -n --argjson anchors "$NULL_LINE_ANCHORS" '{schema_version: "1", anchors: $anchors}' > "$ANCHORS_JSON"
-  GROUNDING_OK=true
-elif bash scripts/magi-ground-findings.sh "$GROUNDABLE_TABLE" "$MAGI_RUN_DIR/pr.diff" > "$MAGI_RUN_DIR/anchors-script.json" 2>/dev/null; then
-  # スクリプト出力と null-line 分を合成する
-  jq -n --argjson script "$(jq '.anchors' "$MAGI_RUN_DIR/anchors-script.json")" --argjson nullpart "$NULL_LINE_ANCHORS" \
-    '{schema_version: "1", anchors: ($script + $nullpart)}' > "$ANCHORS_JSON"
-  GROUNDING_OK=true
+# jq の --rawfile に任せて、structure/audit 経路の退避本文も改行・引用符を保つ。
+if [ -n "${NORMALIZED_RESULTS:-}" ] && [ -r "$NORMALIZED_RESULTS" ]; then
+  cat -- "$NORMALIZED_RESULTS" > "$REVIEW_POST_NORMALIZED"
 else
-  GROUNDING_OK=false
+  printf '%s' "" > "$REVIEW_POST_NORMALIZED"
 fi
+printf '%s' "${FINDING_LIST:-}" > "$REVIEW_POST_FINDING_LIST"
+
+POST_INLINE_JSON="${POST_INLINE:-true}"
+BLOCK_LAYER_VALUE="${BLOCK_LAYER:-}"
+ARTIFACT_PATH_VALUE="${ARTIFACT_FILE:-}"
+ADJUDICATION_PATH_VALUE="${ADJUDICATION_RESULT:-}"
+if [ "$BLOCK_LAYER_VALUE" = "structure" ]; then
+  ARTIFACT_PATH_VALUE=""
+  ADJUDICATION_PATH_VALUE=""
+fi
+
+jq -n \
+  --arg engine "magi" \
+  --arg owner "$OWNER" \
+  --arg repo "$REPO" \
+  --argjson number "$PR_NUM" \
+  --arg head_sha "$HEAD_SHA" \
+  --arg artifact "$ARTIFACT_PATH_VALUE" \
+  --arg adjudication "$ADJUDICATION_PATH_VALUE" \
+  --arg diff "$REVIEW_POST_DIFF" \
+  --argjson post_inline "$POST_INLINE_JSON" \
+  --arg block_layer "$BLOCK_LAYER_VALUE" \
+  --arg audit_note "${AUDIT_NOTE:-}" \
+  --arg importance_note "${IMPORTANCE_NOTE:-}" \
+  --arg artifact_note "${ARTIFACT_NOTE:-}" \
+  --rawfile normalized_results "$REVIEW_POST_NORMALIZED" \
+  --rawfile finding_list "$REVIEW_POST_FINDING_LIST" \
+  --arg result_path "$REVIEW_POST_RESULT" \
+  '{
+    schema_version:"1", artifact_type:"review-post-request", engine:$engine,
+    pr:{owner:$owner, repo:$repo, number:$number, head_sha:$head_sha},
+    inputs:{
+      findings_artifact:(if $artifact == "" then null else $artifact end),
+      adjudication_result:(if $adjudication == "" then null else $adjudication end),
+      diff:$diff
+    },
+    engine_state:{
+      post_inline:$post_inline,
+      block_layer:(if $block_layer == "" then null else $block_layer end),
+      audit_note:(if $audit_note == "" then null else $audit_note end),
+      importance_note:(if $importance_note == "" then null else $importance_note end),
+      artifact_note:(if $artifact_note == "" then null else $artifact_note end),
+      normalized_results:(if $normalized_results == "" then null else $normalized_results end),
+      finding_list:(if $finding_list == "" then null else $finding_list end)
+    },
+    result_path:$result_path
+  }' > "$REVIEW_POST_REQUEST" || return 1
 ```
 
-`anchors` の各要素は次の形をとる。
-
-```json
-{ "schema_version": "1",
-  "anchors": [
-    { "id": "M-001", "anchored_path": "scripts/example.sh", "anchored_line": 19,
-      "side": "RIGHT", "anchor_status": "corrected" }
-  ] }
-```
-
-| 状態 | `anchor_status` | 投稿 |
-|---|---|---|
-| 新側の行にアンカーできる | `ok` / `corrected` | インライン（`side: RIGHT`） |
-| 旧側の行にアンカーできる | `ok` / `corrected` | インライン（`side: LEFT`） |
-| 引用候補が空、かつ `original_line` が rename後の新パスの追加行として一意に確認できる | `unverified` | インライン（`side: RIGHT`）、本文に「位置未検証」の注記を付ける |
-| **上記以外すべて**（位置を特定できない / 引用候補はあるが全候補が不在 / context・作業ツリーでしか見つからない / 引用候補が空で行番号も確認できない） | `unanchorable` | **通常 PR コメントへ退避** |
-
-**旧側にしか無い引用を一律に落とさない。** 「削除された検証」「弱められたチェック」を
-根拠とする指摘は正当であり、`side: LEFT` のインラインとして投稿できる。
-
-**context / 作業ツリーの引用でアンカーできた場合も `unanchorable`**（インライン投稿しない）。
-LELIEL は `<IMPACT_CONTEXT>` の呼び出し元証拠を根拠にする契約で、
-根拠が diff 外の既存ファイルにあるのが正常系。PR diff 上に対応行が無いのでインラインは張れない。
-
-### 5-1. 適用前の検証
-
-`$GROUNDING_OK` が `true` でも、適用前に次を**すべて**検証する。
-**1つでも満たさなければ 5-3 の失敗経路（全件 `unanchorable`）に倒す。**
-
-- `anchors` の `id` 集合が `$FINDINGS_TABLE` の `id` 集合と**過不足なく・重複なく一致**する
-- `anchor_status` が `ok` / `corrected` / `unverified` / `unanchorable` のいずれか（**未知の値を通さない**）
-- `anchor_status` が `ok` / `corrected` のとき、`anchored_path` が非空文字列、
-  `anchored_line` が正の整数、`side` が `RIGHT` / `LEFT` のいずれか（**前後空白を許さない**）
-- `anchor_status` が `ok` / `corrected` のとき、`anchored_path` が `$DIFF` の変更対象に含まれ、
-  **`anchored_line` が PR diff 上でコメント可能な位置**である
-- `anchor_status` が `unverified` のとき、`anchored_path` が非空文字列、
-  `anchored_line` が正の整数、`side` が `RIGHT` であり、`anchored_path` が `$DIFF` の変更対象に含まれ、
-  **`anchored_line` が PR diff 上の新側追加行としてコメント可能な位置**である
-- `anchor_status` が `unanchorable` のとき、`anchored_*` / `side` は**参照しない**（値があっても無視する）
-
-ID 集合だけを見ると、`anchor_status: "ok"` なのに `anchored_line` が `null`、`side` が `"RIGHT "`、
-未知の `anchor_status: "partial"`、**別 finding の `anchored_path` / `anchored_line`** が入った JSON が
-そのまま適用され、不正なインライン投稿・未定義分岐・誤行投稿になる。
-新側行数の範囲内チェックだけでは投稿成功の根拠にならないので、コメント可能位置まで見る。
-
-**`anchors` を部分採用してはならない。** 1件でも欠落・不一致があれば出力全体が信用できないため、
-**残りの ID も含めて全件 `unanchorable`** にする。
-欠落 ID だけ通常コメントへ退避し、残りをインライン投稿するのは不合格。
-
-> **`id` で join する。入力順の一致に依存してはならない。**
-> 順序 join では、スクリプトが1件でも要素を落とすと**後続 finding の anchor が前の ID にずれて入る**。
-> `$FALSE_POSITIVE_IDS` を先に除外しても、`valid` / `needs_human` の別 ID に誤った anchor が
-> 付いたままなので**間違った行へインラインが飛ぶ**。
-
-### 5-2. 表への反映
-
-検証を通ったら、`$FINDINGS_TABLE` の各 finding に `id` で join して
-`anchored_path` / `anchored_line` / `side` / `anchor_status` を書き足す。
-
-**フィールド名は `anchors` と同一にすること。** ずれると（例: `path` / `line` を読む）
-補正位置が空扱いになり、5-1 の検証に落ちて全件 `unanchorable` になる。
-
-反映後の形:
-
-```json
-{ "id": "M-001", "persona": "MELCHIOR", "severity": "HIGH",
-  "headline": "unquoted variable causes word splitting",
-  "body": "…複数行の raw 本文…",
-  "evidence": "$cmd $arg",
-  "original_path": "scripts/example.sh", "original_line": 17,
-  "anchored_path": "scripts/example.sh", "anchored_line": 19,
-  "side": "RIGHT", "anchor_status": "corrected" }
-```
-
-**`original_*` と `anchored_*` を1組のフィールドで兼ねてはならない。**
-grounding が失敗した場合や `unanchorable` の場合、`anchored_*` は空になる。
-兼ねると `$FINDING_LIST`（`filepath:line` が必須）もサマリも通常 PR コメントの場所表示も作れなくなる。
-
-- `$FINDING_LIST` と通常 PR コメントの場所表示は **`original_*` を使う**（常に存在する）
-- インラインコメントの位置は **`anchored_*` を使う**（`ok` / `corrected` / `unverified` のときのみ存在する）
-
-### 5-3. grounding が失敗した場合
-
-次のいずれか。
-
-- スクリプトが非ゼロで終了した（`$GROUNDING_OK` が `false`）
-- `anchors` が parse できない
-- 5-1 の検証を1つでも満たさない
-
-このとき:
-
-- **`$FINDINGS_TABLE` の全 finding に `anchor_status: "unanchorable"` を書き足す**
-  （`anchored_path` は空文字、`anchored_line` は 0、`side` は空文字）。
-  **「全件 `unanchorable` として扱う」を心構えで済ませ、表に書かないではならない。**
-  ステップ 7 は本文も位置も表から引き、`anchor_status` で分岐するため、
-  フィールドが無いと**退避経路が未定義になり、指摘が PR から消える**
-- インライン投稿はせず、通常 PR コメントに出す
-- **`$POST_INLINE` は変更しない。** anchor 層の失敗は位置が確定しないだけで、投稿自体は可能
-- **`$BLOCK_IDS` に含まれない ID（`final_gate != "block"`）の除外と `$POST_INLINE=false` のスキップは通常どおり適用する。**
-  「全 finding」は「監査を通過した投稿対象の全件」の意味であって、
-  誤検知と判定されたものまで出すという意味ではない
-- `$GROUNDING_NOTE` を設定する（無言でスキップしない）:
-
-```bash
-GROUNDING_NOTE="GROUNDING_FAILED（アンカーを確認できなかったため全件を通常 PR コメントとして投稿する）"
-```
-
-`$GROUNDING_NOTE` は**ステップ 6（サマリ投稿）の本文**と**ステップ 8（結果表示）**に出す。
-grounding をサマリ投稿より前に置いたのはこのため。
-
-> **`$AUDIT_NOTE` に相乗りしない。`$GROUNDING_NOTE` を別に用意する。**
-> ステップ 4-3 は冒頭で `AUDIT_NOTE=""` を再代入する。grounding は 4-3 の後なので
-> 上書きはされないが、同じ変数に混ぜると
-> **「監査の状態」と「anchor 層の状態」が区別できなくなり、どちらの失敗か判別できない**。
-> 変数を分けて層ごとに独立させる。
-
-> **`$FINDINGS_TABLE` 自体が壊れているケースはここに含めない。** それは 4-1 の構造検証で
-> `POST_INLINE=false` / `BLOCK_LAYER=structure` に倒しており、表が読めない以上
-> この経路（通常 PR コメントへ退避）は実行できない。
-
-### 層ごとの責務
-
-| 層 | 失敗時の挙動 | `$POST_INLINE` |
-|---|---|---|
-| 構造化層（`$FINDINGS_TABLE` 生成・構造検証） | 4-2 / 4-3 とステップ 5・7 をスキップし、ステップ 6 で `$NORMALIZED_RESULTS` を出す | **`false`** |
-| 監査層（Codex audit） | インライン投稿を一切しない。`$FINDING_LIST` をサマリに出す | **`false`** |
-| 重要度層（Codex importance） | 対象findingの`severity`が`UNRATED`のまま残る。サマリのみに記載しインライン投稿しない | **変更しない**（他findingの投稿は継続） |
-| anchor 層（grounding） | インラインは張らず全件を通常 PR コメントへ | **変更しない** |
-
-anchor 層だけ `$POST_INLINE` を触らないのは、**位置が確定しないだけで投稿自体は可能**だから。
-
-**これが fail-safe になる理由**: 「アンカーを確認できていない位置にインラインを張らない」で統一される。
-grounding を素通りさせて元の `path:line` でインライン投稿すると、
-**モデルが誤った行がたまたま diff 上でコメント可能だった場合に 422 も出ず、間違った行に付く**。
-「取れなかった」と「何も無かった」を区別する思想は、監査層だけでなく anchor 層にも要る。
-
-> **引用候補は「根拠」と「修正提案」を区別できない。** 提案側だけが実在して `ok` になり、
-> 問題箇所でない行にインラインが付くケースは残る。これは**インライン位置の質の問題**であって
-> fail-open ではない。指摘自体は Codex 監査が semantic に評価する。
+この request を次のステップで `/review-post` へ渡す。structure 経路では artifact と adjudication を null にし、
+`$NORMALIZED_RESULTS` を raw のまま渡す。それ以外では canonical artifact と adjudication result のパスを必ず渡す。
+grounding は投稿対象を絞る前の canonical findings 全件を対象にし、null-line の分離、アンカー検証、422 フォールバックは
+review-post 契約に従う。
 
 ## ステップ 6: サマリコメント投稿
 
-6体のレビュー完了後、まず PR 全体に**サマリコメント**を1件投稿する。インライン指摘より先に投稿することで、レビュー全体像をレビュアーが把握しやすくなる。
-
-```bash
-SUMMARY_URL=$(gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
-  -f body="## MAGI-HARD レビュー完了
-
-| ペルソナ | HIGH | MEDIUM | LOW |
-|---------|------|--------|-----|
-| MELCHIOR（コード品質・バグ） | N | M | K |
-| BALTHASAR（設計・アーキテクチャ） | N | M | K |
-| CASPER（ルール遵守） | N | M | K |
-| METATRON（セキュリティ） | N | M | K |
-| SANDALPHON（実行環境・デプロイ） | N | M | K |
-| LELIEL（既存ソース影響） | N | M | K |
-
-**HIGH: N件 / MEDIUM: M件 / LOW: K件**（LOW はインラインコメント対象外）
-
-> 各行への指摘はインラインコメントとして続けて投稿します。対応完了後は各インラインコメントに返信してください（\`/pr-review-respond\` で自動化可能）
-
-$AUDIT_NOTE が空でない場合はサマリ末尾に以下を追記する:
-> ⚠ Codex 監査: \`$AUDIT_NOTE\`
-
-$IMPORTANCE_NOTE が空でない場合はサマリ末尾に以下を追記する:
-> ⚠ 重要度判定: \`$IMPORTANCE_NOTE\`（該当件数はサマリのみに記載しインライン投稿しない）
-
-$GROUNDING_NOTE が空でない場合はサマリ末尾に以下を追記する:
-> ⚠ grounding: \`$GROUNDING_NOTE\`
-
-$ARTIFACT_NOTE が空でない場合はサマリ末尾に以下を追記する:
-> ⚠ canonical artifact: \`$ARTIFACT_NOTE\`
-
-Codex 監査で `false_positive` 除外が発生した場合は以下を追記する:
-> Codex 監査除外: N件（誤検知と判定）" \
-  --jq '.html_url')
-```
-
-**severity表（HIGH/MEDIUM/LOW）の3列は維持する。** `severity == "UNRATED"`（4-4失敗分）は列に含めず、別途「重要度判定失敗: N件（サマリのみ）」として記載する。
-
-### `$POST_INLINE` が `false` の場合
-
-**上記の `-f body=` に渡す文字列の末尾へ、以下を組み込んでから投稿する。**
-別コメントとして後から投稿するのではなく、同じサマリコメントの本文に含める。
-これを忘れるとステップ 7 がスキップされる一方で本文にも指摘が入らず、**指摘が PR から消える**。
-
-指摘を捨てるのではなく、人間が取捨選択できる形で本文に載せる。
-
-**`$BLOCK_LAYER` で文言と一覧の出所を切り替える。**
-
-| `$BLOCK_LAYER` | 立てた場所 | サマリの文言 | 一覧の出所 |
-|---|---|---|---|
-| `structure` | 4-1 の構造検証失敗 / 表 parse 失敗 | 「⚠ 指摘の構造化に失敗したため未整形のまま一覧表示する」 | `$NORMALIZED_RESULTS` |
-| `audit` | 4-3 で `POST_INLINE=false` に倒すすべての分岐 | 「⚠ Codex 監査が実行できなかったため指摘は投稿せず以下に一覧表示する」 | `$FINDING_LIST` |
-
-**構造化失敗をそのまま監査失敗の文言へ流してはならない。**
-監査は実行すらしていないのに「監査が失敗した」と誤表示し、
-`$FINDING_LIST` は導出不能なので一覧が空になり、**指摘が PR から消える**。
-
-`$BLOCK_LAYER` が `audit` の場合:
-
-```markdown
-> ⚠ Codex 監査が実行できなかったため指摘は投稿せず以下に一覧表示する（理由: `$AUDIT_NOTE`）
-
-<details><summary>未監査の指摘一覧</summary>
-
-M-001: [HIGH] MELCHIOR — filepath:line — headline
-M-002: [MEDIUM] BALTHASAR — filepath:line — headline
-...
-
-</details>
-```
-
-一覧は `$FINDING_LIST` をそのまま使う。実測で指摘の 55% が誤検知であるため、
-監査を経ていない指摘をインラインコメントとして PR に撒くことはしない。
-
-`$BLOCK_LAYER` が `structure` の場合:
-
-```markdown
-> ⚠ 指摘の構造化に失敗したため未整形のまま一覧表示する
-
-<details><summary>未整形の指摘一覧</summary>
-
-（$NORMALIZED_RESULTS の内容をそのまま貼る）
-
-</details>
-```
+`skills/review-post/SKILL.md` を Read して手順に従い、`/review-post "$REVIEW_POST_REQUEST"` を実行する。
+実行後は `$REVIEW_POST_RESULT` を読み、サマリ投稿が完了したこと、または終了コード1/2の理由を確認する。
+サマリは `post_inline` の値に関係なく review-post が常に投稿する。終了コード2は入力契約違反として停止し、
+終了コード1は GitHub API の失敗として後続へ成功扱いで渡さない。
 
 ## ステップ 7: GitHub インラインコメント投稿
 
-**`$POST_INLINE` が `false` の場合はこのステップを丸ごとスキップし、ステップ 8 に進む。**
-指摘はステップ 6 のサマリ本文に一覧表示済みであり、失われない。
-`$AUDIT_NOTE` だけを付けて投稿を続けると、監査結果が無い状態で全件投稿する fail-open になる。
+GitHub への実投稿はステップ6で review-post が完了しているため、このステップでは投稿を行わない。
+`$REVIEW_POST_RESULT` の `items[]`、`counts`、`github_writes`、および review-post の終了コードを検査するだけにする。
+`post_inline:false` の場合は summary-only/audit/structure の結果であり、ステップ7相当のインライン投稿・通常 PR コメント退避は
+実行されず、指摘一覧はステップ6のサマリ本文に埋め込まれている。grounding fallback の場合は
+`anchor_status:"unanchorable"` と `delivery:"pr_comment"` を確認する。
 
-> **`$POST_INLINE` は「このステップを実行するか」の gate** と定義する
-> （「インラインコメントを張るか」ではない）。
-> このステップは**インラインコメントと通常 PR コメントの両方**を担当し、
-> `false` は**両方とも投稿しない**ことを意味する。
-> anchor 層の失敗で `$POST_INLINE` を触らないのはこのため——**通常 PR コメントは出せるので
-> ステップ 7 自体は実行する必要がある**。ここを「インラインを張るか」と読んで
-> grounding 失敗時に `false` へ倒すと、**退避先の通常 PR コメントごと消える**。
-
-**投稿対象は `$FINDING_LIST` の各 ID である。6体の raw 結果を再走査してはならない。**
-raw 結果から抽出し直すと、ステップ 3.7 で除外した指摘が戻り、finding ID も対応付かないため
-`$FALSE_POSITIVE_IDS` による除外が効かなくなる。
-
-**本文と位置は `$FINDING_LIST` の各 ID で `$FINDINGS_TABLE` を引いて取る。**
-body も anchor 情報も同じ表の同じ行から取るので、**取り違えが構造的に起きない**。
-
-> 「本文は 6体の結果から対応する見出しを引いて使う」という従来のやり方は**廃止する**。
-> 同一ペルソナが同じ headline を2件出すと、headline 照合は別 finding の本文を拾う。
-
-### 投稿対象の判定順序
+検査後、ステップ8が結果を表示できるよう、サマリ URL、投稿件数、`grounding_note` を `$REVIEW_POST_RESULT` の
+`github_writes` / `counts` / `grounding_note` から設定する。review-post の終了コード1/2は成功として扱わず、終了理由と
+成功済みの `github_writes` を保持したまま報告する。
 
 ```bash
-BLOCK_IDS=$(jq -r '.results[] | select(.final_gate == "block") | .id' "$ADJUDICATION_RESULT" 2>/dev/null)
+SUMMARY_URL=$(jq -r 'first(.github_writes[] | select(.kind == "summary") | .url) // ""' "$REVIEW_POST_RESULT")
+INLINE_COUNT=$(jq -r '.counts.inline_posted' "$REVIEW_POST_RESULT")
+FALLBACK_COUNT=$(jq -r '.counts.fallback_posted' "$REVIEW_POST_RESULT")
+GROUNDING_NOTE=$(jq -r '.grounding_note // ""' "$REVIEW_POST_RESULT")
 ```
 
-1. **`$BLOCK_IDS` に含まれる ID だけを投稿対象とする。** それ以外の ID は投稿しない。`final_gate` の導出規則により、`needs_human` でも `importance` が `HIGH`/`MEDIUM` なら `block` として投稿対象になる。
-2. `$BLOCK_IDS` に含まれる ID について `anchor_status` で**事前分岐**する（422 エラーを待たない）。
-
-| `anchor_status` | 経路 |
-|---|---|
-| `ok` / `corrected` | `anchored_path` / `anchored_line` / `side` でインラインコメント |
-| `unverified` | `anchored_path` / `anchored_line` / `side` でインラインコメント。本文冒頭に「⚠ 位置は未検証（evidence引用なし、original_lineの実在確認のみ）」を付記 |
-| `unanchorable` | **`anchored_line` / `side` を読まずに**通常 PR コメントへ退避 |
-| **フィールドが無い** | `unanchorable` と同じ扱い（通常 PR コメントへ退避） |
-
-最後の行は保険である。ステップ 5 は成功時も失敗時も全 finding に `anchor_status` を書き足すため、
-正常系では発生しない。**ここを未定義のまま放置すると指摘が PR から消える**ので、明示する。
-
-> ⚠ ローカルLLMが英語で出力した場合は、コメント本文に使用する前に日本語に翻訳する。
-
-### インラインコメントの投稿方法
-
-```bash
-gh api -X POST repos/$OWNER/$REPO/pulls/$PR_NUM/comments \
-  -f body="[MAGI-HARD] **[HIGH] MELCHIOR（コード品質・バグ）**
-
-<指摘内容>" \
-  -f path="scripts/example.sh" \
-  -F line=19 \
-  -f side="RIGHT" \
-  -f commit_id="$HEAD_SHA" \
-  --jq '.html_url'
-```
-
-`path` / `line` / `side` は表の `anchored_path` / `anchored_line` / `side` を使う。
-
-コメント本文の形式：
-```
-[MAGI-HARD] **[HIGH] <ペルソナ名>（<観点>）** または **[MEDIUM] <ペルソナ名>（<観点>）**
-
-<指摘の詳細内容>
-```
-
-`anchor_status` が `unverified` のときは、本文冒頭に次を付ける:
-
-```
-⚠ 位置は未検証（evidence引用なし、original_lineの実在確認のみ）
-
-<指摘の詳細内容>
-```
-
-### `unanchorable` の退避と 422 フォールバック
-
-`anchor_status` が `unanchorable` の指摘は、通常の PR コメントとして投稿する。
-場所表示には **`original_path`:`original_line`** を使う（`anchored_*` は空のため）。
-
-```bash
-gh api -X POST repos/$OWNER/$REPO/issues/$PR_NUM/comments \
-  -f body="[MAGI-HARD] **[HIGH/MEDIUM] <ペルソナ>** `ファイルパス:行番号`
-
-<指摘内容>"
-```
-
-インライン投稿が API エラー `422` を返した場合も、同じ形で通常 PR コメントへ退避する。
 
 ## ステップ 8: 結果のサマリ表示
 
