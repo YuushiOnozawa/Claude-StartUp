@@ -130,7 +130,9 @@ printf '%s\n' \
   '      echo "gh api user failed" >&2' \
   '      exit 1' \
   '    fi' \
-  '    printf "%s" "${STUB_USER_JSON:-{\"login\":\"review-bot\"}}" | jq -r "${jq_filter:-.}"' \
+  '    user_json="${STUB_USER_JSON:-}"' \
+  '    if [[ -z "$user_json" ]]; then user_json="{\"login\":\"review-bot\"}"; fi' \
+  '    printf "%s" "$user_json" | jq -r "${jq_filter:-.}"' \
   '    exit $?' \
   '  fi' \
   '  if [[ "${STUB_GET_FAIL:-}" == issue && "$kind" == issue ]] || [[ "${STUB_GET_FAIL:-}" == both && "$kind" == issue ]]; then' \
@@ -867,26 +869,31 @@ else
 fi
 record_result "self-identity 取得失敗は fail-closed で投稿と PATCH を抑止する" "$result"
 
-# self-identity の login 欠落（jq 型検証で非ゼロ終了）は一覧取得失敗と同じ fail-closed にする。
-make_case idempotency-self-identity-null
-cp "$TEST_ROOT/anchor-contract/pr.diff" "$CASE_DIR/pr.diff"
-cp "$TEST_ROOT/anchor-contract/artifact.json" "$CASE_DIR/artifact.json"
-cp "$TEST_ROOT/anchor-contract/adjudication.json" "$CASE_DIR/adjudication.json"
-write_request "$CASE_DIR/request.json" magi "$CASE_DIR/artifact.json" "$CASE_DIR/adjudication.json" \
-  "$CASE_DIR/pr.diff" true "" "" "" "$CASE_DIR/result.json"
-run_post "$CASE_DIR/request.json" "" "" "" "" "" '{"login":null}'
-if [[ "$POST_EXIT" -eq 1 ]] \
-  && [[ -f "$CASE_DIR/result.json" ]] && jq -e . "$CASE_DIR/result.json" >/dev/null 2>&1 \
-  && assert_result "$CASE_DIR/result.json" '.github_writes == [] and .counts.reused == 0 and all(.items[]; .delivery == "not_posted" and .reused == false)' \
-  && [[ "$(count_method_kind GET issue)" -eq 1 ]] && [[ "$(count_method_kind GET inline)" -eq 1 ]] \
-  && [[ "$(count_method_kind GET user)" -eq 1 ]] && [[ -s "$GH_LOG" ]] \
-  && [[ "$(count_method_kind POST issue)" -eq 0 ]] && [[ "$(count_method_kind POST inline)" -eq 0 ]] \
-  && [[ "$(count_method_kind PATCH issue)" -eq 0 ]]; then
-  result=0
-else
-  result=1
-fi
-record_result "self-identity の login 欠落（jq 型検証で非ゼロ終了）は fail-closed で投稿と PATCH を抑止する" "$result"
+# self-identity の login が valid JSON だが不正（null / 欠落 / 非文字列）なら、gh api user の --jq
+# 型検証が error() で非ゼロ終了し、一覧取得失敗と同じ fail-closed になることを実入力で pin する。
+identity_result=0
+for user_json in '{"login":null}' '{}' '{"login":123}'; do
+  make_case idempotency-self-identity-invalid
+  cp "$TEST_ROOT/anchor-contract/pr.diff" "$CASE_DIR/pr.diff"
+  cp "$TEST_ROOT/anchor-contract/artifact.json" "$CASE_DIR/artifact.json"
+  cp "$TEST_ROOT/anchor-contract/adjudication.json" "$CASE_DIR/adjudication.json"
+  write_request "$CASE_DIR/request.json" magi "$CASE_DIR/artifact.json" "$CASE_DIR/adjudication.json" \
+    "$CASE_DIR/pr.diff" true "" "" "" "$CASE_DIR/result.json"
+  run_post "$CASE_DIR/request.json" "" "" "" "" "" "$user_json"
+  if [[ "$POST_EXIT" -eq 1 ]] \
+    && [[ -f "$CASE_DIR/result.json" ]] && jq -e . "$CASE_DIR/result.json" >/dev/null 2>&1 \
+    && assert_result "$CASE_DIR/result.json" '.github_writes == [] and .counts.reused == 0 and all(.items[]; .delivery == "not_posted" and .reused == false)' \
+    && [[ "$(count_method_kind GET issue)" -eq 1 ]] && [[ "$(count_method_kind GET inline)" -eq 1 ]] \
+    && [[ "$(count_method_kind GET user)" -eq 1 ]] && [[ -s "$GH_LOG" ]] \
+    && [[ "$(count_method_kind POST issue)" -eq 0 ]] && [[ "$(count_method_kind POST inline)" -eq 0 ]] \
+    && [[ "$(count_method_kind PATCH issue)" -eq 0 ]]; then
+    :
+  else
+    identity_result=1
+    echo "  self-identity-invalid failed for: $user_json" >&2
+  fi
+done
+record_result "self-identity の不正 login（null/欠落/非文字列）は jq 型検証で fail-closed する" "$identity_result"
 
 # fingerprint の入力境界と、マーカーが本文末尾かつ先頭でないことを確認する。
 BASE_FP="$(finding_fp MAGI-HARD 0123456789abcdef MELCHIOR a.sh 1)"
