@@ -23,6 +23,12 @@ fast の選択結果は $REVIEW_FAST_BACKEND、hard の選択結果は $REVIEW_H
 既定値と一時 override は別の変数として扱う。override は当該 Feature/PR の呼び出しだけに適用し、完了
 後に破棄する。fast は /review-post に接続せず、hard は投稿を止めるトグルを設けない。
 
+## 実行前提
+
+dispatch と `scripts/review-dispatch-envelope.sh` は `jq` を必要とする。`jq` が PATH にない環境では
+validator が契約検証を実行できず、`exit 2` で停止する。setup / runner への `jq` 導入は本層の変更対象
+ではなく、必要なら別 Issue で扱う。
+
 ## 共通 envelope
 
 dispatch は次の全フィールドを持つ単一 JSON 値を返す。余分な実装固有情報は native_result に残し、
@@ -60,8 +66,8 @@ dispatch は次の全フィールドを持つ単一 JSON 値を返す。余分�
 | blocking_count | 非負整数 / null | 集計不能なら null。degraded 経路、`.counts.block` の欠落・非整数は null とし、null を 0 に丸めない |
 | manual_review_required | boolean | 未監査・要人手確認が残るか |
 | manual_review | object / array / null | 未監査・要人手確認の内容 |
-| artifact_ref | パス / null | fast は常に null。hard は engine の run tmpdir 内のパス |
-| adjudication_ref | パス / null | fast は常に null。hard は engine の run tmpdir 内のパス |
+| artifact_ref | パス / null | fast は常に null。hard は engine の run tmpdir（または dispatch handoff）内のパス。validator が検証するのは「null または非空文字列」という JSON 形状だけで、実在・run tmpdir 所属・当該 review との対応は dispatch が envelope 生成前に検証する（下記「返却、検証、寿命」） |
+| adjudication_ref | パス / null | fast は常に null。hard は engine の run tmpdir（または dispatch handoff）内のパス。実在確認などの責務は artifact_ref と同じ |
 | post_state | posted / post_failed / not_applicable | fast は常に not_applicable |
 | failure_reason | 文字列 / null | dispatch_status が complete 以外のとき、非空文字列が必須 |
 | native_result | object | backend 固有の生結果。persona 別集計などを保持し、分岐には使わない |
@@ -77,6 +83,17 @@ manual_review_required == false
 
 さらに review_kind == hard の場合は post_state == posted も必須である。blocking_count == 0 単独を
 LGTM の根拠にしてはならない。
+
+### 評価不能時の不変条件
+
+`dispatch_status ∈ {failed, unavailable}` のときは `manual_review_required == true` を必須とする。
+全面失敗と backend 利用不可は自動判定不能であり、「人手確認不要」と表現できない。この 2 状態は envelope
+単独で確実に判定できるため、`scripts/review-dispatch-envelope.sh` が契約として強制する（違反は `exit 2`）。
+validator 自身が契約違反を検出したときの fail-closed 結果でも `manual_review_required=true` とする。
+
+`dispatch_status == "incomplete"` はこの強制の対象外である。incomplete には structure-degraded
+（`manual_review_required=false` を許容）と audit-degraded（`manual_review_required=true`）の両方があり、
+envelope 単独では区別できないためである。
 
 ## 返却、検証、寿命
 
@@ -101,8 +118,23 @@ validator が落ちた場合は dispatch 契約違反として dispatch_status=f
 lgtm_eligible=false、failure_reason 非 null の fail-closed 結果として扱い、LGTM を出さない。
 
 envelope、artifact_ref、adjudication_ref、hard の $REVIEW_POST_RESULT は同一 run 内だけ有効である。
-ref は engine の run tmpdir 内の一時成果物であり、呼び出し元はパスを永続化せず、次 run で再読み込みしない。
-次 run で必要になった場合は該当 review 種別を再実行する。
+ref は engine の run tmpdir（または dispatch handoff）内の一時成果物であり、呼び出し元はパスを永続化せず、
+次 run で再読み込みしない。次 run で必要になった場合は該当 review 種別を再実行する。
+
+### hard の ref 事前検証（dispatch runtime の責務）
+
+envelope validator は文字列形状しか見ないため、hard envelope を組む前に dispatch が次を実施する。
+
+- ref は request の `.inputs`（`findings_artifact` / `adjudication_result`）から取得し、任意の外部入力で
+  差し替えない。
+- 非 null ref は絶対パスへ正規化し、現在の engine run tmpdir または dispatch handoff 配下に含まれる
+  ことを確認する。
+- 非 null ref ごとに `[ -r "$path" ]` で読取可能を確認する。
+- `gate_decision ∈ {lgtm, block}` では `artifact_ref` と `adjudication_ref` の両方を必須とする。
+- structure-degraded 経路の両 ref = null は正当として扱う。
+- 必須 ref が null / run 外 / 読取不能なら `dispatch_status=failed` / `gate_decision=indeterminate` /
+  `blocking_count=null` / `lgtm_eligible=false` とする。投稿後にこの検査が失敗した場合は
+  「hard の post_state」に従い `post_state=posted` を保持する。
 
 ## fast 正規化
 
@@ -146,10 +178,25 @@ post_state=not_applicable とする。
 両 backend とも schema_version:"1"、artifact_type:"review-post-request" の同形 request を生成する。
 差は投稿を誰が行うかだけである。
 
+### dispatch handoff 行
+
+hard engine skill（/magi-hard、/codex-hard）は、完了報告の末尾に次の 1 行を安定書式で出力する。
+dispatch はこの行から成果物パスを取得し、engine の cleanup がこれらを消さないことを前提にできる。
+
+```text
+dispatch handoff: {"request":"<review-post-request.json の絶対パス>","result":"<review-post-result.json の絶対パス>"}
+```
+
+- `request` / `result` は必須キーで、いずれも絶対パスとする。
+- codex の `result` は完了報告の時点で未生成でよい。request の `.result_path` が示す絶対パスをそのまま
+  返し、dispatch が /review-post 実行後に読む。
+- 行の欠落、不正 JSON、非絶対パス、`request` の読取不能は dispatch 失敗として扱い、
+  `dispatch_status=failed` / `gate_decision=indeterminate` / `blocking_count=null` とする。
+
 | backend | dispatch の動作 | 投稿主体 |
 |---|---|---|
-| magi | /magi-hard を実行し、完了報告で示された review-post-request.json と review-post-result.json を読む | /magi-hard 内部の /review-post |
-| codex | /codex-hard を実行し、生成された request を /review-post へ渡して投稿まで完了させ、その result_path を読む | dispatch が呼ぶ /review-post |
+| magi | /magi-hard を実行し、完了報告の `dispatch handoff:` 行から request / result のパスを取得して読む（result は /magi-hard 内部の投稿後に存在する） | /magi-hard 内部の /review-post |
+| codex | /codex-hard を実行し、`dispatch handoff:` 行の request を /review-post へ渡して投稿まで完了させ、同行の result（= request の `.result_path`）を読む | dispatch が呼ぶ /review-post |
 
 ### hard envelope フィールドの正本
 
@@ -164,11 +211,11 @@ review-post-result.json の .counts.block と .status を使い、persona 別内
 | envelope フィールド | 算出元 | 規則 |
 |---|---|---|
 | blocking_count | review-post-result.json の `.counts.block` | degraded 経路、欠落、非整数では null。通常経路の整数値だけを使う |
-| gate_decision | **明示 whitelist** による導出 | `block_layer=structure/audit` または `.status=report_only` の degraded → `indeterminate`。それ以外で `.status ∈ {posted, no_findings}`、`block_layer ∈ {importance, null}`、整数 `.counts.block > 0` → `block`、同じ status/layer で整数 `.counts.block == 0` → `lgtm`。未知・欠落・非整数・whitelist 外は `dispatch_status=failed` / `indeterminate` / `blocking_count=null` / `post_state=post_failed` |
+| gate_decision | **明示 whitelist** による導出 | `block_layer=structure/audit` または `.status=report_only` の degraded → `indeterminate`。それ以外で `.status ∈ {posted, no_findings}`、`block_layer ∈ {importance, null}`、整数 `.counts.block > 0` → `block`、同じ status/layer で整数 `.counts.block == 0` → `lgtm`。未知・欠落・非整数・whitelist 外は `dispatch_status=failed` / `gate_decision=indeterminate` / `blocking_count=null`。`post_state` は status/counts ではなく「hard の post_state」の終了コード / result 写像から決める |
 | manual_review_required | adjudication result の `results[]` と `validity_global_failure` | `results[].verdict=="needs_human"` が1件以上、または `validity_global_failure==true` なら true。それ以外 false |
 | manual_review | 上記の要人手確認内容 | true のとき `needs_human` の finding id 一覧を載せ、`validity_global_failure==true` は別記する。それ以外 null |
 | artifact_ref | request .inputs.findings_artifact | structure 経路では null |
-| adjudication_ref | request `.inputs.adjudication_result` | structure 経路では null（正当）。通常経路（`gate_decision ∈ {lgtm,block}`）で null または読めない場合は `dispatch_status=failed` |
+| adjudication_ref | request `.inputs.adjudication_result` | structure 経路では null（正当）。通常経路（`gate_decision ∈ {lgtm,block}`）で null または読めない場合は `dispatch_status=failed`。同じ規則を `artifact_ref` にも適用する（上記「hard の ref 事前検証」） |
 | native_result | result の .counts / .items / .grounding_status など | 呼び出し元は分岐に使わない |
 
 degraded 経路は review-post-result.json の status だけでなく request の engine_state.block_layer で識別する。
@@ -182,6 +229,10 @@ degraded として扱い、`dispatch_status=incomplete` / `gate_decision=indeter
 - block_layer=audit: 妥当性 global failure。dispatch_status=incomplete、gate_decision=indeterminate、
   blocking_count=null、manual_review_required=true。`validity_global_failure==true` は manual_review に別記する。
 - block_layer=importance または null かつ status が posted/no_findings: 通常経路として .counts.block と .status を使う。
+
+`manual_review_required` の扱いは degraded 種別で分かれる。`incomplete + structure` は `false` を許容、
+`incomplete + audit` は `true`、`dispatch_status ∈ {failed, unavailable}` は
+`scripts/review-dispatch-envelope.sh` が `true` を強制する（「評価不能時の不変条件」）。
 
 review-adjudicate-findings.sh は per-finding final_gate の正本であり、hard の集計キーではない。
 `final_gate` に `manual` が無い事実は変わらないが、`needs_human` → `manual_review_required=true` の写像は
@@ -205,9 +256,16 @@ dispatch が担う。`validity_global_failure:true` は block_layer=audit とし
   必ず入れる（`dispatch_status` が `complete` でも）。**
 - 終了コード 2、result ファイルなし、または result の parse 不能は dispatch_status=failed、
   post_state=post_failed、gate_decision=indeterminate、blocking_count=null とする。
-- status、block_layer、counts.block のいずれかが whitelist 外・欠落・非整数の場合も
-  dispatch_status=failed、post_state=post_failed、gate_decision=indeterminate、blocking_count=null、
-  manual_review_required=false、manual_review=null とする。
+- status、block_layer、counts.block のいずれかが whitelist 外・欠落・非整数の場合、`post_state` は
+  この節の終了コード / result 写像を優先する（終了コード 0 かつ result を読取・parse できるなら
+  `posted`、終了コード 1、終了コード 2、result 不在・parse 不能なら `post_failed`）。whitelist 違反
+  そのものは `dispatch_status=failed`、`gate_decision=indeterminate`、`blocking_count=null` にだけ
+  反映する。「評価不能時の不変条件」により `dispatch_status=failed` では `manual_review_required=true`
+  となる（`manual_review` は詳細を構成できなければ null を許容）。status/counts の不正だけで
+  `post_state` を `post_failed` にすると、実際には投稿済みでも呼び出し元が再投稿し二重投稿し得るため。
+  例: 投稿成功後に whitelist 違反を検出した場合の最終状態は `dispatch_status=failed` /
+  `gate_decision=indeterminate` / `blocking_count=null` / `manual_review_required=true` /
+  `post_state=posted` / `lgtm_eligible=false`。
 
 投稿しない hard レビューが必要な場合は、従来どおり /codex-hard を直接使う。
 

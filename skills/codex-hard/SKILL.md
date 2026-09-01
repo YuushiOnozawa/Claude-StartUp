@@ -34,5 +34,9 @@ CASPER の呼び出し・検出・正規化・persona固定・失敗捕捉・ded
 - `pipeline_status`（`complete` / `incomplete`）。
 - ペルソナ別および`canonical_persona`別の`gate`集計。
 - `manual_review`（未監査・要人手確認）セクション。
+- 参照手順が出力する `dispatch handoff:` 行（`review-post-request.json` と `result_path` の絶対パス）を
+  そのまま透過的に表示する。dispatch（`/review-hard`）はこの行から成果物パスを取得するため、
+  `$REVIEW_TMPDIR` はこのスキルの実行後も残す。書式は `skills/flow-common/references/review-dispatch.md`
+  「dispatch handoff 行」に従う。
 
 GitHubへの投稿、PRコメント、コミット、ファイル編集は一切行わない。

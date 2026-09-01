@@ -140,6 +140,14 @@ if ! jq -e '
         (.manual_review == null)
         or .manual_review_required == true
       )
+      and (
+        (.dispatch_status != "failed")
+        or (.manual_review_required == true)
+      )
+      and (
+        (.dispatch_status != "unavailable")
+        or (.manual_review_required == true)
+      )
     )
 ' <<<"$ENVELOPE_JSON" >/dev/null 2>&1; then
   die "必須キー、型、enum、または状態の組合せが不正です"

@@ -31,9 +31,13 @@ gh pr view --json number,headRefName,baseRefName,url,state
 
 ## ステップ 2: review-hard の実行
 
-`$REVIEW_HARD_BACKEND` が未設定なら、`/review-hard` 側が初回のみ backend の選択 UI を表示する。その後、`/review-hard` スキルを実行する。
+backend は次の優先順位で決める（**`REVIEW_HARD_BACKEND_OVERRIDE` → `REVIEW_HARD_BACKEND` → AskUserQuestion（初回のみ）**）:
 
-`$REVIEW_HARD_BACKEND`（および `$REVIEW_HARD_BACKEND_OVERRIDE`）は当該 PR のレビューにだけ有効である。`/pr-review` がレビュー開始時に backend を確定し、`/pr-review` ⇄ `/pr-review-respond` ループを離脱するとき（LGTM 到達または中断）に破棄する。別 PR に持ち越さない。
+1. `$REVIEW_HARD_BACKEND_OVERRIDE` が `magi` または `codex` なら、それを effective backend にする。
+2. override が未設定・不正で、`$REVIEW_HARD_BACKEND` が `magi` または `codex` なら、それを使う。
+3. どちらも有効値を持たないときだけ、初回の `/review-hard` が backend 選択 UI（AskUserQuestion）を 1 回出す。
+
+`/pr-review` がレビュー開始時に確定した effective backend を、`/pr-review` ⇄ `/pr-review-respond` ループ全体で保持し、ループ途中で状態変数を再評価しない。ループを離脱するとき（LGTM 到達または中断）に `$REVIEW_HARD_BACKEND_OVERRIDE` を破棄する。`$REVIEW_HARD_BACKEND` / `$REVIEW_HARD_BACKEND_OVERRIDE` は当該 PR のレビューにだけ有効で、別 PR に持ち越さない。
 
 `/review-hard` は選択した backend の hard レビューを実行し、結果を GitHub に投稿して `$REVIEW_DISPATCH_RESULT`（envelope JSON のパス）を返す。
 

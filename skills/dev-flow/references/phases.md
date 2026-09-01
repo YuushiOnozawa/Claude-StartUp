@@ -109,14 +109,16 @@ Proceed to Phase 5.
 
 ### Fast backend と dispatch
 
-1. backend は次の優先順で決める（明示的に渡された値を必ず使い、UI を出さない）:
-   1. `$REVIEW_FAST_BACKEND_OVERRIDE` が `magi` または `codex` ならそれを使い、**当該 review 完了後に破棄する**。
+1. backend は Phase 5 の**最初の REVIEW 実行時に effective backend へ解決**する（明示的に渡された値を必ず使い、UI を出さない）:
+   1. `$REVIEW_FAST_BACKEND_OVERRIDE` が `magi` または `codex` ならそれを effective backend に採用する。
    2. なければ `$REVIEW_FAST_BACKEND`（epic-flow から `ARGUMENTS` の `review fast backend=<magi|codex>` で
-      渡された値を含む）が `magi` または `codex` ならそれを使う。
-   3. どちらも未設定・不正なら `AskUserQuestion` を 1 回だけ呼び `$REVIEW_FAST_BACKEND` に設定する。
+      渡された値を含む）が `magi` または `codex` ならそれを採用する。
+   3. どちらも未設定・不正なら `AskUserQuestion` を 1 回だけ呼び、その回答を effective backend として保持する。
+   4. REVIEW→FIX ループの再実行では状態変数を再評価せず、確定済みの effective backend をそのまま使う。
+   5. `$REVIEW_FAST_BACKEND_OVERRIDE` は **Phase 5 完了後**（Feature 全体の終了時）に破棄する。個々の review 完了では破棄しない。
 2. `review fast backend=<決定した backend>` を明示して `/review-fast` を実行し、返された envelope JSON のパスを `$REVIEW_DISPATCH_RESULT` として保持する。
 3. 分岐には envelope の `dispatch_status`、`gate_decision`、`lgtm_eligible`、`manual_review_required`、`blocking_count`、`failure_reason` のキーだけを使い、backend 固有の生出力では分岐しない。
-4. 修正ループ中は backend 選択 UI を再表示せず、PR 内では同じ backend を保持する。
+4. 修正ループ中は backend 選択 UI を再表示せず、Phase 5 の REVIEW→FIX ループ全体で同じ effective backend を保持する。
 
 ### `complete` + `lgtm` → Phase 6
 

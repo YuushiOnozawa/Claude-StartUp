@@ -108,6 +108,8 @@ expect_exit() {
 CASE_FILE="$TEST_ROOT/envelope.json"
 
 # 1. fast/magi、fast/codex、hard/magi、hard/codex の正常 envelope。
+# hard ケースの artifact_ref/adjudication_ref は shape fixture であり、ファイル実在は検証しない。
+# 実在・run tmpdir 所属・review 対応の確認は dispatch runtime の責務である（review-dispatch.md）。
 write_envelope "$CASE_FILE" fast magi complete lgtm true 0 false not_applicable "" "" ""
 expect_exit "正常な fast/magi envelope を受理する" 0 "$CASE_FILE"
 write_envelope "$CASE_FILE" fast codex complete lgtm true 0 false not_applicable "" "" ""
@@ -169,12 +171,21 @@ write_envelope "$CASE_FILE" fast codex unavailable indeterminate false null true
 expect_exit "unavailable で null count・manual 必須を受理する" 0 "$CASE_FILE"
 write_envelope "$CASE_FILE" hard magi complete block false 2 false post_failed "/tmp/findings.json" "/tmp/adjudication.json" "GitHub API 投稿失敗"
 expect_exit "hard の投稿失敗でも gate 判定を保持して受理する" 0 "$CASE_FILE"
-write_envelope "$CASE_FILE" hard magi incomplete indeterminate false null true posted "" "" "structure 層の失敗"
+write_envelope "$CASE_FILE" hard magi incomplete indeterminate false null false posted "" "" "structure 層の失敗"
 expect_exit "hard の structure degraded 経路を受理する" 0 "$CASE_FILE"
 write_envelope "$CASE_FILE" hard codex complete lgtm true 0 false posted "/tmp/findings.json" "/tmp/adjudication.json" ""
 expect_exit "hard の clean LGTM を受理する" 0 "$CASE_FILE"
 write_envelope "$CASE_FILE" hard codex complete lgtm false 0 true posted "/tmp/findings.json" "/tmp/adjudication.json" "" '{"finding_ids":["F-123"]}'
 expect_exit "hard の needs_human 由来 manual_review_required=true を受理する" 0 "$CASE_FILE"
+# M-006: dispatch_status ∈ {failed, unavailable} は manual_review_required=true を必須にする。
+write_envelope "$CASE_FILE" hard magi failed indeterminate false null false posted "" "" "dispatch failed"
+expect_exit "failed なのに manual_review_required=false を拒否する" 2 "$CASE_FILE"
+write_envelope "$CASE_FILE" fast codex unavailable indeterminate false null false not_applicable "" "" "Codex companion unavailable"
+expect_exit "unavailable なのに manual_review_required=false を拒否する" 2 "$CASE_FILE"
+write_envelope "$CASE_FILE" hard magi failed indeterminate false null true posted "" "" "dispatch failed"
+expect_exit "failed かつ manual_review_required=true を受理する" 0 "$CASE_FILE"
+write_envelope "$CASE_FILE" fast magi incomplete indeterminate false null false not_applicable "" "" "structure degraded"
+expect_exit "incomplete は manual_review_required=false を許容する" 0 "$CASE_FILE"
 
 # 4. fast/hard 固有の状態、count の型、必須キーを検証する。
 write_envelope "$CASE_FILE" fast magi complete lgtm true 0 false not_applicable "/tmp/findings.json" "" ""

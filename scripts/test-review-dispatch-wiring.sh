@@ -12,6 +12,9 @@ DEV_PHASES="$REPO_ROOT/skills/dev-flow/references/phases.md"
 PR_SKILL="$REPO_ROOT/skills/pr-review/SKILL.md"
 EPIC_PHASES="$REPO_ROOT/skills/epic-flow/references/phases.md"
 SKILLS_INDEX="$REPO_ROOT/SKILLS.md"
+MAGI_HARD_SKILL="$REPO_ROOT/skills/magi-hard/SKILL.md"
+CODEX_HARD_SKILL="$REPO_ROOT/skills/codex-hard/SKILL.md"
+CODEX_HARD_REF_FILE="$REPO_ROOT/skills/dev-flow-fast/references/codex-review-hard.md"
 
 PASS=0
 FAIL=0
@@ -142,13 +145,16 @@ else
 fi
 record_result "SKILLS.md の /pr-review 行が review-hard 接続で magi-hard 固定でない" "$result"
 
-# 14. 変更しない dev-flow-fast 配下に HEAD 比の差分がない。
-if git -C "$REPO_ROOT" diff --quiet HEAD -- skills/dev-flow-fast/; then
+# 14. dev-flow-fast 配下の変更は codex-review-hard.md の dispatch handoff 追加だけに限る。
+CODEX_HARD_REF="$REPO_ROOT/skills/dev-flow-fast/references/codex-review-hard.md"
+CHANGED_DEVFF="$(git -C "$REPO_ROOT" diff --name-only HEAD -- skills/dev-flow-fast/ || true)"
+if [[ -z "$CHANGED_DEVFF" || "$CHANGED_DEVFF" == "skills/dev-flow-fast/references/codex-review-hard.md" ]] \
+  && grep -Fq -- "dispatch handoff:" "$CODEX_HARD_REF"; then
   result=0
 else
   result=1
 fi
-record_result "skills/dev-flow-fast/ 配下に HEAD 比の差分がない" "$result"
+record_result "dev-flow-fast の変更が codex-review-hard.md の dispatch handoff 追加に限られる" "$result"
 
 # 15. PR review の LGTM 判定は lgtm_eligible を正本にする。
 if grep -Fq -- "lgtm_eligible" "$PR_SKILL"; then
@@ -200,6 +206,89 @@ else
   result=1
 fi
 record_result "dev-flow Phase 5 が REVIEW_FAST_BACKEND_OVERRIDE の優先順位を持つ" "$result"
+
+# 21. hard engine skill は dispatch handoff 行を出力する。
+if grep -Fq -- "dispatch handoff:" "$MAGI_HARD_SKILL" \
+  && grep -Fq -- "dispatch handoff:" "$CODEX_HARD_SKILL"; then
+  result=0
+else
+  result=1
+fi
+record_result "magi-hard と codex-hard の SKILL.md が dispatch handoff 行を含む" "$result"
+
+# 22. codex-review-hard.md は dispatch handoff と REVIEW_TMPDIR 保持契約を持つ。
+if grep -Fq -- "dispatch handoff:" "$CODEX_HARD_REF_FILE" \
+  && grep -Fq -- '.result_path' "$CODEX_HARD_REF_FILE" \
+  && grep -Fq -- 'はこの手順の中で削除しない' "$CODEX_HARD_REF_FILE"; then
+  result=0
+else
+  result=1
+fi
+record_result "codex-review-hard.md が handoff / result_path / REVIEW_TMPDIR 保持を記載する" "$result"
+
+# 23. magi-hard は handoff を保存し run dir 全体削除をしない。
+if grep -Fq -- "dispatch-handoff" "$MAGI_HARD_SKILL" \
+  && ! grep -Eq -- 'rm -rf +"\$MAGI_RUN_DIR"' "$MAGI_HARD_SKILL"; then
+  result=0
+else
+  result=1
+fi
+record_result "magi-hard が dispatch-handoff を保存し MAGI_RUN_DIR 全体を rm -rf しない" "$result"
+
+# 24. review-dispatch.md は post_state を終了コード/result 写像優先とする。
+if grep -Fq -- "終了コード / result 写像を優先" "$DISPATCH_REF"; then
+  result=0
+else
+  result=1
+fi
+record_result "review-dispatch.md が post_state を終了コード/result 写像優先と明記する" "$result"
+
+# 25. review-dispatch.md は validator を shape のみ・実在確認を dispatch 責務とする。
+if grep -Fq -- "JSON 形状だけ" "$DISPATCH_REF" \
+  && grep -Fq -- "hard の ref 事前検証" "$DISPATCH_REF"; then
+  result=0
+else
+  result=1
+fi
+record_result "review-dispatch.md が ref 実在確認を dispatch runtime の責務と明記する" "$result"
+
+# 26. pr-review は hard backend の優先順位と override 破棄を持つ。
+if grep -Fq -- "REVIEW_HARD_BACKEND_OVERRIDE" "$PR_SKILL" \
+  && grep -Fq -- "REVIEW_HARD_BACKEND" "$PR_SKILL" \
+  && grep -Fq -- "AskUserQuestion" "$PR_SKILL"; then
+  result=0
+else
+  result=1
+fi
+record_result "pr-review が hard backend の優先順位3要素を記載する" "$result"
+
+# 27. dev-flow Phase 5 は effective backend を Phase 5 完了後に破棄する。
+if grep -Fq -- "effective backend" "$DEV_PHASES" \
+  && grep -Fq -- "Phase 5 完了後" "$DEV_PHASES"; then
+  result=0
+else
+  result=1
+fi
+record_result "dev-flow Phase 5 が effective backend を Phase 5 完了後まで保持する" "$result"
+
+# 28. review-dispatch.md は failed/unavailable の manual 必須と structure 例外を記載する。
+if grep -Fq -- "評価不能時の不変条件" "$DISPATCH_REF" \
+  && grep -Fq -- "structure-degraded" "$DISPATCH_REF"; then
+  result=0
+else
+  result=1
+fi
+record_result "review-dispatch.md が failed/unavailable の manual 必須と structure 例外を記載する" "$result"
+
+# 29. review-dispatch.md は jq 実行前提を記載する。
+if grep -Fq -- "jq" "$DISPATCH_REF" \
+  && grep -Fq -- "PATH" "$DISPATCH_REF" \
+  && grep -Fq -- "exit 2" "$DISPATCH_REF"; then
+  result=0
+else
+  result=1
+fi
+record_result "review-dispatch.md が jq / PATH / exit 2 の実行前提を記載する" "$result"
 
 echo ""
 echo "=== 結果: PASS=$PASS FAIL=$FAIL ==="

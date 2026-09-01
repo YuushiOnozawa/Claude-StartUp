@@ -814,16 +814,48 @@ if [ "$BLOCK_LAYER" != "importance" ] && [ -n "$MAGI_TMPDIR_IMPORTANCE" ]; then
   rm -rf "$MAGI_TMPDIR_IMPORTANCE"
 fi
 
-# PR 全体用の作業ディレクトリはここで片付ける
-# （pr.diff、normalized.md、findings-table.json、anchors.json）
-rm -rf "$MAGI_RUN_DIR"
+# dispatch handoff を保存してから、PR 全体用の中間成果物だけを allowlist 方式で片付ける。
+# $MAGI_RUN_DIR 全体の rm -rf はしない（dispatch が review-post-request.json /
+# review-post-result.json を読むため）。
+HANDOFF_DIR="$MAGI_RUN_DIR/dispatch-handoff"
+mkdir -p "$HANDOFF_DIR"
+cp -- "$REVIEW_POST_REQUEST" "$HANDOFF_DIR/review-post-request.json"
+cp -- "$REVIEW_POST_RESULT" "$HANDOFF_DIR/review-post-result.json"
+
+# request が指す成果物も handoff 配下へ退避し、request 内のパスを退避先の絶対パスへ書き換える。
+# これで handoff が自己完結し、dispatch の ref 実在検証（review-dispatch.md「hard の ref 事前検証」）を通る。
+HANDOFF_REQUEST="$HANDOFF_DIR/review-post-request.json"
+HANDOFF_RESULT="$(realpath -- "$HANDOFF_DIR/review-post-result.json")"
+for REF_KEY in findings_artifact adjudication_result; do
+  REF_SRC=$(jq -r --arg k "$REF_KEY" '.inputs[$k] // ""' "$HANDOFF_REQUEST")
+  [ -n "$REF_SRC" ] && [ -r "$REF_SRC" ] || continue
+  REF_DST="$HANDOFF_DIR/$(basename -- "$REF_SRC")"
+  cp -- "$REF_SRC" "$REF_DST"
+  REF_DST_ABS="$(realpath -- "$REF_DST")"
+  jq --arg k "$REF_KEY" --arg v "$REF_DST_ABS" '.inputs[$k] = $v' "$HANDOFF_REQUEST" > "$HANDOFF_REQUEST.tmp" \
+    && mv -- "$HANDOFF_REQUEST.tmp" "$HANDOFF_REQUEST"
+done
+jq --arg v "$HANDOFF_RESULT" '.result_path = $v' "$HANDOFF_REQUEST" > "$HANDOFF_REQUEST.tmp" \
+  && mv -- "$HANDOFF_REQUEST.tmp" "$HANDOFF_REQUEST"
+HANDOFF_REQUEST_ABS="$(realpath -- "$HANDOFF_REQUEST")"
+
+# 中間成果物だけを個別削除する（handoff 配下は残す）。
+for INTERMEDIATE in pr.diff normalized-results.txt finding-list.txt findings-table.json \
+  normalized-v2.json anchors.json review-post-request.json review-post-result.json; do
+  rm -f -- "$MAGI_RUN_DIR/$INTERMEDIATE"
+done
 unset MAGI_RUN_DIR
+
+# dispatch handoff 行を完了報告に出す（review-dispatch.md「dispatch handoff 行」）。
+printf 'dispatch handoff: {"request":"%s","result":"%s"}\n' "$HANDOFF_REQUEST_ABS" "$HANDOFF_RESULT"
 ```
 
 **`$MAGI_RUN_DIR` は最後のステップまで消してはならない。** ステップ 1 で書き出す `pr.diff` を
 ステップ 5 の grounding が読み、`$FINDINGS_TABLE`（ステップ 4）や `anchors.json`（ステップ 5）も
 ここに置かれるため、途中で消すと後続の参照が壊れる。
-逆にここで消さないと、PR の差分と検出結果が一時ディレクトリに残り続ける。
+ここでも `$MAGI_RUN_DIR` 全体を `rm -rf` してはならない。`dispatch-handoff/` の
+`review-post-request.json` / `review-post-result.json`（および request が指す成果物）は、dispatch が
+envelope を組むために読むまで残す必要がある。中間成果物は上記の allowlist で個別削除する。
 
 ユーザーに以下を表示する：
 

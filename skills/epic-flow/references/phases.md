@@ -111,7 +111,7 @@ Process `$ISSUE_LIST` from the top, one at a time.
 
 関連 Issue の内容を Phase 1 (PLAN) の要件として使い、呼び出しコンテキスト / `ARGUMENTS` 文面に `review fast backend=<magi|codex>` の形で実際の `$REVIEW_FAST_BACKEND` の値を明示して `/dev-flow` を実行する。`/dev-flow` はその値を使い、backend 選択 UI を表示しない。Feature 開始時や PR 作成時に backend を再質問しない。
 
-ユーザーが明示的に fast override を求めた場合だけ `AskUserQuestion` を呼び、`$REVIEW_FAST_BACKEND_OVERRIDE` に設定する。この `/dev-flow` 呼び出しにだけ渡し、戻ったら破棄して次の Feature に持ち越さない。
+ユーザーが明示的に fast override を求めた場合だけ `AskUserQuestion` を呼び、`$REVIEW_FAST_BACKEND_OVERRIDE` に設定する。この `/dev-flow` 呼び出しにだけ渡す。`/dev-flow` 側は Phase 5 の最初の REVIEW でこの値を effective backend に解決し、REVIEW→FIX ループ全体で保持したうえで Phase 5 完了後に破棄する。epic-flow は `/dev-flow` から戻った時点で `$REVIEW_FAST_BACKEND_OVERRIDE` を破棄し、次の Feature に持ち越さない。
 
 epic-flow のスコープは fast の既定値と fast override のみである。hard は Feature loop で実行されないため、epic-flow は hard backend の状態変数を設定も破棄もしない。hard backend の確定・保持・破棄は `/pr-review` 経由の `/review-hard` 側の責務である。
 
