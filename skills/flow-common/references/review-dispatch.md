@@ -127,8 +127,30 @@ export REVIEW_DISPATCH_RESULT
 bash scripts/review-dispatch-envelope.sh validate "$REVIEW_DISPATCH_RESULT"
 ```
 
-validator が落ちた場合は dispatch 契約違反として dispatch_status=failed、gate_decision=indeterminate、
-lgtm_eligible=false、failure_reason 非 null の fail-closed 結果として扱い、LGTM を出さない。
+validator が落ちた場合も、下記「dispatch 失敗時の canonical envelope」を返して LGTM を出さない。
+
+### dispatch 失敗時の canonical envelope
+
+engine は最後まで走ったが dispatch 側の検証（`dispatch handoff:` 行、hard の ref 事前検証、validator
+自身など）が失敗した場合、dispatch は次の envelope を組んで返す。3 フィールドだけ設定して残りを既定値の
+ままにすると、`manual_review_required` の不変条件や `failure_reason` 必須で validator 自身が拒否する
+ため、必ず全フィールドをこの値にする。
+
+| フィールド | 値 |
+|---|---|
+| dispatch_status | `failed` |
+| gate_decision | `indeterminate` |
+| lgtm_eligible | `false` |
+| blocking_count | `null` |
+| manual_review_required | `true`（「評価不能時の不変条件」で validator が強制） |
+| manual_review | `null`（詳細を構成できないため） |
+| artifact_ref / adjudication_ref | `null` |
+| post_state | hard は `post_failed`、fast は `not_applicable`。engine が既に投稿済みでも、handoff 行が壊れて dispatch が投稿結果を信頼できるパスで確認できない以上 `post_failed` にする。magi backend では dispatch は再投稿しないため二重投稿は起きない |
+| failure_reason | 非空。どの検証が失敗したか（例: `dispatch handoff 行の result_path 不一致`） |
+| native_result | `{}` 可 |
+
+例外は「投稿は成功（/review-post 終了コード 0・result 読取可）したが、その後の正規化で失敗した」場合
+だけで、これは「hard の post_state」に従い `post_state=posted` を保持する（`failed` + `posted` は許容）。
 
 envelope、artifact_ref、adjudication_ref、hard の $REVIEW_POST_RESULT は同一 run 内だけ有効である。
 ref は engine の run tmpdir（または dispatch handoff）内の一時成果物であり、呼び出し元はパスを永続化せず、
@@ -145,9 +167,9 @@ envelope validator は文字列形状しか見ないため、hard envelope を�
 - 非 null ref ごとに `[ -r "$path" ]` で読取可能を確認する。
 - `gate_decision ∈ {lgtm, block}` では `artifact_ref` と `adjudication_ref` の両方を必須とする。
 - structure-degraded 経路の両 ref = null は正当として扱う。
-- 必須 ref が null / run 外 / 読取不能なら `dispatch_status=failed` / `gate_decision=indeterminate` /
-  `blocking_count=null` / `lgtm_eligible=false` とする。投稿後にこの検査が失敗した場合は
-  「hard の post_state」に従い `post_state=posted` を保持する。
+- 必須 ref が null / run 外 / 読取不能なら「dispatch 失敗時の canonical envelope」を返す。ただし投稿後
+  （/review-post 終了コード 0・result 読取可）にこの検査が失敗した場合は、その例外規定に従い
+  `post_state=posted` を保持する。
 
 ## fast 正規化
 
@@ -203,8 +225,8 @@ dispatch handoff: {"request":"<review-post-request.json の絶対パス>","resul
 - `request` / `result` は必須キーで、いずれも絶対パスとする。
 - codex の `result` は完了報告の時点で未生成でよい。request の `.result_path` が示す絶対パスをそのまま
   返し、dispatch が /review-post 実行後に読む。
-- 行の欠落、不正 JSON、非絶対パス、`request` の読取不能は dispatch 失敗として扱い、
-  `dispatch_status=failed` / `gate_decision=indeterminate` / `blocking_count=null` とする。
+- 行の欠落、不正 JSON、非絶対パス、`request` の読取不能は dispatch 失敗として扱い、「dispatch 失敗時の
+  canonical envelope」を返す。
 - dispatch は取得した `request` / `result` パス自体も検証する（「hard の ref 事前検証」が対象にする
   request `.inputs` の成果物 ref とは別物）。
   - 両パスを絶対パスへ正規化し、当該 run の engine tmpdir または dispatch handoff 配下に含まれる
@@ -214,8 +236,7 @@ dispatch handoff: {"request":"<review-post-request.json の絶対パス>","resul
   - `request` の `.pr.owner` / `.pr.repo` / `.pr.number` / `.pr.head_sha` が、dispatch がこの engine
     skill を起動したときの PR と head SHA（dispatch 自身が起動しているため常に既知）と一致することを
     確認する（stale run の取り込み防止）。
-  - いずれかが不一致・確認不能なら、上と同じく `dispatch_status=failed` / `gate_decision=indeterminate` /
-    `blocking_count=null` とする。
+  - いずれかが不一致・確認不能なら、上と同じく「dispatch 失敗時の canonical envelope」を返す。
 
 | backend | dispatch の動作 | 投稿主体 |
 |---|---|---|

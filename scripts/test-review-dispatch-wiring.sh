@@ -323,6 +323,16 @@ else
 fi
 record_result "review-dispatch.md が DISPATCH_TMPDIR の mktemp -d 生成を記載する" "$result"
 
+# 33. review-dispatch.md は dispatch 失敗時の canonical envelope を定義する。
+if grep -Fq -- 'dispatch 失敗時の canonical envelope' "$DISPATCH_REF" \
+  && grep -Fq -- 'manual_review_required' "$DISPATCH_REF" \
+  && grep -Fq -- 'failure_reason' "$DISPATCH_REF"; then
+  result=0
+else
+  result=1
+fi
+record_result "review-dispatch.md が dispatch 失敗時の canonical envelope を定義する" "$result"
+
 echo ""
 echo "=== 結果: PASS=$PASS FAIL=$FAIL ==="
 if [[ "$FAIL" -gt 0 ]]; then
