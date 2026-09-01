@@ -146,10 +146,17 @@ fi
 record_result "SKILLS.md の /pr-review 行が review-hard 接続で magi-hard 固定でない" "$result"
 
 # 14. dev-flow-fast 配下の変更は codex-review-hard.md の dispatch handoff 追加だけに限る。
-CODEX_HARD_REF="$REPO_ROOT/skills/dev-flow-fast/references/codex-review-hard.md"
-CHANGED_DEVFF="$(git -C "$REPO_ROOT" diff --name-only HEAD -- skills/dev-flow-fast/ || true)"
-if [[ -z "$CHANGED_DEVFF" || "$CHANGED_DEVFF" == "skills/dev-flow-fast/references/codex-review-hard.md" ]] \
-  && grep -Fq -- "dispatch handoff:" "$CODEX_HARD_REF"; then
+BASE_SHA=""
+for BASE_REF in origin/main main; do
+  BASE_SHA="$(git -C "$REPO_ROOT" merge-base HEAD "$BASE_REF" 2>/dev/null || true)"
+  [[ -n "$BASE_SHA" ]] && break
+done
+if [[ -z "$BASE_SHA" ]]; then
+  # base SHA を解決できない場合は、空の diff による空振り PASS を避けるため明示的に FAIL とする。
+  result=1
+elif CHANGED_DEVFF="$(git -C "$REPO_ROOT" diff --name-only "$BASE_SHA" HEAD -- skills/dev-flow-fast/)" \
+  && { [[ -z "$CHANGED_DEVFF" ]] || [[ "$CHANGED_DEVFF" == "skills/dev-flow-fast/references/codex-review-hard.md" ]]; } \
+  && grep -Fq -- "dispatch handoff:" "$CODEX_HARD_REF_FILE"; then
   result=0
 else
   result=1
@@ -289,6 +296,32 @@ else
   result=1
 fi
 record_result "review-dispatch.md が jq / PATH / exit 2 の実行前提を記載する" "$result"
+
+# 30. review-dispatch.md は importance_status を manual_review_required へ写像する。
+if grep -Fq -- "importance_status" "$DISPATCH_REF" \
+  && grep -Fq -- "manual_review_required" "$DISPATCH_REF"; then
+  result=0
+else
+  result=1
+fi
+record_result "review-dispatch.md が importance_status を manual_review_required へ写像する" "$result"
+
+# 31. review-dispatch.md は handoff パスと head SHA の一致を検証する。
+if grep -Fq -- "result_path" "$DISPATCH_REF" \
+  && grep -Fq -- "head_sha" "$DISPATCH_REF"; then
+  result=0
+else
+  result=1
+fi
+record_result "review-dispatch.md が handoff の result_path 一致と head_sha 一致の検証を記載する" "$result"
+
+# 32. review-dispatch.md は DISPATCH_TMPDIR を mktemp -d で生成する。
+if grep -Fq -- 'DISPATCH_TMPDIR=$(mktemp -d)' "$DISPATCH_REF"; then
+  result=0
+else
+  result=1
+fi
+record_result "review-dispatch.md が DISPATCH_TMPDIR の mktemp -d 生成を記載する" "$result"
 
 echo ""
 echo "=== 結果: PASS=$PASS FAIL=$FAIL ==="

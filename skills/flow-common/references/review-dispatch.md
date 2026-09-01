@@ -97,6 +97,19 @@ envelope 単独では区別できないためである。
 
 ## 返却、検証、寿命
 
+dispatch の実行順序は次のとおり。各手順の詳細は該当節・表を正とし、ここでは繰り返さない。
+
+1. backend を選ぶ（「入力と backend 選択」）。
+2. `DISPATCH_TMPDIR=$(mktemp -d)` で返却用の tmpdir を作る。
+3. 選んだ engine skill（/magi-fast /magi-hard /codex-fast /codex-hard）を実行する。起動すらできない
+   場合は「backend 利用不可時」の envelope にする。
+4. hard は engine の完了報告から `dispatch handoff:` 行を取得して検証する（「dispatch handoff 行」）。
+   codex hard はこのあと dispatch が /review-post を実行する。
+5. hard は ref を事前検証する（「hard の ref 事前検証」）。
+6. native の生結果を「fast 正規化」または「hard 正規化と GitHub 投稿」の写像表に通して envelope を組む。
+7. envelope を `$DISPATCH_TMPDIR/review-dispatch-result.json` へ書き、validator を実行する（下記）。
+8. `$REVIEW_DISPATCH_RESULT` を設定して呼び出し元へ返す。
+
 dispatch は engine の cleanup より前に必要な生結果を読み、envelope を run 専用 tmpdir の固定名へ書く。
 呼び出し元へ渡す返却変数は、$DISPATCH_TMPDIR/review-dispatch-result.json の絶対パスである。
 $REVIEW_POST_RESULT と同じ体裁で、次のように $REVIEW_DISPATCH_RESULT を設定して渡す。
@@ -192,6 +205,17 @@ dispatch handoff: {"request":"<review-post-request.json の絶対パス>","resul
   返し、dispatch が /review-post 実行後に読む。
 - 行の欠落、不正 JSON、非絶対パス、`request` の読取不能は dispatch 失敗として扱い、
   `dispatch_status=failed` / `gate_decision=indeterminate` / `blocking_count=null` とする。
+- dispatch は取得した `request` / `result` パス自体も検証する（「hard の ref 事前検証」が対象にする
+  request `.inputs` の成果物 ref とは別物）。
+  - 両パスを絶対パスへ正規化し、当該 run の engine tmpdir または dispatch handoff 配下に含まれる
+    ことを確認する。外部から与えられた任意の絶対パスは受け入れない。
+  - `result` が `request` の `.result_path` と一致することを確認する（不一致は別 run の result を
+    取り込んでいる兆候）。
+  - `request` の `.pr.owner` / `.pr.repo` / `.pr.number` / `.pr.head_sha` が、dispatch がこの engine
+    skill を起動したときの PR と head SHA（dispatch 自身が起動しているため常に既知）と一致することを
+    確認する（stale run の取り込み防止）。
+  - いずれかが不一致・確認不能なら、上と同じく `dispatch_status=failed` / `gate_decision=indeterminate` /
+    `blocking_count=null` とする。
 
 | backend | dispatch の動作 | 投稿主体 |
 |---|---|---|
@@ -212,8 +236,8 @@ review-post-result.json の .counts.block と .status を使い、persona 別内
 |---|---|---|
 | blocking_count | review-post-result.json の `.counts.block` | degraded 経路、欠落、非整数では null。通常経路の整数値だけを使う |
 | gate_decision | **明示 whitelist** による導出 | `block_layer=structure/audit` または `.status=report_only` の degraded → `indeterminate`。それ以外で `.status ∈ {posted, no_findings}`、`block_layer ∈ {importance, null}`、整数 `.counts.block > 0` → `block`、同じ status/layer で整数 `.counts.block == 0` → `lgtm`。未知・欠落・非整数・whitelist 外は `dispatch_status=failed` / `gate_decision=indeterminate` / `blocking_count=null`。`post_state` は status/counts ではなく「hard の post_state」の終了コード / result 写像から決める |
-| manual_review_required | adjudication result の `results[]` と `validity_global_failure` | `results[].verdict=="needs_human"` が1件以上、または `validity_global_failure==true` なら true。それ以外 false |
-| manual_review | 上記の要人手確認内容 | true のとき `needs_human` の finding id 一覧を載せ、`validity_global_failure==true` は別記する。それ以外 null |
+| manual_review_required | adjudication result の `results[]` と `validity_global_failure` | `results[].verdict=="needs_human"` が1件以上、`results[].importance_status=="failed"` が1件以上、または `validity_global_failure==true` なら true。それ以外 false。`importance_status` の値域と `failed` 判定の正本は `scripts/review-adjudicate-findings.sh`（`importance` 値が null のとき `failed`） |
+| manual_review | 上記の要人手確認内容 | true のとき `needs_human` の finding id 一覧と `importance_status=="failed"` の finding id 一覧を載せ、`validity_global_failure==true` は別記する。それ以外 null |
 | artifact_ref | request .inputs.findings_artifact | structure 経路では null |
 | adjudication_ref | request `.inputs.adjudication_result` | structure 経路では null（正当）。通常経路（`gate_decision ∈ {lgtm,block}`）で null または読めない場合は `dispatch_status=failed`。同じ規則を `artifact_ref` にも適用する（上記「hard の ref 事前検証」） |
 | native_result | result の .counts / .items / .grounding_status など | 呼び出し元は分岐に使わない |
@@ -229,6 +253,11 @@ degraded として扱い、`dispatch_status=incomplete` / `gate_decision=indeter
 - block_layer=audit: 妥当性 global failure。dispatch_status=incomplete、gate_decision=indeterminate、
   blocking_count=null、manual_review_required=true。`validity_global_failure==true` は manual_review に別記する。
 - block_layer=importance または null かつ status が posted/no_findings: 通常経路として .counts.block と .status を使う。
+  ただし `block_layer=importance` は投稿経路としては通常でも重要度判定が失敗している。未評価 finding は
+  `final_gate=defer` に落ちて `.counts.block` に現れないため `.counts.block` だけでは検知できない。
+  adjudication result の `importance_status=="failed"` を `manual_review_required` へ写像して LGTM を
+  防ぐ（上表 `manual_review_required` 行）。この写像は adjudication result 経由なので magi / codex の
+  両 backend に等しく効く。
 
 `manual_review_required` の扱いは degraded 種別で分かれる。`incomplete + structure` は `false` を許容、
 `incomplete + audit` は `true`、`dispatch_status ∈ {failed, unavailable}` は

@@ -824,9 +824,10 @@ cp -- "$REVIEW_POST_RESULT" "$HANDOFF_DIR/review-post-result.json"
 
 # request が指す成果物も handoff 配下へ退避し、request 内のパスを退避先の絶対パスへ書き換える。
 # これで handoff が自己完結し、dispatch の ref 実在検証（review-dispatch.md「hard の ref 事前検証」）を通る。
+# diff は review-post 契約上 structure 経路でも必須（review-post.md）なので必ず退避する。
 HANDOFF_REQUEST="$HANDOFF_DIR/review-post-request.json"
 HANDOFF_RESULT="$(realpath -- "$HANDOFF_DIR/review-post-result.json")"
-for REF_KEY in findings_artifact adjudication_result; do
+for REF_KEY in findings_artifact adjudication_result diff; do
   REF_SRC=$(jq -r --arg k "$REF_KEY" '.inputs[$k] // ""' "$HANDOFF_REQUEST")
   [ -n "$REF_SRC" ] && [ -r "$REF_SRC" ] || continue
   REF_DST="$HANDOFF_DIR/$(basename -- "$REF_SRC")"
