@@ -145,12 +145,15 @@ engine は最後まで走ったが dispatch 側の検証（`dispatch handoff:` �
 | manual_review_required | `true`（「評価不能時の不変条件」で validator が強制） |
 | manual_review | `null`（詳細を構成できないため） |
 | artifact_ref / adjudication_ref | `null` |
-| post_state | hard は `post_failed`、fast は `not_applicable`。engine が既に投稿済みでも、handoff 行が壊れて dispatch が投稿結果を信頼できるパスで確認できない以上 `post_failed` にする。magi backend では dispatch は再投稿しないため二重投稿は起きない |
+| post_state | **codex backend**（dispatch の /review-post が未実行）は `post_failed`。**magi backend**（/magi-hard 内部の /review-post が既に走っている）は `posted`。fast は `not_applicable`。`dispatch_status=failed` が LGTM を防ぐのは両者共通で、`post_state` の使い分けは「`pr-review` が /review-hard の盲目的再実行を促してよいか」を伝えるためだけに使う（`posted` = GitHub へ投稿済みの可能性があり再実行前に手動確認、`post_failed` = 未投稿なので再実行は安全） |
 | failure_reason | 非空。どの検証が失敗したか（例: `dispatch handoff 行の result_path 不一致`） |
 | native_result | `{}` 可 |
 
 例外は「投稿は成功（/review-post 終了コード 0・result 読取可）したが、その後の正規化で失敗した」場合
 だけで、これは「hard の post_state」に従い `post_state=posted` を保持する（`failed` + `posted` は許容）。
+より一般に、`post_state=posted` かつ `dispatch_status=failed` の envelope は「GitHub へは投稿された
+（可能性が高い）が dispatch が正規化・検証を完了できなかった」を意味する。`pr-review` はこの組合せで
+/review-hard の再実行を促さず、既存コメントの手動確認を促す。
 
 envelope、artifact_ref、adjudication_ref、hard の $REVIEW_POST_RESULT は同一 run 内だけ有効である。
 ref は engine の run tmpdir（または dispatch handoff）内の一時成果物であり、呼び出し元はパスを永続化せず、
@@ -261,7 +264,7 @@ review-post-result.json の .counts.block と .status を使い、persona 別内
 | manual_review | 上記の要人手確認内容 | true のとき `needs_human` の finding id 一覧と `importance_status=="failed"` の finding id 一覧を載せ、`validity_global_failure==true` は別記する。それ以外 null |
 | artifact_ref | request .inputs.findings_artifact | structure 経路では null |
 | adjudication_ref | request `.inputs.adjudication_result` | structure 経路では null（正当）。通常経路（`gate_decision ∈ {lgtm,block}`）で null または読めない場合は `dispatch_status=failed`。同じ規則を `artifact_ref` にも適用する（上記「hard の ref 事前検証」） |
-| native_result | result の .counts / .items / .grounding_status など | 呼び出し元は分岐に使わない |
+| native_result | result の .counts / .items / .grounding_status など。hard では result の `github_writes`（成功済み投稿の URL 一覧）も必ず含める | 呼び出し元は分岐に使わない。ただし `pr-review` は再実行ガードで `github_writes` の有無だけ参照する |
 
 degraded 経路は review-post-result.json の status だけでなく request の engine_state.block_layer で識別する。
 status=report_only だけでは audit 経路が no_findings に見えるためである。`status=report_only` も既存どおり
@@ -303,7 +306,9 @@ dispatch が担う。`validity_global_failure:true` は block_layer=audit とし
 - 終了コード 1（GitHub API 失敗、result は書き込み済み）は post_state=post_failed とし、
   dispatch_status は通常経路のままにする。counts と gate 判定は利用できるが、hard の LGTM は post_state
   の述語によって禁止される。**`post_state=post_failed` のときは `failure_reason` に投稿失敗の理由を
-  必ず入れる（`dispatch_status` が `complete` でも）。**
+  必ず入れる（`dispatch_status` が `complete` でも）。** このとき result の `github_writes` にはサマリ等の
+  成功済み投稿が残る。dispatch はそれを `native_result` に載せ（下記 native_result 行）、`pr-review` は
+  /review-hard の再実行を促す前にこれを参照する（部分投稿済みなら盲目的再実行は重複を生む）。
 - 終了コード 2、result ファイルなし、または result の parse 不能は dispatch_status=failed、
   post_state=post_failed、gate_decision=indeterminate、blocking_count=null とする。
 - status、block_layer、counts.block のいずれかが whitelist 外・欠落・非整数の場合、`post_state` は
