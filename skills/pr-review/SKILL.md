@@ -58,19 +58,16 @@ manual_review: `<内容|null>`
 
 envelope を次の順で評価し、**先に一致したもの**を採る。
 
-1. **`post_state == "post_failed"`** → fail-closed。`/pr-review-respond` ループへは入らない。
-   `/review-hard` 再実行を促すかは投稿痕跡で分岐する（`/review-post` は既存コメントを照合せず毎回
-   新規投稿するため、投稿済みの状態で再実行するとサマリ・インラインが重複する）。
-   - `native_result.github_writes` が空（サマリも未投稿）→ `failure_reason` を提示し `/review-hard`
-     再実行を促して停止する。
-   - `native_result.github_writes` が非空（サマリ等が投稿済み）→ `/review-hard` の再実行は促さない。
-     「一部コメントが投稿済みの可能性がある。GitHub の既存コメントを確認し、重複投稿を避けるため
-     手動で対応するか、既存コメントを削除してから再実行するか判断してほしい」と `failure_reason` と
-     `github_writes` の URL を添えて提示し停止する。
+1. **`post_state == "post_failed"`** → fail-closed。GitHub へ1件も投稿されていないことが保証されている
+   状態（dispatch の `/review-post` 未実行、または `/review-post` が API 呼び出し前の契約違反で終了）。
+   `/pr-review-respond` ループへは入らず、`failure_reason` を提示して `/review-hard` 再実行を促して
+   停止する。
 2. **`dispatch_status != "complete"` または `blocking_count == null` または `gate_decision == "indeterminate"`**
-   → fail-closed。respond ループへ入らず LGTM も出さない。
-   - `post_state == "posted"`（＝レビュー結果は GitHub へ投稿済みだが dispatch が正規化に失敗）→
-     `/review-hard` の再実行は促さない。「投稿済みコメントを直接確認して対応してほしい」と
+   → fail-closed。respond ループへ入らず LGTM も出さない。分岐は共通キー（`post_state` /
+   `dispatch_status`）だけで行い、`native_result` は読まない。
+   - `post_state == "posted"`（レビュー結果は GitHub へ投稿済み、または投稿状況が不明で保守的に
+     投稿済み扱い）→ `/review-hard` の盲目的再実行は促さない。「GitHub の既存コメントを確認し、
+     重複投稿を避けるため手動で対応するか、既存コメントを削除してから再実行するか判断してほしい」と
      `failure_reason` を添えて提示し停止する。
    - それ以外 → `failure_reason` を提示し、手動レビューまたは `/review-hard` 再実行を促して停止する。
 3. **`blocking_count ≥ 1` または `manual_review_required == true`** → `/pr-review-respond` で対応 →

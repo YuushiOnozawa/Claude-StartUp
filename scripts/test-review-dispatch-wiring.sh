@@ -333,15 +333,18 @@ else
 fi
 record_result "review-dispatch.md が dispatch 失敗時の canonical envelope を定義する" "$result"
 
-# 34. canonical 失敗 envelope の post_state は backend 別に分離され、magi backend は posted で github_writes に言及する。
-if grep -Fq -- 'magi backend' "$DISPATCH_REF" \
-  && grep -Fq -- 'github_writes' "$DISPATCH_REF" \
-  && grep -Fq -- 'github_writes' "$PR_SKILL"; then
+# 34. pr-review の再実行ガードは共通キー（post_state / dispatch_status）だけで判断し native_result を読まない。
+if grep -Fq -- 'post_state' "$PR_SKILL" \
+  && grep -Fq -- 'native_result' "$PR_SKILL" \
+  && grep -Fq -- 'native_result` は読まない' "$PR_SKILL" \
+  && ! grep -Fq -- 'github_writes' "$PR_SKILL" \
+  && grep -Fq -- 'post_failed` は' "$DISPATCH_REF" \
+  && grep -Fq -- '1件も書き込まれていない' "$DISPATCH_REF"; then
   result=0
 else
   result=1
 fi
-record_result "pr-review が github_writes を見て盲目的再実行を抑止する" "$result"
+record_result "pr-review の再実行ガードが post_state 共通キーのみで native_result を読まない" "$result"
 
 echo ""
 echo "=== 結果: PASS=$PASS FAIL=$FAIL ==="

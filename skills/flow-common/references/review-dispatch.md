@@ -145,7 +145,7 @@ engine は最後まで走ったが dispatch 側の検証（`dispatch handoff:` �
 | manual_review_required | `true`（「評価不能時の不変条件」で validator が強制） |
 | manual_review | `null`（詳細を構成できないため） |
 | artifact_ref / adjudication_ref | `null` |
-| post_state | **codex backend**（dispatch の /review-post が未実行）は `post_failed`。**magi backend**（/magi-hard 内部の /review-post が既に走っている）は `posted`。fast は `not_applicable`。`dispatch_status=failed` が LGTM を防ぐのは両者共通で、`post_state` の使い分けは「`pr-review` が /review-hard の盲目的再実行を促してよいか」を伝えるためだけに使う（`posted` = GitHub へ投稿済みの可能性があり再実行前に手動確認、`post_failed` = 未投稿なので再実行は安全） |
+| post_state | **codex backend**: dispatch の /review-post は未実行で、GitHub へ1件も書き込まれていないと保証できる → `post_failed`（/review-hard 再実行は安全）。**magi backend**: /magi-hard 内部の /review-post が既に走っており投稿状況を dispatch が確認できない → `posted`（保守的。pr-review は再実行を促さず手動確認へ）。fast は `not_applicable`。`dispatch_status=failed` が LGTM を止めるのは両者共通 |
 | failure_reason | 非空。どの検証が失敗したか（例: `dispatch handoff 行の result_path 不一致`） |
 | native_result | `{}` 可 |
 
@@ -264,7 +264,7 @@ review-post-result.json の .counts.block と .status を使い、persona 別内
 | manual_review | 上記の要人手確認内容 | true のとき `needs_human` の finding id 一覧と `importance_status=="failed"` の finding id 一覧を載せ、`validity_global_failure==true` は別記する。それ以外 null |
 | artifact_ref | request .inputs.findings_artifact | structure 経路では null |
 | adjudication_ref | request `.inputs.adjudication_result` | structure 経路では null（正当）。通常経路（`gate_decision ∈ {lgtm,block}`）で null または読めない場合は `dispatch_status=failed`。同じ規則を `artifact_ref` にも適用する（上記「hard の ref 事前検証」） |
-| native_result | result の .counts / .items / .grounding_status など。hard では result の `github_writes`（成功済み投稿の URL 一覧）も必ず含める | 呼び出し元は分岐に使わない。ただし `pr-review` は再実行ガードで `github_writes` の有無だけ参照する |
+| native_result | result の .counts / .items / .grounding_status / `github_writes` など | 呼び出し元は分岐に使わない。`pr-review` の再実行ガードは `post_state` と `dispatch_status`（共通キー）だけで判断し、`github_writes` は人間がコメント状況を確認するための情報にとどめる |
 
 degraded 経路は review-post-result.json の status だけでなく request の engine_state.block_layer で識別する。
 status=report_only だけでは audit 経路が no_findings に見えるためである。`status=report_only` も既存どおり
@@ -295,6 +295,12 @@ dispatch が担う。`validity_global_failure:true` は block_layer=audit とし
 
 /review-post の終了コードと result の存在を次で写像する。
 
+`post_state=post_failed` は「dispatch が GitHub へ1件も書き込まれていないと保証できる場合」
+（`/review-post` 未実行、または `/review-post` 終了コード 2 = API 呼び出し前の契約違反）に限る。
+それ以外の失敗は `post_state=posted`（write 状況不明を保守的に投稿済み扱い）とし、`pr-review` は
+盲目的な /review-hard 再実行をしない。分岐は共通キー（`post_state` / `dispatch_status`）だけで行い、
+`github_writes` の中身は使わない。
+
 - 終了コード 0 かつ review-post-result.json を読める場合は post_state=posted。status は posted、
   no_findings、report_only のいずれでもよい。ただし report_only は degraded として
   dispatch_status=incomplete、gate_decision=indeterminate にする。
@@ -303,17 +309,22 @@ dispatch が担う。`validity_global_failure:true` は block_layer=audit とし
   `dispatch_status=failed` / `gate_decision=indeterminate` / `blocking_count=null` とする。**
   投稿は実際に起きているので `post_state` は正直に `posted` にする（`failed`+`posted` は許容）。
   false LGTM は `dispatch_status != complete ⟹ lgtm_eligible=false` が防ぐ。
-- 終了コード 1（GitHub API 失敗、result は書き込み済み）は post_state=post_failed とし、
-  dispatch_status は通常経路のままにする。counts と gate 判定は利用できるが、hard の LGTM は post_state
-  の述語によって禁止される。**`post_state=post_failed` のときは `failure_reason` に投稿失敗の理由を
-  必ず入れる（`dispatch_status` が `complete` でも）。** このとき result の `github_writes` にはサマリ等の
-  成功済み投稿が残る。dispatch はそれを `native_result` に載せ（下記 native_result 行）、`pr-review` は
-  /review-hard の再実行を促す前にこれを参照する（部分投稿済みなら盲目的再実行は重複を生む）。
-- 終了コード 2、result ファイルなし、または result の parse 不能は dispatch_status=failed、
+- 終了コード 1（`review-post.md` の定義上、サマリを含むいずれかの GitHub API 呼び出しの失敗）は
+  post_state=posted、dispatch_status=failed、gate_decision=indeterminate、blocking_count=null、
+  `failure_reason` 非空とする。`github_writes` が空でも未投稿の証明にはならない（サーバ受理後の
+  タイムアウトや応答解析失敗でも空になり得る）ため、`github_writes` の中身で post_failed と posted を
+  分けない。hard の LGTM は `dispatch_status != complete` の述語で止まる。
+- 終了コード 2（`review-post.md` の契約上、request / 入力 artifact の契約違反であり、この検証より前に
+  GitHub API を呼び出してはならない ＝ 未投稿を保証できる）は dispatch_status=failed、
   post_state=post_failed、gate_decision=indeterminate、blocking_count=null とする。
+  `/review-hard` の再実行は安全。
+- `/review-post` を起動した後の異常終了、result ファイルなし、または result の parse 不能（終了コード 2
+  以外で write 状況が不明）は dispatch_status=failed、post_state=posted（保守的）、
+  gate_decision=indeterminate、blocking_count=null、`failure_reason` 非空とする。
 - status、block_layer、counts.block のいずれかが whitelist 外・欠落・非整数の場合、`post_state` は
   この節の終了コード / result 写像を優先する（終了コード 0 かつ result を読取・parse できるなら
-  `posted`、終了コード 1、終了コード 2、result 不在・parse 不能なら `post_failed`）。whitelist 違反
+  `posted`、終了コード 2 なら `post_failed`、終了コード 1 と「起動後の異常終了・result 不在・parse
+  不能」は `posted`）。whitelist 違反
   そのものは `dispatch_status=failed`、`gate_decision=indeterminate`、`blocking_count=null` にだけ
   反映する。「評価不能時の不変条件」により `dispatch_status=failed` では `manual_review_required=true`
   となる（`manual_review` は詳細を構成できなければ null を許容）。status/counts の不正だけで
