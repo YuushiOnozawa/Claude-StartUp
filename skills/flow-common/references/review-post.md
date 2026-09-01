@@ -516,36 +516,100 @@ if [[ "$POST_INLINE" == "false" ]]; then
   fi
 fi
 
+SUMMARY_FP="$(printf '%s\0' 'review-post:v1' 'summary' "$ENGINE_LABEL" "$HEAD_SHA" | sha256sum | cut -c1-24)"
+SUMMARY_MARKER="<!-- review-post:v1 kind=summary engine=$ENGINE_LABEL head_sha=$HEAD_SHA fp=$SUMMARY_FP -->"
+SUMMARY_MARKDOWN="${SUMMARY_MARKDOWN}"$'\n\n'"${SUMMARY_MARKER}"
+
 DELIVERY_JSON="$(jq -n -c --argjson results "$ADJUDICATION_RESULTS" --arg inline "$POST_INLINE" '
   reduce $results[] as $result ({};
     .[$result.id] = (if $result.final_gate == "block"
                      then (if $inline == "false" then "summary_only" else "not_posted" end)
                      else "not_posted" end))
 ' )"
+REUSED_JSON='{}'
 GITHUB_WRITES='[]'
 GITHUB_FAILED=false
 
 record_write() {
   local kind="$1"
   local url="$2"
-  GITHUB_WRITES="$(jq -c --arg kind "$kind" --arg url "$url" '. + [{kind:$kind, url:$url}]' <<<"$GITHUB_WRITES")"
+  local operation="${3:-create}"
+  GITHUB_WRITES="$(jq -c --arg kind "$kind" --arg url "$url" --arg operation "$operation" '. + [{kind:$kind, url:$url, operation:$operation}]' <<<"$GITHUB_WRITES")"
 }
+
+ISSUE_COMMENTS_RAW="$TMP_DIR/issue-comments.raw"
+ISSUE_COMMENTS_ERR="$TMP_DIR/issue-comments.err"
+PULL_COMMENTS_RAW="$TMP_DIR/pull-comments.raw"
+PULL_COMMENTS_ERR="$TMP_DIR/pull-comments.err"
+ISSUE_LIST_EXIT=0
+gh api --paginate "repos/$OWNER/$REPO/issues/$PR_NUM/comments?per_page=100" \
+  --jq '.[] | {id, body, login: (.user.login // null)}' >"$ISSUE_COMMENTS_RAW" 2>"$ISSUE_COMMENTS_ERR" \
+  || ISSUE_LIST_EXIT=$?
+PULL_LIST_EXIT=0
+gh api --paginate "repos/$OWNER/$REPO/pulls/$PR_NUM/comments?per_page=100" \
+  --jq '.[] | {id, body, login: (.user.login // null)}' >"$PULL_COMMENTS_RAW" 2>"$PULL_COMMENTS_ERR" \
+  || PULL_LIST_EXIT=$?
+
+MY_LOGIN_ERR="$TMP_DIR/whoami.err"
+MY_LOGIN=""
+MY_LOGIN_EXIT=0
+MY_LOGIN="$(gh api user \
+  --jq 'if (.login | type) == "string" and (.login | length) > 0 then .login else error("missing login") end' \
+  2>"$MY_LOGIN_ERR")" || MY_LOGIN_EXIT=$?
+if [[ "$MY_LOGIN_EXIT" -eq 0 && -z "$MY_LOGIN" ]]; then
+  MY_LOGIN_EXIT=1
+fi
+
+ISSUE_COMMENTS='[]'
+if [[ "$ISSUE_LIST_EXIT" -eq 0 ]] && ! ISSUE_COMMENTS="$(jq -s -c '.' "$ISSUE_COMMENTS_RAW" 2>/dev/null)"; then
+  ISSUE_LIST_EXIT=1
+fi
+PULL_COMMENTS='[]'
+if [[ "$PULL_LIST_EXIT" -eq 0 ]] && ! PULL_COMMENTS="$(jq -s -c '.' "$PULL_COMMENTS_RAW" 2>/dev/null)"; then
+  PULL_LIST_EXIT=1
+fi
 
 SUMMARY_ERR="$TMP_DIR/summary.err"
 SUMMARY_URL=""
 SUMMARY_EXIT=0
-SUMMARY_URL="$(gh api -X POST "repos/$OWNER/$REPO/issues/$PR_NUM/comments" \
-  -f body="$SUMMARY_MARKDOWN" --jq '.html_url' 2>"$SUMMARY_ERR")" || SUMMARY_EXIT=$?
-if [[ "$SUMMARY_EXIT" -ne 0 ]]; then
+if [[ "$ISSUE_LIST_EXIT" -ne 0 || "$PULL_LIST_EXIT" -ne 0 || "$MY_LOGIN_EXIT" -ne 0 ]]; then
+  # 既存コメントを確認できない場合は、重複投稿を避けるため fail-closed にする。
+  SUMMARY_EXIT=1
   GITHUB_FAILED=true
 else
-  record_write "summary" "$SUMMARY_URL"
+  SUMMARY_COMMENT_ID="$(jq -r --arg marker "$SUMMARY_MARKER" --arg my_login "$MY_LOGIN" '
+    [ .[]
+      | select((.body | type) == "string" and (.body | endswith($marker)) and (.login == $my_login))
+      | select((.id | type) == "number" and (.id | floor) == .id)
+    ]
+    | sort_by(.id) | .[0].id // empty
+  ' <<<"$ISSUE_COMMENTS")"
+  if [[ -n "$SUMMARY_COMMENT_ID" ]]; then
+    SUMMARY_URL=""
+    SUMMARY_URL="$(gh api -X PATCH "repos/$OWNER/$REPO/issues/comments/$SUMMARY_COMMENT_ID" \
+      -f body="$SUMMARY_MARKDOWN" --jq '.html_url' 2>"$SUMMARY_ERR")" || SUMMARY_EXIT=$?
+    if [[ "$SUMMARY_EXIT" -eq 0 ]]; then
+      record_write "summary" "$SUMMARY_URL" update
+    else
+      GITHUB_FAILED=true
+    fi
+  else
+    SUMMARY_URL="$(gh api -X POST "repos/$OWNER/$REPO/issues/$PR_NUM/comments" \
+      -f body="$SUMMARY_MARKDOWN" --jq '.html_url' 2>"$SUMMARY_ERR")" || SUMMARY_EXIT=$?
+    if [[ "$SUMMARY_EXIT" -eq 0 ]]; then
+      record_write "summary" "$SUMMARY_URL"
+    else
+      GITHUB_FAILED=true
+    fi
+  fi
 fi
 
 set_delivery() {
   local id="$1"
   local delivery="$2"
+  local reused="${3:-false}"
   DELIVERY_JSON="$(jq -c --arg id "$id" --arg delivery "$delivery" '.[$id] = $delivery' <<<"$DELIVERY_JSON")"
+  REUSED_JSON="$(jq -c --arg id "$id" --argjson reused "$reused" '.[$id] = $reused' <<<"$REUSED_JSON")"
 }
 
 post_pr_comment() {
@@ -556,11 +620,13 @@ post_pr_comment() {
   local line="$5"
   local body="$6"
   local prefix="$7"
+  local marker="$8"
   local comment_body
   local error_file="$TMP_DIR/comment-$id.err"
   local url=""
   local status=0
-    comment_body="$(printf '[%s] **[%s] %s** `%s:%s`\n\n%s' "$prefix" "$severity" "$persona" "$path" "$line" "$body")"
+  comment_body="$(printf '[%s] **[%s] %s** `%s:%s`\n\n%s' "$prefix" "$severity" "$persona" "$path" "$line" "$body")"
+  comment_body="${comment_body}"$'\n\n'"${marker}"
   url="$(gh api -X POST "repos/$OWNER/$REPO/issues/$PR_NUM/comments" \
     -f body="$comment_body" --jq '.html_url' 2>"$error_file")" || status=$?
   if [[ "$status" -ne 0 ]]; then
@@ -573,6 +639,32 @@ post_pr_comment() {
 }
 
 if [[ "$SUMMARY_EXIT" -eq 0 && "$POST_INLINE" == "true" && "$BLOCK_COUNT" -gt 0 ]]; then
+  PULL_REMAINING="$(jq -c --arg engine "$ENGINE_LABEL" --arg head_sha "$HEAD_SHA" --arg my_login "$MY_LOGIN" '
+    reduce .[] as $comment ({};
+      if ($comment.body | type) != "string" then .
+      else
+        (try ($comment.body | split("\n") | .[-1]
+          | capture("^<!-- review-post:v1 kind=(?<kind>finding) engine=(?<engine>[^ ]+) head_sha=(?<head_sha>[^ ]+) fp=(?<fp>[0-9a-f]{24}) -->$")) catch null) as $marker
+        | if $marker != null and $comment.login == $my_login and $marker.engine == $engine and $marker.head_sha == $head_sha
+          then .[$marker.fp] = ((.[$marker.fp] // 0) + 1)
+          else .
+          end
+      end
+    )
+  ' <<<"$PULL_COMMENTS")"
+  ISSUE_REMAINING="$(jq -c --arg engine "$ENGINE_LABEL" --arg head_sha "$HEAD_SHA" --arg my_login "$MY_LOGIN" '
+    reduce .[] as $comment ({};
+      if ($comment.body | type) != "string" then .
+      else
+        (try ($comment.body | split("\n") | .[-1]
+          | capture("^<!-- review-post:v1 kind=(?<kind>finding) engine=(?<engine>[^ ]+) head_sha=(?<head_sha>[^ ]+) fp=(?<fp>[0-9a-f]{24}) -->$")) catch null) as $marker
+        | if $marker != null and $comment.login == $my_login and $marker.engine == $engine and $marker.head_sha == $head_sha
+          then .[$marker.fp] = ((.[$marker.fp] // 0) + 1)
+          else .
+          end
+      end
+    )
+  ' <<<"$ISSUE_COMMENTS")"
   while IFS= read -r FINDING_ROW; do
     ID="$(jq -r '.id' <<<"$FINDING_ROW")"
     STATUS="$(jq -r '.anchor_status // "unanchorable"' <<<"$FINDING_ROW")"
@@ -587,9 +679,23 @@ if [[ "$SUMMARY_EXIT" -eq 0 && "$POST_INLINE" == "true" && "$BLOCK_COUNT" -gt 0 
       LELIEL) VIEWPOINT="既存ソース影響" ;;
       *) VIEWPOINT="レビュー観点" ;;
     esac
-    BODY="$(jq -r '.body' <<<"$FINDING_ROW")"
     ORIGINAL_PATH="$(jq -r '.path' <<<"$FINDING_ROW")"
     ORIGINAL_LINE="$(jq -r '.line' <<<"$FINDING_ROW")"
+    FINDING_FP="$(printf '%s\0' 'review-post:v1' 'finding' "$ENGINE_LABEL" "$HEAD_SHA" "$PERSONA" "$ORIGINAL_PATH" "$ORIGINAL_LINE" | sha256sum | cut -c1-24)"
+    FINDING_MARKER="<!-- review-post:v1 kind=finding engine=$ENGINE_LABEL head_sha=$HEAD_SHA fp=$FINDING_FP -->"
+    PULL_COUNT="$(jq -r --arg fp "$FINDING_FP" '.[$fp] // 0' <<<"$PULL_REMAINING")"
+    if [[ "$PULL_COUNT" -gt 0 ]]; then
+      PULL_REMAINING="$(jq -c --arg fp "$FINDING_FP" 'if .[$fp] == 1 then del(.[$fp]) else .[$fp] -= 1 end' <<<"$PULL_REMAINING")"
+      set_delivery "$ID" "inline" true
+      continue
+    fi
+    ISSUE_COUNT="$(jq -r --arg fp "$FINDING_FP" '.[$fp] // 0' <<<"$ISSUE_REMAINING")"
+    if [[ "$ISSUE_COUNT" -gt 0 ]]; then
+      ISSUE_REMAINING="$(jq -c --arg fp "$FINDING_FP" 'if .[$fp] == 1 then del(.[$fp]) else .[$fp] -= 1 end' <<<"$ISSUE_REMAINING")"
+      set_delivery "$ID" "pr_comment" true
+      continue
+    fi
+    BODY="$(jq -r '.body' <<<"$FINDING_ROW")"
     PREFIX="$ENGINE_LABEL"
     if [[ "$STATUS" == "ok" || "$STATUS" == "corrected" || "$STATUS" == "unverified" ]]; then
       ANCHORED_PATH="$(jq -r '.anchored_path' <<<"$FINDING_ROW")"
@@ -599,6 +705,7 @@ if [[ "$SUMMARY_EXIT" -eq 0 && "$POST_INLINE" == "true" && "$BLOCK_COUNT" -gt 0 
       if [[ "$STATUS" == "unverified" ]]; then
         COMMENT_BODY="$(printf '[%s] **[%s] %s（%s）**\n\n⚠ 位置は未検証（evidence引用なし、original_lineの実在確認のみ）\n\n%s' "$PREFIX" "$SEVERITY" "$PERSONA" "$VIEWPOINT" "$BODY")"
       fi
+      COMMENT_BODY="${COMMENT_BODY}"$'\n\n'"${FINDING_MARKER}"
       INLINE_ERR="$TMP_DIR/inline-$ID.err"
       INLINE_URL=""
       INLINE_EXIT=0
@@ -609,12 +716,12 @@ if [[ "$SUMMARY_EXIT" -eq 0 && "$POST_INLINE" == "true" && "$BLOCK_COUNT" -gt 0 
         record_write "inline" "$INLINE_URL"
         set_delivery "$ID" "inline"
       elif grep -Eq '(^|[^0-9])422([^0-9]|$)' "$INLINE_ERR"; then
-        post_pr_comment "$ID" "$SEVERITY" "$PERSONA" "$ORIGINAL_PATH" "$ORIGINAL_LINE" "$BODY" "$PREFIX" || true
+        post_pr_comment "$ID" "$SEVERITY" "$PERSONA" "$ORIGINAL_PATH" "$ORIGINAL_LINE" "$BODY" "$PREFIX" "$FINDING_MARKER" || true
       else
         GITHUB_FAILED=true
       fi
     else
-      post_pr_comment "$ID" "$SEVERITY" "$PERSONA" "$ORIGINAL_PATH" "$ORIGINAL_LINE" "$BODY" "$PREFIX" || true
+      post_pr_comment "$ID" "$SEVERITY" "$PERSONA" "$ORIGINAL_PATH" "$ORIGINAL_LINE" "$BODY" "$PREFIX" "$FINDING_MARKER" || true
     fi
   done < <(jq -c --argjson rows "$BLOCK_ROWS" '$rows[]' <<<"$BLOCK_ROWS")
 elif [[ "$SUMMARY_EXIT" -ne 0 ]]; then
@@ -633,12 +740,14 @@ INLINE_COUNT="$(jq '[to_entries[] | select(.value == "inline")] | length' <<<"$D
 FALLBACK_COUNT="$(jq '[to_entries[] | select(.value == "pr_comment")] | length' <<<"$DELIVERY_JSON")"
 SUMMARY_ONLY_COUNT="$(jq '[to_entries[] | select(.value == "summary_only")] | length' <<<"$DELIVERY_JSON")"
 NOT_POSTED_COUNT="$(jq '[to_entries[] | select(.value == "not_posted")] | length' <<<"$DELIVERY_JSON")"
-ITEMS_JSON="$(jq -n -c --argjson findings "$ENRICHED_FINDINGS" --argjson results "$ADJUDICATION_RESULTS" --argjson delivery "$DELIVERY_JSON" '
+REUSED_COUNT="$(jq '[to_entries[] | select(.value == true)] | length' <<<"$REUSED_JSON")"
+ITEMS_JSON="$(jq -n -c --argjson findings "$ENRICHED_FINDINGS" --argjson results "$ADJUDICATION_RESULTS" --argjson delivery "$DELIVERY_JSON" --argjson reused "$REUSED_JSON" '
   $findings | map(
     . as $finding
     | (first($results[] | select(.id == $finding.id)) // {}) as $result
     | {id:$finding.id, final_gate:($result.final_gate // null), importance:($result.importance // null),
-       anchor_status:($finding.anchor_status // "unanchorable"), delivery:($delivery[$finding.id] // "not_posted")}
+       anchor_status:($finding.anchor_status // "unanchorable"), delivery:($delivery[$finding.id] // "not_posted"),
+       reused:($reused[$finding.id] // false)}
   )
 ' )"
 
@@ -663,6 +772,7 @@ if ! jq -n \
   --argjson defer "$DEFER_COUNT" \
   --argjson inline_posted "$INLINE_COUNT" \
   --argjson fallback_posted "$FALLBACK_COUNT" \
+  --argjson reused "$REUSED_COUNT" \
   --argjson summary_only "$SUMMARY_ONLY_COUNT" \
   --argjson not_posted "$NOT_POSTED_COUNT" \
   --argjson items "$ITEMS_JSON" \
@@ -672,7 +782,7 @@ if ! jq -n \
     pr:{owner:$owner, repo:$repo, number:$number}, grounding_status:$grounding_status,
     grounding_note:(if $grounding_note == "" then null else $grounding_note end),
     counts:{total_findings:$total, block:$block, defer:$defer, inline_posted:$inline_posted,
-      fallback_posted:$fallback_posted, summary_only:$summary_only, not_posted:$not_posted},
+      fallback_posted:$fallback_posted, reused:$reused, summary_only:$summary_only, not_posted:$not_posted},
     items:$items, summary_markdown:$summary_markdown, github_writes:$github_writes}' \
   >"$RESULT_PATH"; then
   echo "review-post result を書き出せません: $RESULT_PATH" >&2
@@ -697,11 +807,26 @@ anchor フィールドがない場合は `original_path:original_line` を場所
 インライン API が 422 を返した場合も同じ通常 PR コメントへフォールバックする。
 
 本文の接頭辞は MAGI が `[MAGI-HARD]`、Codex が `[CODEX-HARD]` であり、インラインの形式は次のとおりとする。
+同一 `$HEAD_SHA` の再実行では、既存コメントの末尾にあるマーカーを使って dedup する。サマリのマーカーは
+`<!-- review-post:v1 kind=summary engine=<ENGINE_LABEL> head_sha=<HEAD_SHA> fp=<24hex> -->`、finding の
+マーカーは `<!-- review-post:v1 kind=finding engine=<ENGINE_LABEL> head_sha=<HEAD_SHA> fp=<24hex> -->` とし、
+どちらも本文末尾に空行2つを挟んで置く（`pr-review-respond` の `startswith("[MAGI-HARD]")` を壊さないため）。
+finding の fingerprint は `engine + head_sha + persona + path + line` だけから計算し、本文・finding id・
+severity・side・anchor_status は含めない。同じ鍵の複数 finding は、既存コメントの個数を1件ずつ消費する
+multiset 突合とする。サマリは同じ engine と head_sha なら PATCH し、finding は issues と pulls の両方を
+照合する。dedup の突合対象は `gh api user` で取得した bot 自身の login が投稿したコメントだけであり、
+他ユーザーが本文末尾に同じ書式のマーカーを偽造しても突合対象にしない（該当 finding は通常どおり新規投稿し、
+summary も新規 POST する）。マーカーのない旧コメントは dedup 対象外である。この冪等性が保証するのは、
+同一 `$HEAD_SHA` に対する逐次再実行と部分失敗後の再試行のみである。同一 PR・同一 HEAD で `/review-post`
+を同時並行実行した場合、一覧取得と投稿の間に別 run が割り込むと重複投稿が起こり得る。GitHub のコメント
+API に原子的な idempotency key がないため、プロセス間ロックによる同時実行対策は本スキルの対象外とする。
 
 ```text
 [MAGI-HARD] **[<severity>] <persona>（<観点>）**
 
 <指摘内容>
+
+<!-- review-post:v1 kind=finding engine=MAGI-HARD head_sha=<HEAD_SHA> fp=<24hex> -->
 ```
 
 `post_inline:false` の場合は、サマリ本文の末尾に structure なら normalized raw、audit なら finding list を
@@ -724,13 +849,24 @@ anchor フィールドがない場合は `original_path:original_line` を場所
   "grounding_note": null,
   "counts": {
     "total_findings": 0, "block": 0, "defer": 0,
-    "inline_posted": 0, "fallback_posted": 0, "summary_only": 0, "not_posted": 0
+    "inline_posted": 0, "fallback_posted": 0, "reused": 0, "summary_only": 0, "not_posted": 0
   },
-  "items": [ { "id": "M-001", "final_gate": "block", "importance": "HIGH", "anchor_status": "ok", "delivery": "inline" } ],
+  "items": [ { "id": "M-001", "final_gate": "block", "importance": "HIGH", "anchor_status": "ok", "delivery": "inline", "reused": false } ],
   "summary_markdown": "...",
-  "github_writes": [ { "kind": "summary", "url": "https://..." } ]
+  "github_writes": [ { "kind": "summary", "url": "https://...", "operation": "create" } ]
 }
 ```
+
+`items[].reused` と `counts.reused` は既存 finding の再利用数を示す。再利用 finding は GitHub API を呼ばず、
+`github_writes` に入らない。サマリを PATCH した場合は `github_writes[].operation` が `"update"` になり、
+新規投稿は `"create"` になる。一覧取得（issues または pulls）が失敗した場合は mutation を行わず、
+終了コード1、`github_writes: []`、全 block finding の `delivery: "not_posted"` / `reused: false` で result を
+生成する。終了コード2では GET を含むすべての GitHub API 呼び出しを行わない。exit 0/1/2 と
+`review-dispatch.md` の写像は変更しない。
+
+self-identity（`gh api user`）の取得に失敗した場合、または login が文字列でない・空・欠落の
+場合（`--jq` の型検証で gh が非ゼロ終了する）も一覧取得失敗と同じ
+fail-closed とし、何も投稿せず `github_writes: []`・終了コード1で result を生成する。終了コード2へは変換しない。
 
 `status` は通常経路が `posted`、structure 経路が `report_only`、投稿対象0件が `no_findings` である。
 契約どおりの縮退を含む成功は終了コード0、GitHub API 呼び出しの失敗（部分投稿を含む）は1、requestまたは
