@@ -62,46 +62,97 @@ mkdir -p "$STUB_DIR"
 printf '%s\n' \
   '#!/usr/bin/env bash' \
   'set -u' \
+  'method=GET' \
   'endpoint=""' \
   'body=""' \
   'path_arg=""' \
   'line_arg=""' \
   'side_arg=""' \
-  'take_f=false' \
+  'comment_id=""' \
+  'take_method=false' \
+  'take_field=false' \
+  'take_jq=false' \
   'for arg in "$@"; do' \
-  '  if [[ "$take_f" == true ]]; then' \
-  '    [[ "$arg" == body=* ]] && body="${arg#body=}"' \
-  '    [[ "$arg" == path=* ]] && path_arg="${arg#path=}"' \
-  '    [[ "$arg" == side=* ]] && side_arg="${arg#side=}"' \
-  '    take_f=false' \
+  '  if [[ "$take_method" == true ]]; then' \
+  '    method="${arg^^}"' \
+  '    take_method=false' \
   '    continue' \
   '  fi' \
-  '  [[ "$arg" == repos/* ]] && endpoint="$arg"' \
-  '  [[ "$arg" == path=* ]] && path_arg="${arg#path=}"' \
-  '  [[ "$arg" == line=* ]] && line_arg="${arg#line=}"' \
-  '  [[ "$arg" == side=* ]] && side_arg="${arg#side=}"' \
-  '  [[ "$arg" == "-f" ]] && take_f=true' \
+  '  if [[ "$take_field" == true ]]; then' \
+  '    [[ "$arg" == body=* ]] && body="${arg#body=}"' \
+  '    [[ "$arg" == path=* ]] && path_arg="${arg#path=}"' \
+  '    [[ "$arg" == line=* ]] && line_arg="${arg#line=}"' \
+  '    [[ "$arg" == side=* ]] && side_arg="${arg#side=}"' \
+  '    take_field=false' \
+  '    continue' \
+  '  fi' \
+  '  if [[ "$take_jq" == true ]]; then' \
+  '    take_jq=false' \
+  '    continue' \
+  '  fi' \
+  '  case "$arg" in' \
+  '    -X) take_method=true ;;' \
+  '    -f|-F) take_field=true ;;' \
+  '    --jq) take_jq=true ;;' \
+  '    --paginate) ;;' \
+  '    repos/*) endpoint="$arg" ;;' \
+  '    path=*) path_arg="${arg#path=}" ;;' \
+  '    line=*) line_arg="${arg#line=}" ;;' \
+  '    side=*) side_arg="${arg#side=}" ;;' \
+  '  esac' \
   'done' \
   'case "$endpoint" in' \
-  '  */pulls/*/comments) kind=inline ;;' \
-  '  */issues/*/comments) kind=issue ;;' \
+  '  */pulls/*/comments*) kind=inline ;;' \
+  '  */issues/comments/*) kind=issue ;;' \
+  '  */issues/*/comments*) kind=issue ;;' \
   '  *) kind=other ;;' \
   'esac' \
+  'if [[ "$method" == PATCH && "$endpoint" =~ /issues/comments/([0-9]+) ]]; then' \
+  '  comment_id="${BASH_REMATCH[1]}"' \
+  'fi' \
   'printf "ENDPOINT:%s\\n" "$endpoint" >> "$GH_LOG"' \
+  'printf "METHOD:%s\\n" "$method" >> "$GH_LOG"' \
   'printf "KIND:%s\\n" "$kind" >> "$GH_LOG"' \
   'printf "PATH:%s\\n" "$path_arg" >> "$GH_LOG"' \
   'printf "LINE:%s\\n" "$line_arg" >> "$GH_LOG"' \
   'printf "SIDE:%s\\n" "$side_arg" >> "$GH_LOG"' \
   'printf "BODY:%s\\n" "$body" >> "$GH_LOG"' \
-  'if [[ "${GH_MODE:-}" == summary-fail && "$kind" == issue ]]; then' \
+  'if [[ "$method" == PATCH ]]; then' \
+  '  printf "COMMENT_ID:%s\\n" "$comment_id" >> "$GH_LOG"' \
+  'fi' \
+  'if [[ "$method" == GET ]]; then' \
+  '  if [[ "${STUB_GET_FAIL:-}" == issue && "$kind" == issue ]] || [[ "${STUB_GET_FAIL:-}" == both && "$kind" == issue ]]; then' \
+  '    echo "GET issues failed" >&2' \
+  '    exit 1' \
+  '  fi' \
+  '  if [[ "${STUB_GET_FAIL:-}" == pull && "$kind" == inline ]] || [[ "${STUB_GET_FAIL:-}" == both && "$kind" == inline ]]; then' \
+  '    echo "GET pulls failed" >&2' \
+  '    exit 1' \
+  '  fi' \
+  '  if [[ "$kind" == issue && -n "${STUB_ISSUE_COMMENTS:-}" ]]; then' \
+  '    cat "$STUB_ISSUE_COMMENTS"' \
+  '  elif [[ "$kind" == inline && -n "${STUB_PULL_COMMENTS:-}" ]]; then' \
+  '    cat "$STUB_PULL_COMMENTS"' \
+  '  fi' \
+  '  exit 0' \
+  'fi' \
+  'if [[ "$method" == PATCH && "${STUB_PATCH_FAIL:-}" == 1 ]]; then' \
+  '  echo "PATCH failed" >&2' \
+  '  exit 1' \
+  'fi' \
+  'if [[ "$method" == POST && "${GH_MODE:-}" == summary-fail && "$kind" == issue ]]; then' \
   '  echo "HTTP 500" >&2' \
   '  exit 1' \
   'fi' \
-  'if [[ "${GH_MODE:-}" == 422 && "$kind" == inline ]]; then' \
+  'if [[ "$method" == POST && "${GH_MODE:-}" == 422 && "$kind" == inline ]]; then' \
   '  echo "HTTP 422 Unprocessable Entity" >&2' \
   '  exit 1' \
   'fi' \
-  'printf "%s\n" "https://stub.invalid/$kind"' \
+  'if [[ "$method" == PATCH ]]; then' \
+  '  printf "%s\\n" "https://stub.invalid/patch"' \
+  'else' \
+  '  printf "%s\\n" "https://stub.invalid/$kind"' \
+  'fi' \
   'exit 0' >"$STUB_DIR/gh"
 chmod +x "$STUB_DIR/gh"
 
@@ -125,6 +176,7 @@ printf '%s\n' \
   '  ground-unknown) printf "%s\n" "{\"schema_version\":\"1\",\"anchors\":[{\"id\":\"G-001\",\"anchored_path\":\"a.sh\",\"anchored_line\":1,\"side\":\"RIGHT\",\"anchor_status\":\"partial\"}]}"; exit 0 ;;' \
   '  ground-invalid) printf "%s\n" "{\"schema_version\":\"1\",\"anchors\":[{\"id\":\"G-001\",\"anchored_path\":\"\",\"anchored_line\":0,\"side\":\"RIGHT\",\"anchor_status\":\"ok\"},{\"id\":\"G-002\",\"anchored_path\":\"b.sh\",\"anchored_line\":1,\"side\":\"CENTER\",\"anchor_status\":\"ok\"}]}"; exit 0 ;;' \
   '  ground-all) printf "%s\n" "{\"schema_version\":\"1\",\"anchors\":[{\"id\":\"G-002\",\"anchored_path\":\"b.sh\",\"anchored_line\":1,\"side\":\"RIGHT\",\"anchor_status\":\"ok\"},{\"id\":\"G-001\",\"anchored_path\":\"a.sh\",\"anchored_line\":1,\"side\":\"RIGHT\",\"anchor_status\":\"ok\"}]}"; exit 0 ;;' \
+  '  ground-same) printf "%s\n" "{\"schema_version\":\"1\",\"anchors\":[{\"id\":\"S-002\",\"anchored_path\":\"same.sh\",\"anchored_line\":1,\"side\":\"RIGHT\",\"anchor_status\":\"ok\"},{\"id\":\"S-001\",\"anchored_path\":\"same.sh\",\"anchored_line\":1,\"side\":\"RIGHT\",\"anchor_status\":\"ok\"}]}"; exit 0 ;;' \
   '  ground-invalid-position) printf "%s\n" "{\"schema_version\":\"1\",\"anchors\":[{\"id\":\"G-002\",\"anchored_path\":\"a.sh\",\"anchored_line\":2,\"side\":\"RIGHT\",\"anchor_status\":\"ok\"},{\"id\":\"G-001\",\"anchored_path\":\"outside.sh\",\"anchored_line\":1,\"side\":\"RIGHT\",\"anchor_status\":\"ok\"}]}"; exit 0 ;;' \
   'esac' \
   'exit 99' >"$GROUND_STUB_ROOT/scripts/magi-ground-findings.sh"
@@ -173,6 +225,10 @@ write_request() {
 run_post() {
   local request="$1"
   local mode="${2:-}"
+  local issue_fixture="${3:-}"
+  local pull_fixture="${4:-}"
+  local get_fail="${5:-}"
+  local patch_fail="${6:-}"
   local post_path="$STUB_DIR:$PATH"
   local ground_mode=""
   local gh_mode="$mode"
@@ -184,7 +240,10 @@ run_post() {
   : >"$GH_LOG"
   rm -f -- "$TEST_ROOT/grounder-called.log"
   if PATH="$post_path" GROUND_STUB_ROOT="$GROUND_STUB_ROOT" GROUND_STUB_MODE="$ground_mode" \
-    GROUND_STUB_LOG="$TEST_ROOT/grounder-called.log" GH_LOG="$GH_LOG" GH_MODE="$gh_mode" bash "$POST_SCRIPT" "$request" \
+    GROUND_STUB_LOG="$TEST_ROOT/grounder-called.log" GH_LOG="$GH_LOG" GH_MODE="$gh_mode" \
+    STUB_ISSUE_COMMENTS="$issue_fixture" STUB_PULL_COMMENTS="$pull_fixture" \
+    STUB_GET_FAIL="$get_fail" STUB_PATCH_FAIL="$patch_fail" \
+    bash "$POST_SCRIPT" "$request" \
     >"$TEST_ROOT/stdout" 2>"$TEST_ROOT/stderr"; then
     POST_EXIT=0
   else
@@ -194,13 +253,99 @@ run_post() {
 
 count_kind() {
   local kind="$1"
-  grep -c "^KIND:$kind$" "$GH_LOG" 2>/dev/null || true
+  awk -v kind="$kind" '
+    /^METHOD:/ { method = substr($0, 8) }
+    /^KIND:/ && method == "POST" && substr($0, 6) == kind { count++ }
+    END { print count + 0 }
+  ' "$GH_LOG"
+}
+
+count_method_kind() {
+  local method="$1"
+  local kind="$2"
+  awk -v wanted_method="$method" -v wanted_kind="$kind" '
+    /^METHOD:/ { current_method = substr($0, 8) }
+    /^KIND:/ && current_method == wanted_method && substr($0, 6) == wanted_kind { count++ }
+    END { print count + 0 }
+  ' "$GH_LOG"
 }
 
 assert_result() {
   local file="$1"
   local filter="$2"
   jq -e "$filter" "$file" >/dev/null 2>&1
+}
+
+finding_fp() {
+  local engine_label="$1"
+  local head_sha="$2"
+  local persona="$3"
+  local path="$4"
+  local line="$5"
+  printf '%s\0' 'review-post:v1' 'finding' "$engine_label" "$head_sha" "$persona" "$path" "$line" \
+    | sha256sum | cut -c1-24
+}
+
+summary_marker() {
+  local engine_label="$1"
+  local head_sha="$2"
+  local fp
+  fp="$(printf '%s\0' 'review-post:v1' 'summary' "$engine_label" "$head_sha" | sha256sum | cut -c1-24)"
+  printf '%s\n' "<!-- review-post:v1 kind=summary engine=$engine_label head_sha=$head_sha fp=$fp -->"
+}
+
+finding_marker() {
+  local engine_label="$1"
+  local head_sha="$2"
+  local persona="$3"
+  local path="$4"
+  local line="$5"
+  local fp
+  fp="$(finding_fp "$engine_label" "$head_sha" "$persona" "$path" "$line")"
+  printf '%s\n' "<!-- review-post:v1 kind=finding engine=$engine_label head_sha=$head_sha fp=$fp -->"
+}
+
+append_comment() {
+  local file="$1"
+  local id="$2"
+  local body="$3"
+  jq -n -c --argjson id "$id" --arg body "$body" '{id:$id,body:$body}' >>"$file"
+}
+
+post_bodies_have_markers() {
+  awk '
+    function finish_call() {
+      if (method == "POST" && (kind == "issue" || kind == "inline") &&
+          last !~ /^<!-- review-post:v1 kind=(summary|finding) engine=[^ ]+ head_sha=[^ ]+ fp=[0-9a-f]{24} -->$/) {
+        bad = 1
+      }
+    }
+    /^ENDPOINT:/ {
+      if (seen) finish_call()
+      seen = 1
+      method = ""
+      kind = ""
+      body_started = 0
+      last = ""
+      next
+    }
+    /^METHOD:/ { method = substr($0, 8); next }
+    /^KIND:/ { kind = substr($0, 6); next }
+    /^BODY:/ { body_started = 1; last = substr($0, 6); next }
+    body_started { last = $0 }
+    END {
+      if (seen) finish_call()
+      exit bad
+    }
+  ' "$GH_LOG"
+}
+
+gets_precede_mutations() {
+  awk '
+    /^METHOD:(POST|PATCH)$/ { mutation_seen = 1 }
+    /^METHOD:GET$/ && mutation_seen { bad = 1 }
+    END { exit bad }
+  ' "$GH_LOG"
 }
 
 # 正常 MAGI: body/evidence の特殊文字、null-line 分離、ID join、original/anchored 分離、422 fallback。
@@ -426,6 +571,258 @@ else
   result=1
 fi
 record_result "detection_status incomplete は summary に状態を明記する" "$result"
+
+# 冪等性: clean な PR では summary/finding をすべて新規作成し、本文末尾にマーカーを付ける。
+make_case idempotency-clean
+cp "$TEST_ROOT/anchor-contract/pr.diff" "$CASE_DIR/pr.diff"
+cp "$TEST_ROOT/anchor-contract/artifact.json" "$CASE_DIR/artifact.json"
+cp "$TEST_ROOT/anchor-contract/adjudication.json" "$CASE_DIR/adjudication.json"
+write_request "$CASE_DIR/request.json" magi "$CASE_DIR/artifact.json" "$CASE_DIR/adjudication.json" \
+  "$CASE_DIR/pr.diff" true "" "" "" "$CASE_DIR/result.json"
+run_post "$CASE_DIR/request.json" ground-all
+if [[ "$POST_EXIT" -eq 0 ]] \
+  && assert_result "$CASE_DIR/result.json" '.counts.reused == 0 and .counts.inline_posted == 2 and all(.items[]; .reused == false) and (.github_writes | length) == 3 and all(.github_writes[]; .operation == "create")' \
+  && [[ "$(count_method_kind GET issue)" -eq 1 ]] && [[ "$(count_method_kind GET inline)" -eq 1 ]] \
+  && [[ "$(count_method_kind POST issue)" -eq 1 ]] && [[ "$(count_method_kind POST inline)" -eq 2 ]] \
+  && [[ "$(count_method_kind PATCH issue)" -eq 0 ]] \
+  && post_bodies_have_markers && gets_precede_mutations \
+  && grep -Fq 'BODY:[MAGI-HARD]' "$GH_LOG"; then
+  result=0
+else
+  result=1
+fi
+record_result "冪等性 clean は全件を新規投稿し、本文末尾マーカーと MAGI 接頭辞を維持する" "$result"
+
+# 同一 SHA の完全再実行: pulls の inline を優先し、issues の退避を通常コメントとして再利用する。
+make_case idempotency-full-rerun
+cp "$TEST_ROOT/anchor-contract/pr.diff" "$CASE_DIR/pr.diff"
+cp "$TEST_ROOT/anchor-contract/artifact.json" "$CASE_DIR/artifact.json"
+cp "$TEST_ROOT/anchor-contract/adjudication.json" "$CASE_DIR/adjudication.json"
+ISSUE_FIXTURE="$CASE_DIR/issues.jsonl"
+PULL_FIXTURE="$CASE_DIR/pulls.jsonl"
+: >"$ISSUE_FIXTURE"
+: >"$PULL_FIXTURE"
+append_comment "$ISSUE_FIXTURE" 100 $'old summary\n\n'"$(summary_marker MAGI-HARD 0123456789abcdef)"
+append_comment "$ISSUE_FIXTURE" 101 $'[MAGI-HARD] old fallback\n\n'"$(finding_marker MAGI-HARD 0123456789abcdef MELCHIOR a.sh 1)"
+append_comment "$PULL_FIXTURE" 200 $'[MAGI-HARD] old inline\n\n'"$(finding_marker MAGI-HARD 0123456789abcdef BALTHASAR b.sh 1)"
+write_request "$CASE_DIR/request.json" magi "$CASE_DIR/artifact.json" "$CASE_DIR/adjudication.json" \
+  "$CASE_DIR/pr.diff" true "" "" "" "$CASE_DIR/result.json"
+run_post "$CASE_DIR/request.json" ground-all "$ISSUE_FIXTURE" "$PULL_FIXTURE"
+if [[ "$POST_EXIT" -eq 0 ]] \
+  && assert_result "$CASE_DIR/result.json" '.counts.reused == 2 and all(.items[]; .reused == true) and (.items[] | select(.id == "G-001") | .delivery == "pr_comment") and (.items[] | select(.id == "G-002") | .delivery == "inline") and (.github_writes | length) == 1 and .github_writes[0].operation == "update"' \
+  && [[ "$(count_method_kind PATCH issue)" -eq 1 ]] && [[ "$(count_method_kind POST issue)" -eq 0 ]] \
+  && [[ "$(count_method_kind POST inline)" -eq 0 ]] && grep -Fq 'COMMENT_ID:100' "$GH_LOG" \
+  && gets_precede_mutations; then
+  result=0
+else
+  result=1
+fi
+record_result "同一 SHA の完全再実行は summary PATCH と inline/退避の multiset 再利用を行う" "$result"
+
+# 部分再実行: 既存 finding の ID が変わっても位置 fingerprint で再利用し、未投稿分だけ作成する。
+make_case idempotency-partial-rerun
+cp "$TEST_ROOT/anchor-contract/pr.diff" "$CASE_DIR/pr.diff"
+cp "$TEST_ROOT/anchor-contract/artifact.json" "$CASE_DIR/artifact.json"
+cp "$TEST_ROOT/anchor-contract/adjudication.json" "$CASE_DIR/adjudication.json"
+ISSUE_FIXTURE="$CASE_DIR/issues.jsonl"
+: >"$ISSUE_FIXTURE"
+append_comment "$ISSUE_FIXTURE" 300 $'previous summary\n\n'"$(summary_marker MAGI-HARD 0123456789abcdef)"
+append_comment "$ISSUE_FIXTURE" 999 $'[MAGI-HARD] previous text\n\n'"$(finding_marker MAGI-HARD 0123456789abcdef MELCHIOR a.sh 1)"
+write_request "$CASE_DIR/request.json" magi "$CASE_DIR/artifact.json" "$CASE_DIR/adjudication.json" \
+  "$CASE_DIR/pr.diff" true "" "" "" "$CASE_DIR/result.json"
+run_post "$CASE_DIR/request.json" ground-all "$ISSUE_FIXTURE"
+if [[ "$POST_EXIT" -eq 0 ]] \
+  && assert_result "$CASE_DIR/result.json" '.counts.reused == 1 and (.items[] | select(.id == "G-001") | .reused == true and .delivery == "pr_comment") and (.items[] | select(.id == "G-002") | .reused == false and .delivery == "inline") and (.github_writes | map(.operation) == ["update", "create"])' \
+  && [[ "$(count_method_kind PATCH issue)" -eq 1 ]] && [[ "$(count_method_kind POST issue)" -eq 0 ]] \
+  && [[ "$(count_method_kind POST inline)" -eq 1 ]]; then
+  result=0
+else
+  result=1
+fi
+record_result "部分再実行は finding ID 非依存で既存分を再利用し未投稿分だけ投稿する" "$result"
+
+# 本文と severity が変わっても位置 fingerprint は不変なので再利用する。
+make_case idempotency-body-difference
+cp "$TEST_ROOT/anchor-contract/pr.diff" "$CASE_DIR/pr.diff"
+cp "$TEST_ROOT/anchor-contract/artifact.json" "$CASE_DIR/artifact.json"
+jq '.results[0].importance="MEDIUM" | .results[1].final_gate="defer"' \
+  "$TEST_ROOT/anchor-contract/adjudication.json" >"$CASE_DIR/adjudication.json"
+ISSUE_FIXTURE="$CASE_DIR/issues.jsonl"
+: >"$ISSUE_FIXTURE"
+append_comment "$ISSUE_FIXTURE" 400 $'previous HIGH wording\n\n'"$(summary_marker MAGI-HARD 0123456789abcdef)"
+append_comment "$ISSUE_FIXTURE" 401 $'[MAGI-HARD] **[HIGH] old wording**\n\nold body\n\n'"$(finding_marker MAGI-HARD 0123456789abcdef MELCHIOR a.sh 1)"
+write_request "$CASE_DIR/request.json" magi "$CASE_DIR/artifact.json" "$CASE_DIR/adjudication.json" \
+  "$CASE_DIR/pr.diff" true "" "" "" "$CASE_DIR/result.json"
+run_post "$CASE_DIR/request.json" ground-all "$ISSUE_FIXTURE"
+if [[ "$POST_EXIT" -eq 0 ]] \
+  && assert_result "$CASE_DIR/result.json" '.counts.reused == 1 and (.items[] | select(.id == "G-001") | .importance == "MEDIUM" and .reused == true and .delivery == "pr_comment") and (.github_writes | length) == 1 and .github_writes[0].operation == "update"' \
+  && [[ "$(count_method_kind POST inline)" -eq 0 ]] && [[ "$(count_method_kind POST issue)" -eq 0 ]]; then
+  result=0
+else
+  result=1
+fi
+record_result "本文差異と HIGH/MEDIUM 変更があっても位置キー一致の finding を再利用する" "$result"
+
+# 同一位置の複数 finding は集合ではなく個数を消費するため、欠落させない。
+make_case idempotency-multiset
+printf '%s\n' \
+  'diff --git a/same.sh b/same.sh' \
+  '--- a/same.sh' \
+  '+++ b/same.sh' \
+  '@@ -0,0 +1 @@' \
+  '+echo same' >"$CASE_DIR/pr.diff"
+jq -n '{schema_version:"1",engine:"magi",detection_status:"complete",failed_personas:[],findings:[
+  {id:"S-001",source_persona:"MELCHIOR",path:"same.sh",line:1,headline:"one",body:"first wording",evidence:null},
+  {id:"S-002",source_persona:"MELCHIOR",path:"same.sh",line:1,headline:"two",body:"second wording",evidence:null}]}' \
+  >"$CASE_DIR/artifact.json"
+jq -n '{schema_version:"1",artifact_type:"review-adjudication",validity_global_failure:false,results:[
+  {id:"S-001",verdict:"valid",importance:"HIGH",importance_status:"ok",reported_gate:null,final_gate:"block"},
+  {id:"S-002",verdict:"valid",importance:"HIGH",importance_status:"ok",reported_gate:null,final_gate:"block"}]}' \
+  >"$CASE_DIR/adjudication.json"
+write_request "$CASE_DIR/request.json" magi "$CASE_DIR/artifact.json" "$CASE_DIR/adjudication.json" \
+  "$CASE_DIR/pr.diff" true "" "" "" "$CASE_DIR/clean-result.json"
+run_post "$CASE_DIR/request.json" ground-same
+if [[ "$POST_EXIT" -eq 0 ]] \
+  && assert_result "$CASE_DIR/clean-result.json" '.counts.reused == 0 and .counts.inline_posted == 2 and all(.items[]; .reused == false)' \
+  && [[ "$(count_method_kind POST inline)" -eq 2 ]]; then
+  MULTI_CLEAN_OK=0
+else
+  MULTI_CLEAN_OK=1
+fi
+ISSUE_FIXTURE="$CASE_DIR/issues.jsonl"
+PULL_FIXTURE="$CASE_DIR/pulls.jsonl"
+: >"$ISSUE_FIXTURE"
+: >"$PULL_FIXTURE"
+append_comment "$ISSUE_FIXTURE" 500 $'previous summary\n\n'"$(summary_marker MAGI-HARD 0123456789abcdef)"
+append_comment "$PULL_FIXTURE" 501 $'one of two\n\n'"$(finding_marker MAGI-HARD 0123456789abcdef MELCHIOR same.sh 1)"
+write_request "$CASE_DIR/rerun-request.json" magi "$CASE_DIR/artifact.json" "$CASE_DIR/adjudication.json" \
+  "$CASE_DIR/pr.diff" true "" "" "" "$CASE_DIR/rerun-result.json"
+run_post "$CASE_DIR/rerun-request.json" ground-same "$ISSUE_FIXTURE" "$PULL_FIXTURE"
+MULTI_RERUN_OK=$([[ "$POST_EXIT" -eq 0 ]] \
+  && assert_result "$CASE_DIR/rerun-result.json" '.counts.reused == 1 and .counts.inline_posted == 2 and (.items | map(select(.reused == true)) | length) == 1 and (.items | map(select(.reused == false)) | length) == 1' \
+  && [[ "$(count_method_kind POST inline)" -eq 1 ]])
+if [[ "$MULTI_CLEAN_OK" -eq 0 && "$MULTI_RERUN_OK" -eq 0 ]]; then
+  result=0
+else
+  result=1
+fi
+record_result "同一位置の複数 finding は既存1件でも残り1件を投稿して欠落させない" "$result"
+
+# HEAD SHA が変われば旧マーカーを再利用せず、全件を新しい SHA で投稿する。
+make_case idempotency-head-difference
+cp "$TEST_ROOT/anchor-contract/pr.diff" "$CASE_DIR/pr.diff"
+cp "$TEST_ROOT/anchor-contract/artifact.json" "$CASE_DIR/artifact.json"
+cp "$TEST_ROOT/anchor-contract/adjudication.json" "$CASE_DIR/adjudication.json"
+ISSUE_FIXTURE="$CASE_DIR/issues.jsonl"
+: >"$ISSUE_FIXTURE"
+append_comment "$ISSUE_FIXTURE" 600 $'old summary\n\n'"$(summary_marker MAGI-HARD old-head-sha)"
+append_comment "$ISSUE_FIXTURE" 601 $'old one\n\n'"$(finding_marker MAGI-HARD old-head-sha MELCHIOR a.sh 1)"
+append_comment "$ISSUE_FIXTURE" 602 $'old two\n\n'"$(finding_marker MAGI-HARD old-head-sha BALTHASAR b.sh 1)"
+write_request "$CASE_DIR/request.json" magi "$CASE_DIR/artifact.json" "$CASE_DIR/adjudication.json" \
+  "$CASE_DIR/pr.diff" true "" "" "" "$CASE_DIR/result.json"
+run_post "$CASE_DIR/request.json" ground-all "$ISSUE_FIXTURE"
+if [[ "$POST_EXIT" -eq 0 ]] \
+  && assert_result "$CASE_DIR/result.json" '.counts.reused == 0 and all(.items[]; .reused == false) and all(.github_writes[]; .operation == "create")' \
+  && [[ "$(count_method_kind PATCH issue)" -eq 0 ]] && [[ "$(count_method_kind POST issue)" -eq 1 ]] \
+  && [[ "$(count_method_kind POST inline)" -eq 2 ]] \
+  && grep -Fq 'head_sha=0123456789abcdef' "$GH_LOG"; then
+  result=0
+else
+  result=1
+fi
+record_result "HEAD SHA が異なる既存マーカーは再利用せず新 SHA で投稿する" "$result"
+
+# 一覧取得失敗は issues/pulls のどちらでも mutation なしの fail-closed とする。
+make_case idempotency-list-failure
+cp "$TEST_ROOT/anchor-contract/pr.diff" "$CASE_DIR/pr.diff"
+cp "$TEST_ROOT/anchor-contract/artifact.json" "$CASE_DIR/artifact.json"
+cp "$TEST_ROOT/anchor-contract/adjudication.json" "$CASE_DIR/adjudication.json"
+write_request "$CASE_DIR/request.json" magi "$CASE_DIR/artifact.json" "$CASE_DIR/adjudication.json" \
+  "$CASE_DIR/pr.diff" true "" "" "" "$CASE_DIR/result.json"
+run_post "$CASE_DIR/request.json" ground-all "" "" issue
+if [[ "$POST_EXIT" -eq 1 ]] \
+  && assert_result "$CASE_DIR/result.json" '.github_writes == [] and .counts.reused == 0 and all(.items[]; .delivery == "not_posted" and .reused == false)' \
+  && [[ "$(count_method_kind GET issue)" -eq 1 ]] && [[ "$(count_method_kind GET inline)" -eq 1 ]] \
+  && [[ "$(count_method_kind POST issue)" -eq 0 ]] && [[ "$(count_method_kind POST inline)" -eq 0 ]]; then
+  ISSUE_LIST_FAILURE_OK=0
+else
+  ISSUE_LIST_FAILURE_OK=1
+fi
+run_post "$CASE_DIR/request.json" ground-all "" "" pull
+if [[ "$POST_EXIT" -eq 1 ]] \
+  && assert_result "$CASE_DIR/result.json" '.github_writes == [] and .counts.reused == 0 and all(.items[]; .delivery == "not_posted" and .reused == false)' \
+  && [[ "$(count_method_kind GET issue)" -eq 1 ]] && [[ "$(count_method_kind GET inline)" -eq 1 ]] \
+  && [[ "$(count_method_kind POST issue)" -eq 0 ]] && [[ "$(count_method_kind POST inline)" -eq 0 ]]; then
+  PULL_LIST_FAILURE_OK=0
+else
+  PULL_LIST_FAILURE_OK=1
+fi
+if [[ "$ISSUE_LIST_FAILURE_OK" -eq 0 && "$PULL_LIST_FAILURE_OK" -eq 0 ]]; then
+  result=0
+else
+  result=1
+fi
+record_result "issues/pulls 一覧取得失敗は result を生成し全 mutation を抑止する" "$result"
+
+# 422 退避済み finding は pulls が空でも issues 側から再利用する。
+make_case idempotency-fallback-rerun
+cp "$TEST_ROOT/anchor-contract/pr.diff" "$CASE_DIR/pr.diff"
+cp "$TEST_ROOT/anchor-contract/artifact.json" "$CASE_DIR/artifact.json"
+jq '.results[1].final_gate="defer"' "$TEST_ROOT/anchor-contract/adjudication.json" >"$CASE_DIR/adjudication.json"
+ISSUE_FIXTURE="$CASE_DIR/issues.jsonl"
+: >"$ISSUE_FIXTURE"
+append_comment "$ISSUE_FIXTURE" 700 $'fallback from prior run\n\n'"$(finding_marker MAGI-HARD 0123456789abcdef MELCHIOR a.sh 1)"
+write_request "$CASE_DIR/request.json" magi "$CASE_DIR/artifact.json" "$CASE_DIR/adjudication.json" \
+  "$CASE_DIR/pr.diff" true "" "" "" "$CASE_DIR/result.json"
+run_post "$CASE_DIR/request.json" ground-all "$ISSUE_FIXTURE"
+if [[ "$POST_EXIT" -eq 0 ]] \
+  && assert_result "$CASE_DIR/result.json" '(.items[] | select(.id == "G-001") | .reused == true and .delivery == "pr_comment") and .counts.reused == 1 and (.github_writes | length) == 1' \
+  && [[ "$(count_method_kind POST inline)" -eq 0 ]] && [[ "$(count_method_kind POST issue)" -eq 1 ]]; then
+  result=0
+else
+  result=1
+fi
+record_result "422 フォールバック済み finding は inline POST を再試行せず再利用する" "$result"
+
+# summary PATCH の失敗時は finding 投稿へ進まず、失敗 write を result に残さない。
+make_case idempotency-summary-patch-failure
+cp "$TEST_ROOT/anchor-contract/pr.diff" "$CASE_DIR/pr.diff"
+cp "$TEST_ROOT/anchor-contract/artifact.json" "$CASE_DIR/artifact.json"
+cp "$TEST_ROOT/anchor-contract/adjudication.json" "$CASE_DIR/adjudication.json"
+ISSUE_FIXTURE="$CASE_DIR/issues.jsonl"
+: >"$ISSUE_FIXTURE"
+append_comment "$ISSUE_FIXTURE" 800 $'patch me\n\n'"$(summary_marker MAGI-HARD 0123456789abcdef)"
+write_request "$CASE_DIR/request.json" magi "$CASE_DIR/artifact.json" "$CASE_DIR/adjudication.json" \
+  "$CASE_DIR/pr.diff" true "" "" "" "$CASE_DIR/result.json"
+run_post "$CASE_DIR/request.json" ground-all "$ISSUE_FIXTURE" "" "" 1
+if [[ "$POST_EXIT" -eq 1 ]] \
+  && assert_result "$CASE_DIR/result.json" '.github_writes == [] and all(.items[]; .delivery == "not_posted" and .reused == false)' \
+  && [[ "$(count_method_kind PATCH issue)" -eq 1 ]] && [[ "$(count_method_kind POST issue)" -eq 0 ]] \
+  && [[ "$(count_method_kind POST inline)" -eq 0 ]]; then
+  result=0
+else
+  result=1
+fi
+record_result "summary PATCH 失敗時は finding 投稿を開始せず失敗 write を記録しない" "$result"
+
+# fingerprint の入力境界と、マーカーが本文末尾かつ先頭でないことを確認する。
+BASE_FP="$(finding_fp MAGI-HARD 0123456789abcdef MELCHIOR a.sh 1)"
+VARIANT_FP="$(finding_fp MAGI-HARD 0123456789abcdef MELCHIOR a.sh 1)"
+HEAD_FP="$(finding_fp MAGI-HARD fedcba9876543210 MELCHIOR a.sh 1)"
+ENGINE_FP="$(finding_fp CODEX-HARD 0123456789abcdef MELCHIOR a.sh 1)"
+PERSONA_FP="$(finding_fp MAGI-HARD 0123456789abcdef BALTHASAR a.sh 1)"
+PATH_FP="$(finding_fp MAGI-HARD 0123456789abcdef MELCHIOR b.sh 1)"
+LINE_FP="$(finding_fp MAGI-HARD 0123456789abcdef MELCHIOR a.sh 2)"
+MARKER="$(finding_marker MAGI-HARD 0123456789abcdef MELCHIOR a.sh 1)"
+MARKED_BODY=$'[MAGI-HARD] changed wording\n\n'"$MARKER"
+if [[ "$BASE_FP" == "$VARIANT_FP" && "$BASE_FP" != "$HEAD_FP" && "$BASE_FP" != "$ENGINE_FP" \
+  && "$BASE_FP" != "$PERSONA_FP" && "$BASE_FP" != "$PATH_FP" && "$BASE_FP" != "$LINE_FP" \
+  && "$MARKED_BODY" == *"$MARKER" && "$MARKED_BODY" != "$MARKER"* ]]; then
+  result=0
+else
+  result=1
+fi
+record_result "fingerprint は位置キーだけで計算し、マーカーを本文末尾に置く" "$result"
 
 expect_contract_exit() {
   local label="$1"
