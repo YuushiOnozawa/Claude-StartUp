@@ -553,7 +553,9 @@ gh api --paginate "repos/$OWNER/$REPO/pulls/$PR_NUM/comments?per_page=100" \
 MY_LOGIN_ERR="$TMP_DIR/whoami.err"
 MY_LOGIN=""
 MY_LOGIN_EXIT=0
-MY_LOGIN="$(gh api user --jq '.login' 2>"$MY_LOGIN_ERR")" || MY_LOGIN_EXIT=$?
+MY_LOGIN="$(gh api user \
+  --jq 'if (.login | type) == "string" and (.login | length) > 0 then .login else error("missing login") end' \
+  2>"$MY_LOGIN_ERR")" || MY_LOGIN_EXIT=$?
 if [[ "$MY_LOGIN_EXIT" -eq 0 && -z "$MY_LOGIN" ]]; then
   MY_LOGIN_EXIT=1
 fi
@@ -862,7 +864,8 @@ API に原子的な idempotency key がないため、プロセス間ロック�
 生成する。終了コード2では GET を含むすべての GitHub API 呼び出しを行わない。exit 0/1/2 と
 `review-dispatch.md` の写像は変更しない。
 
-self-identity（`gh api user`）の取得に失敗した場合、または login が空文字の場合も一覧取得失敗と同じ
+self-identity（`gh api user`）の取得に失敗した場合、または login が文字列でない・空・欠落の
+場合（`--jq` の型検証で gh が非ゼロ終了する）も一覧取得失敗と同じ
 fail-closed とし、何も投稿せず `github_writes: []`・終了コード1で result を生成する。終了コード2へは変換しない。
 
 `status` は通常経路が `posted`、structure 経路が `report_only`、投稿対象0件が `no_findings` である。

@@ -65,6 +65,7 @@ printf '%s\n' \
   'method=GET' \
   'endpoint=""' \
   'body=""' \
+  'jq_filter=""' \
   'path_arg=""' \
   'line_arg=""' \
   'side_arg=""' \
@@ -87,6 +88,7 @@ printf '%s\n' \
   '    continue' \
   '  fi' \
   '  if [[ "$take_jq" == true ]]; then' \
+  '    jq_filter="$arg"' \
   '    take_jq=false' \
   '    continue' \
   '  fi' \
@@ -128,8 +130,8 @@ printf '%s\n' \
   '      echo "gh api user failed" >&2' \
   '      exit 1' \
   '    fi' \
-  '    printf "%s\\n" "${STUB_MY_LOGIN:-review-bot}"' \
-  '    exit 0' \
+  '    printf "%s" "${STUB_USER_JSON:-{\"login\":\"review-bot\"}}" | jq -r "${jq_filter:-.}"' \
+  '    exit $?' \
   '  fi' \
   '  if [[ "${STUB_GET_FAIL:-}" == issue && "$kind" == issue ]] || [[ "${STUB_GET_FAIL:-}" == both && "$kind" == issue ]]; then' \
   '    echo "GET issues failed" >&2' \
@@ -239,7 +241,7 @@ run_post() {
   local pull_fixture="${4:-}"
   local get_fail="${5:-}"
   local patch_fail="${6:-}"
-  local my_login="${7:-}"
+  local user_json="${7:-}"
   local user_fail="${8:-}"
   local post_path="$STUB_DIR:$PATH"
   local ground_mode=""
@@ -255,7 +257,7 @@ run_post() {
     GROUND_STUB_LOG="$TEST_ROOT/grounder-called.log" GH_LOG="$GH_LOG" GH_MODE="$gh_mode" \
     STUB_ISSUE_COMMENTS="$issue_fixture" STUB_PULL_COMMENTS="$pull_fixture" \
     STUB_GET_FAIL="$get_fail" STUB_PATCH_FAIL="$patch_fail" \
-    STUB_MY_LOGIN="$my_login" STUB_USER_FAIL="$user_fail" \
+    STUB_USER_JSON="$user_json" STUB_USER_FAIL="$user_fail" \
     bash "$POST_SCRIPT" "$request" \
     >"$TEST_ROOT/stdout" 2>"$TEST_ROOT/stderr"; then
     POST_EXIT=0
@@ -864,6 +866,27 @@ else
   result=1
 fi
 record_result "self-identity 取得失敗は fail-closed で投稿と PATCH を抑止する" "$result"
+
+# self-identity の login 欠落（jq 型検証で非ゼロ終了）は一覧取得失敗と同じ fail-closed にする。
+make_case idempotency-self-identity-null
+cp "$TEST_ROOT/anchor-contract/pr.diff" "$CASE_DIR/pr.diff"
+cp "$TEST_ROOT/anchor-contract/artifact.json" "$CASE_DIR/artifact.json"
+cp "$TEST_ROOT/anchor-contract/adjudication.json" "$CASE_DIR/adjudication.json"
+write_request "$CASE_DIR/request.json" magi "$CASE_DIR/artifact.json" "$CASE_DIR/adjudication.json" \
+  "$CASE_DIR/pr.diff" true "" "" "" "$CASE_DIR/result.json"
+run_post "$CASE_DIR/request.json" "" "" "" "" "" '{"login":null}'
+if [[ "$POST_EXIT" -eq 1 ]] \
+  && [[ -f "$CASE_DIR/result.json" ]] && jq -e . "$CASE_DIR/result.json" >/dev/null 2>&1 \
+  && assert_result "$CASE_DIR/result.json" '.github_writes == [] and .counts.reused == 0 and all(.items[]; .delivery == "not_posted" and .reused == false)' \
+  && [[ "$(count_method_kind GET issue)" -eq 1 ]] && [[ "$(count_method_kind GET inline)" -eq 1 ]] \
+  && [[ "$(count_method_kind GET user)" -eq 1 ]] && [[ -s "$GH_LOG" ]] \
+  && [[ "$(count_method_kind POST issue)" -eq 0 ]] && [[ "$(count_method_kind POST inline)" -eq 0 ]] \
+  && [[ "$(count_method_kind PATCH issue)" -eq 0 ]]; then
+  result=0
+else
+  result=1
+fi
+record_result "self-identity の login 欠落（jq 型検証で非ゼロ終了）は fail-closed で投稿と PATCH を抑止する" "$result"
 
 # fingerprint の入力境界と、マーカーが本文末尾かつ先頭でないことを確認する。
 BASE_FP="$(finding_fp MAGI-HARD 0123456789abcdef MELCHIOR a.sh 1)"
