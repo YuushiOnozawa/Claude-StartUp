@@ -42,7 +42,9 @@ MAGI は6体のレビューエージェント群。既定は **Ollama（ロー�
 |--------|-----|------|
 | `/magi-fast` | MELCHIOR→BALTHASAR→CASPER | コミット前チェック。ブロック指摘ゼロで LGTM |
 | `/magi-hard` | 6体すべて | PR レビュー。結果を GitHub インラインコメントで投稿 |
-| `/pr-review` | magi-hard 呼び出し | PR レビューのエントリーポイント。HIGH/MEDIUM 指摘があれば `/pr-review-respond` と交互にループ |
+| `/review-fast` | Fast レビューの backend 選択・実行 | MAGI または Codex の結果を共通 dispatch envelope に正規化 |
+| `/review-hard` | Hard レビューの backend 選択・実行・投稿 | MAGI または Codex の結果を GitHub 投稿済みの共通 dispatch envelope に正規化 |
+| `/pr-review` | review-hard 呼び出し（backend選択） | PR レビューのエントリーポイント。ブロック指摘（blocking_count≥1）または要人手確認があれば `/pr-review-respond` と交互にループ |
 | `/pr-review-respond` | — | PR レビューコメントへの対応。Haiku で second opinion、実装は `/codegen` 優先 |
 | `/code-review` | 5並列エージェント | コード品質レビュー。スコア 80 以上の指摘のみ GitHub にコメント投稿 |
 

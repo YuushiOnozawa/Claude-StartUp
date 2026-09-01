@@ -654,6 +654,8 @@ jq -n \
   }' > "$REVIEW_POST_REQUEST" || return 1
 
 echo "review-post request を生成しました: $REVIEW_POST_REQUEST"
+printf 'dispatch handoff: {"request":"%s","result":"%s"}\n' \
+  "$(realpath -- "$REVIEW_POST_REQUEST")" "$(realpath -m -- "$REVIEW_POST_RESULT")"
 else
   REVIEW_POST_REQUIRED_VAR=""
   for REVIEW_POST_REQUIRED_VAR in OWNER REPO PR_NUM HEAD_SHA; do
@@ -706,8 +708,17 @@ else
       result_path:$result_path
     }' > "$REVIEW_POST_REQUEST" || return 1
   echo "review-post request を生成しました（report-only）: $REVIEW_POST_REQUEST"
+  printf 'dispatch handoff: {"request":"%s","result":"%s"}\n' \
+    "$(realpath -- "$REVIEW_POST_REQUEST")" "$(realpath -m -- "$REVIEW_POST_RESULT")"
 fi
 ```
 
 ステップ13はステップ12（結果表示）より後にあるため、`$ARTIFACT_NOTE` の表示まで自身で完結させる。
 変換に失敗しても既存レビュー本体は止めない。
+
+`$REVIEW_TMPDIR` はこの手順の中で削除しない。`review-post-request.json` と、それが指す
+`findings-artifact.json` / `adjudication-result.json` / `review.diff`、および `/review-post` 実行後に
+書かれる `review-post-result.json`（= request の `.result_path`）を、dispatch が envelope を組むために
+読むためである。`dispatch handoff:` 行はこの request と result の絶対パスを呼び出し元へ返す唯一の経路で、
+`review-dispatch.md`「dispatch handoff 行」の書式に従う。`result` は `/review-post` 実行前でも
+request の `.result_path` が示す予定パスをそのまま返す。

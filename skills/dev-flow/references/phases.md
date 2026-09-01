@@ -84,7 +84,7 @@ Proceed to Phase 4 in the **same session**.
 > **Worktree context**: All git commands in Phase 4–7 use `git -C $WORKTREE_PATH`.
 > File read/write operations use `$WORKTREE_PATH/` as the base path.
 > Example: `git -C $WORKTREE_PATH status`, `git -C $WORKTREE_PATH diff`
-> When executing `/commit` or `/magi-fast`, apply this `-C $WORKTREE_PATH` override to all git commands within those skills.
+> When executing `/commit` or `/review-fast`, apply this `-C $WORKTREE_PATH` override to all git commands within those skills.
 
 ### Step 0: Write tests first (TDD)
 
@@ -107,17 +107,36 @@ Proceed to Phase 5.
 
 ## Phase 5: REVIEW → FIX Loop
 
-Execute `/magi-fast`.
+### Fast backend と dispatch
 
-`/magi-fast` now covers MELCHIOR/BALTHASAR/CASPER with the same v2 DETECTION NOTES contract. Its gate is a single `blocking_count` (combined 3-persona `gate=block` count from `codex-fast-gate.md`), not a bare `HIGH` count.
+1. backend は Phase 5 の**最初の REVIEW 実行時に effective backend へ解決**する（明示的に渡された値を必ず使い、UI を出さない）:
+   1. `$REVIEW_FAST_BACKEND_OVERRIDE` が `magi` または `codex` ならそれを effective backend に採用する。
+   2. なければ `$REVIEW_FAST_BACKEND`（epic-flow から `ARGUMENTS` の `review fast backend=<magi|codex>` で
+      渡された値を含む）が `magi` または `codex` ならそれを採用する。
+   3. どちらも未設定・不正なら `AskUserQuestion` を 1 回だけ呼び、その回答を effective backend として保持する。
+   4. REVIEW→FIX ループの再実行では状態変数を再評価せず、確定済みの effective backend をそのまま使う。
+   5. `$REVIEW_FAST_BACKEND_OVERRIDE` は **Phase 5 完了後**（Feature 全体の終了時）に破棄する。個々の review 完了では破棄しない。
+2. `review fast backend=<決定した backend>` を明示して `/review-fast` を実行し、返された envelope JSON のパスを `$REVIEW_DISPATCH_RESULT` として保持する。
+3. 分岐には envelope の `dispatch_status`、`gate_decision`、`lgtm_eligible`、`manual_review_required`、`blocking_count`、`failure_reason` のキーだけを使い、backend 固有の生出力では分岐しない。
+4. 修正ループ中は backend 選択 UI を再表示せず、Phase 5 の REVIEW→FIX ループ全体で同じ effective backend を保持する。
 
-If gate judgment fails, no persona has a reliable gate result. Treat this as a total blackout, do not issue LGTM, and recommend `/magi-hard` or manual review.
+### `complete` + `lgtm` → Phase 6
 
-### If `blocking_count = 0` and no unresolved `manual`/`needs_human` items → proceed to Phase 6
+`$REVIEW_DISPATCH_RESULT` で次の条件をすべて満たすときだけ Phase 6 へ進む:
+`dispatch_status == "complete"` ∧ `gate_decision == "lgtm"` ∧ `lgtm_eligible == true` ∧ `manual_review_required == false`.
+これは Phase 6 への唯一の経路である。`lgtm_eligible != true` なら理由を問わず Phase 6 へ進まない。
 
-### If `blocking_count ≥ 1`, or unresolved `manual`/`needs_human` items remain → fix
+### `complete` + `block`/`manual` → fix
 
-Present a fix proposal for each blocking finding. `manual`/`needs_human` items are not auto-fed to `/codegen` — surface them to the user for a decision instead. The user decides whether to adopt each fix. After fixes, re-run `/magi-fast`. Repeat until `blocking_count = 0` and no unresolved `manual`/`needs_human` items remain.
+`dispatch_status == "complete"` かつ `gate_decision` が `block` または `manual` のときだけ、既存どおり修正提案 → ユーザー判断 → 再実行のループへ入る。ブロック指摘の件数には envelope の `blocking_count` を使う。各 blocking finding の修正案を提示する。`manual`/`needs_human` は `/codegen` へ自動投入せず、ユーザーに判断を求める。修正後は同じ backend を明示して `/review-fast` を再実行し、Phase 6 の条件を満たすまで繰り返す。
+
+### Catch-all: Fail-closed
+
+上記の Phase 6 経路にも fix ループにも該当しないものは、理由を問わずすべて fail-closed とする。対象には
+`dispatch_status != "complete"`、`gate_decision == "indeterminate"`、`dispatch_status == "complete"` だが
+`lgtm_eligible != true` で、かつ `gate_decision` が `block` / `manual` でもない場合を含む。信頼できるゲート結果がないため
+findings を修正対象にせず、`failure_reason` をユーザーに提示して `/review-hard` または手動レビューを推奨する。
+LGTM は出さない。
 
 ## Phase 6: COMMIT
 
