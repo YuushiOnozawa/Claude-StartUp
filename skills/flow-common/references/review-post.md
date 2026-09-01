@@ -543,12 +543,20 @@ PULL_COMMENTS_RAW="$TMP_DIR/pull-comments.raw"
 PULL_COMMENTS_ERR="$TMP_DIR/pull-comments.err"
 ISSUE_LIST_EXIT=0
 gh api --paginate "repos/$OWNER/$REPO/issues/$PR_NUM/comments?per_page=100" \
-  --jq '.[] | {id, body}' >"$ISSUE_COMMENTS_RAW" 2>"$ISSUE_COMMENTS_ERR" \
+  --jq '.[] | {id, body, login: (.user.login // null)}' >"$ISSUE_COMMENTS_RAW" 2>"$ISSUE_COMMENTS_ERR" \
   || ISSUE_LIST_EXIT=$?
 PULL_LIST_EXIT=0
 gh api --paginate "repos/$OWNER/$REPO/pulls/$PR_NUM/comments?per_page=100" \
-  --jq '.[] | {id, body}' >"$PULL_COMMENTS_RAW" 2>"$PULL_COMMENTS_ERR" \
+  --jq '.[] | {id, body, login: (.user.login // null)}' >"$PULL_COMMENTS_RAW" 2>"$PULL_COMMENTS_ERR" \
   || PULL_LIST_EXIT=$?
+
+MY_LOGIN_ERR="$TMP_DIR/whoami.err"
+MY_LOGIN=""
+MY_LOGIN_EXIT=0
+MY_LOGIN="$(gh api user --jq '.login' 2>"$MY_LOGIN_ERR")" || MY_LOGIN_EXIT=$?
+if [[ "$MY_LOGIN_EXIT" -eq 0 && -z "$MY_LOGIN" ]]; then
+  MY_LOGIN_EXIT=1
+fi
 
 ISSUE_COMMENTS='[]'
 if [[ "$ISSUE_LIST_EXIT" -eq 0 ]] && ! ISSUE_COMMENTS="$(jq -s -c '.' "$ISSUE_COMMENTS_RAW" 2>/dev/null)"; then
@@ -562,14 +570,14 @@ fi
 SUMMARY_ERR="$TMP_DIR/summary.err"
 SUMMARY_URL=""
 SUMMARY_EXIT=0
-if [[ "$ISSUE_LIST_EXIT" -ne 0 || "$PULL_LIST_EXIT" -ne 0 ]]; then
+if [[ "$ISSUE_LIST_EXIT" -ne 0 || "$PULL_LIST_EXIT" -ne 0 || "$MY_LOGIN_EXIT" -ne 0 ]]; then
   # 既存コメントを確認できない場合は、重複投稿を避けるため fail-closed にする。
   SUMMARY_EXIT=1
   GITHUB_FAILED=true
 else
-  SUMMARY_COMMENT_ID="$(jq -r --arg marker "$SUMMARY_MARKER" '
+  SUMMARY_COMMENT_ID="$(jq -r --arg marker "$SUMMARY_MARKER" --arg my_login "$MY_LOGIN" '
     [ .[]
-      | select((.body | type) == "string" and (.body | endswith($marker)))
+      | select((.body | type) == "string" and (.body | endswith($marker)) and (.login == $my_login))
       | select((.id | type) == "number" and (.id | floor) == .id)
     ]
     | sort_by(.id) | .[0].id // empty
@@ -629,26 +637,26 @@ post_pr_comment() {
 }
 
 if [[ "$SUMMARY_EXIT" -eq 0 && "$POST_INLINE" == "true" && "$BLOCK_COUNT" -gt 0 ]]; then
-  PULL_REMAINING="$(jq -c --arg engine "$ENGINE_LABEL" --arg head_sha "$HEAD_SHA" '
+  PULL_REMAINING="$(jq -c --arg engine "$ENGINE_LABEL" --arg head_sha "$HEAD_SHA" --arg my_login "$MY_LOGIN" '
     reduce .[] as $comment ({};
       if ($comment.body | type) != "string" then .
       else
         (try ($comment.body | split("\n") | .[-1]
           | capture("^<!-- review-post:v1 kind=(?<kind>finding) engine=(?<engine>[^ ]+) head_sha=(?<head_sha>[^ ]+) fp=(?<fp>[0-9a-f]{24}) -->$")) catch null) as $marker
-        | if $marker != null and $marker.engine == $engine and $marker.head_sha == $head_sha
+        | if $marker != null and $comment.login == $my_login and $marker.engine == $engine and $marker.head_sha == $head_sha
           then .[$marker.fp] = ((.[$marker.fp] // 0) + 1)
           else .
           end
       end
     )
   ' <<<"$PULL_COMMENTS")"
-  ISSUE_REMAINING="$(jq -c --arg engine "$ENGINE_LABEL" --arg head_sha "$HEAD_SHA" '
+  ISSUE_REMAINING="$(jq -c --arg engine "$ENGINE_LABEL" --arg head_sha "$HEAD_SHA" --arg my_login "$MY_LOGIN" '
     reduce .[] as $comment ({};
       if ($comment.body | type) != "string" then .
       else
         (try ($comment.body | split("\n") | .[-1]
           | capture("^<!-- review-post:v1 kind=(?<kind>finding) engine=(?<engine>[^ ]+) head_sha=(?<head_sha>[^ ]+) fp=(?<fp>[0-9a-f]{24}) -->$")) catch null) as $marker
-        | if $marker != null and $marker.engine == $engine and $marker.head_sha == $head_sha
+        | if $marker != null and $comment.login == $my_login and $marker.engine == $engine and $marker.head_sha == $head_sha
           then .[$marker.fp] = ((.[$marker.fp] // 0) + 1)
           else .
           end
@@ -804,7 +812,12 @@ anchor フィールドがない場合は `original_path:original_line` を場所
 finding の fingerprint は `engine + head_sha + persona + path + line` だけから計算し、本文・finding id・
 severity・side・anchor_status は含めない。同じ鍵の複数 finding は、既存コメントの個数を1件ずつ消費する
 multiset 突合とする。サマリは同じ engine と head_sha なら PATCH し、finding は issues と pulls の両方を
-照合する。マーカーのない旧コメントは dedup 対象外である。
+照合する。dedup の突合対象は `gh api user` で取得した bot 自身の login が投稿したコメントだけであり、
+他ユーザーが本文末尾に同じ書式のマーカーを偽造しても突合対象にしない（該当 finding は通常どおり新規投稿し、
+summary も新規 POST する）。マーカーのない旧コメントは dedup 対象外である。この冪等性が保証するのは、
+同一 `$HEAD_SHA` に対する逐次再実行と部分失敗後の再試行のみである。同一 PR・同一 HEAD で `/review-post`
+を同時並行実行した場合、一覧取得と投稿の間に別 run が割り込むと重複投稿が起こり得る。GitHub のコメント
+API に原子的な idempotency key がないため、プロセス間ロックによる同時実行対策は本スキルの対象外とする。
 
 ```text
 [MAGI-HARD] **[<severity>] <persona>（<観点>）**
@@ -848,6 +861,9 @@ multiset 突合とする。サマリは同じ engine と head_sha なら PATCH �
 終了コード1、`github_writes: []`、全 block finding の `delivery: "not_posted"` / `reused: false` で result を
 生成する。終了コード2では GET を含むすべての GitHub API 呼び出しを行わない。exit 0/1/2 と
 `review-dispatch.md` の写像は変更しない。
+
+self-identity（`gh api user`）の取得に失敗した場合、または login が空文字の場合も一覧取得失敗と同じ
+fail-closed とし、何も投稿せず `github_writes: []`・終了コード1で result を生成する。終了コード2へは変換しない。
 
 `status` は通常経路が `posted`、structure 経路が `report_only`、投稿対象0件が `no_findings` である。
 契約どおりの縮退を含む成功は終了コード0、GitHub API 呼び出しの失敗（部分投稿を含む）は1、requestまたは
