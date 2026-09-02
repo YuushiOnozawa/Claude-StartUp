@@ -121,18 +121,22 @@ if [ -n "$CODEX_COMPANION" ] && [ -f "$MARK" ]; then
 fi
 
 _plangen_cancel_confirmed() {
-  # $1 = job id。broker が interrupt を確認できたときだけ 0 を返す。
-  # exit code / 応答不明 / 非JSON / turnInterrupted!=true はすべて未確認 (return 1)。
-  local out
-  out=$(timeout --kill-after=5 60 node "$CODEX_COMPANION" cancel "$1" --json 2>/dev/null) || true
+  # $1 = job id。cancel が rc=0 で終了し、かつ broker が interrupt を確認した
+  # (turnInterrupted==true) ときだけ 0 を返す。
+  # rc 非0 / timeout / 応答不明 / 非JSON / turnInterrupted!=true はすべて未確認 (return 1)。
+  local out rc
+  if out=$(timeout --kill-after=5 60 node "$CODEX_COMPANION" cancel "$1" --json 2>/dev/null); then rc=0; else rc=$?; fi
+  [ "$rc" -eq 0 ] || return 1
   printf '%s' "$out" | jq -e '.turnInterrupted == true' >/dev/null 2>&1
 }
 
 _plangen_mark_del() {
-  # $1 = job id。marker から当該行だけ除去（best-effort、失敗は無視）。
-  local keep
+  # $1 = job id。marker から当該行だけ除去。grep が I/O エラー等 (rc>=2) の時は
+  # marker を一切変更しない (fail-safe)。best-effort、書き込み失敗は無視。
+  local keep grc
   [ -n "$CODEX_COMPANION" ] && [ -f "$MARK" ] || return 0
-  keep=$(grep -vxF -- "$1" "$MARK" 2>/dev/null) || true
+  if keep=$(grep -vxF -- "$1" "$MARK" 2>/dev/null); then grc=0; else grc=$?; fi
+  [ "$grc" -le 1 ] || return 0
   if [ -n "$keep" ]; then printf '%s\n' "$keep" > "$MARK" 2>/dev/null || true
   else : > "$MARK" 2>/dev/null || true
   fi
@@ -158,21 +162,21 @@ _plangen_run_model() {
     if SNAP=$(timeout --kill-after=5 60 node "$CODEX_COMPANION" status "$JOB_ID" --json 2>/dev/null); then :; else SNAP=""; fi
     if ST=$(printf '%s' "$SNAP" | jq -r '.job.status // empty' 2>/dev/null); then :; else ST=""; fi
     [ "$ST" = completed ] && break
-    { [ "$ST" = failed ] || [ "$ST" = cancelled ]; } && break
+    [ "$ST" = failed ] && break
     (( SECONDS - START >= 900 )) && break
     (( SECONDS - OVERALL_START >= OVERALL )) && break
     sleep 15
   done
-  if [ "$ST" = failed ] || [ "$ST" = cancelled ]; then
-    # 自力 terminal。orphan turn なし → marker から除去。
+  if [ "$ST" = failed ]; then
+    # job 自身の実行失敗。broker turn は終了済み → marker から除去。
     _plangen_mark_del "$JOB_ID"
     CURRENT_JOB=""
     CANCEL_ISSUED=1
     return 1
   fi
   if [ "$ST" != completed ]; then
-    # deadline / hang。cancel を1回発行。broker が interrupt を確認できたときだけ marker 除去。
-    # 未確認なら marker に残し次回起動 sweep に委ねる（P1 契約）。
+    # deadline / hang / 他者が cancel 済み (ST=cancelled)。cancel を1回発行し、
+    # broker が interrupt を確認できたときだけ marker 除去。未確認なら marker 保持。
     if _plangen_cancel_confirmed "$JOB_ID"; then _plangen_mark_del "$JOB_ID"; fi
     CURRENT_JOB=""
     CANCEL_ISSUED=1
@@ -240,13 +244,17 @@ issued for Sol, Luna is not started and Haiku is used. Therefore the Sol/Luna tu
 cascade path to run in parallel on the broker.
 
 The job ID is removed from the marker file only when the job reached a terminal state on its own
-(`failed` / `cancelled` / `completed`) or the broker confirmed the interrupt
+(`failed` or `completed`) or the broker confirmed the interrupt
 (`turnInterrupted: true`). A cancel whose result is unknown, not valid JSON, timed out, or
 did not report `turnInterrupted: true` is treated as unconfirmed: the job ID stays in the
 marker file so the next `/plangen` startup sweep attempts cancellation again. This does not
 guarantee the residual broker turn is drained before the current cascade falls back to Haiku;
 the Haiku fallback is a Claude Agent, not a broker turn, so it does not create a second broker
 turn, but a subsequent `/plangen` launch would — hence the retained marker entry.
+
+A `cancelled` job status is not treated as self-terminal, because `codex-companion.mjs` writes
+that status unconditionally on any cancel attempt including one whose interrupt failed; such a
+job is routed through the same confirmation path as a deadline.
 
 `turnInterrupted` is an RPC acknowledgement, not proof that the broker has finished draining a
 turn. A cancelled Sol turn may remain briefly on the broker, but Luna is not started in that
