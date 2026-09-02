@@ -57,6 +57,9 @@ an `OVERALL=2400` seconds cascade guard checked before each stage. A deadline or
 `cancel` request for the preceding job; a launch failure also prevents starting Luna when the job
 ID is unavailable. If cancel was issued for a stage, the next stage is Haiku rather than Luna;
 Luna runs only when the preceding stage reaches terminal without cancel being issued.
+The preceding job's ID is dropped from the marker file only after it reached a terminal state
+on its own or the broker confirmed the interrupt; an unconfirmed cancel keeps the ID for the
+next startup sweep.
 The 900 seconds / `OVERALL=2400` values are approximate upper bounds that include the 15-second
 polling interval and up to 60-second `status` RPC timeout, not exact cutoff times; terminal results
 (including `completed`) observed after the deadline are adopted as-is.
