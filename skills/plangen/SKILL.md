@@ -20,7 +20,7 @@ invalid draft.
 |---|-------|---------|
 | 1 | ORIENT | Read target files, existing implementation, constraints, and related Issues |
 | 2 | CONTEXT | Organize the planning context to pass to Sol: background, constraints, scope, and expected output |
-| 3 | GENERATE | Run `codex-companion.mjs task --model gpt-5.6-sol` without `--write` so Sol drafts the plan; see `references/spec-template.md` |
+| 3 | GENERATE | Run the `run_in_background` Bash block without `--write` so Sol drafts the plan; see `references/spec-template.md` |
 | 4 | ADOPT | Claude validates the draft and adopts it into the active plan file only in Plan Mode; outside Plan Mode, present it as a draft without writing any file |
 
 For the Planning Brief format, prompt isolation, availability check, and generation commands,
@@ -51,6 +51,22 @@ Cascade only when the current stage has a non-zero exit, empty stdout, or output
 minimum plan structure of headings plus implementation-like content. Do not use model-error
 wording as a cascade condition. Stop as soon as a valid draft is available; do not rely on the
 CLI default model.
+
+Each Codex stage runs as a background job and is polled for at most 900 seconds from launch, with
+an `OVERALL=2400` seconds cascade guard checked before each stage. A deadline or hang causes one
+`cancel` request for the preceding job; a launch failure also prevents starting Luna when the job
+ID is unavailable. If cancel was issued for a stage, the next stage is Haiku rather than Luna;
+Luna runs only when the preceding stage reaches terminal without cancel being issued.
+The preceding job's ID is dropped from the marker file only after it reached a terminal state
+on its own or the broker confirmed the interrupt; an unconfirmed cancel keeps the ID for the
+next startup sweep.
+The 900 seconds / `OVERALL=2400` values are approximate upper bounds that include the 15-second
+polling interval and up to 60-second `status` RPC timeout, not exact cutoff times; terminal results
+(including `completed`) observed after the deadline are adopted as-is.
+
+GENERATE runs in a Bash block with `run_in_background`; after it exits, the harness invokes Claude
+again. If the block output has no `REPORT:` line, treat it as `CODEX_FAILURE` and use Haiku. At
+startup, the block reads its previous marker file and cancels residual jobs before launching Sol.
 
 The REPORT must state which engine/model produced the adopted or presented draft: Sol /
 `gpt-5.6-sol`, Luna / `gpt-5.6-luna`, or Haiku / `haiku`.
