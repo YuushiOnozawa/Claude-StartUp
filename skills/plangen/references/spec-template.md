@@ -89,29 +89,98 @@ _plangen_output_ok() {
   grep -Eiq '(implement|implementation|change|modify|file|test|実装|変更|テスト|手順|計画)' "$raw_file" || return 1
 }
 
+CURRENT_JOB=""
+CANCEL_ISSUED=0
+PLANGEN_STAGE_RAW=""
+OVERALL_START=$SECONDS
+OVERALL=2400
+MARK="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/plangen-jobs.$(id -u)"
+
+_plangen_on_signal() {
+  local SIGNAL_JOB="$CURRENT_JOB"
+  [ -n "$CURRENT_JOB" ] && {
+    timeout --kill-after=5 30 node "$CODEX_COMPANION" cancel "$CURRENT_JOB" --json >/dev/null 2>&1 || true
+    CURRENT_JOB=""
+  }
+  for f in "$PLANGEN_TMPDIR"/*.launch.out; do
+    [ -f "$f" ] || continue
+    sj=$(jq -er '.jobId // empty' < "$f" 2>/dev/null) || sj=""
+    [ -n "$sj" ] && [ "$sj" != "$SIGNAL_JOB" ] && timeout --kill-after=5 30 node "$CODEX_COMPANION" cancel "$sj" --json >/dev/null 2>&1 || true
+  done
+  _plangen_cleanup
+  trap - EXIT
+  exit 1
+}
+trap _plangen_on_signal INT TERM HUP
+
+if [ -n "$CODEX_COMPANION" ] && [ -f "$MARK" ]; then
+  while IFS= read -r j || [ -n "$j" ]; do
+    [ -n "$j" ] && timeout --kill-after=5 30 node "$CODEX_COMPANION" cancel "$j" --json >/dev/null 2>&1 || true
+  done < "$MARK"
+  : > "$MARK"
+fi
+
+_plangen_run_model() {
+  local MODEL="$1" LABEL="$2"
+  PLANGEN_STAGE_RAW=""
+  (( SECONDS - OVERALL_START >= OVERALL )) && { CANCEL_ISSUED=1; return 1; }
+  local START=$SECONDS lrc JOB_ID ST SNAP RAW rrc
+  if timeout --kill-after=5 120 node "$CODEX_COMPANION" task --background --model "$MODEL" \
+       --prompt-file "$BRIEF_FILE" --json > "$PLANGEN_TMPDIR/$LABEL.launch.out" \
+       2> "$PLANGEN_TMPDIR/$LABEL.launch.err"; then lrc=0; else lrc=$?; fi
+  if JOB_ID=$(jq -er '.jobId // empty' < "$PLANGEN_TMPDIR/$LABEL.launch.out" 2>/dev/null); then :; else JOB_ID=""; fi
+  [ -n "$JOB_ID" ] && { CURRENT_JOB="$JOB_ID"; printf '%s\n' "$JOB_ID" >> "$MARK" || true; }
+  if [ "$lrc" -ne 0 ] || [ -z "$JOB_ID" ]; then
+    [ -n "$JOB_ID" ] && { timeout --kill-after=5 60 node "$CODEX_COMPANION" cancel "$JOB_ID" --json >/dev/null 2>&1 || true; CURRENT_JOB=""; }
+    CANCEL_ISSUED=1
+    return 1
+  fi
+  ST=""
+  while :; do
+    if SNAP=$(timeout --kill-after=5 60 node "$CODEX_COMPANION" status "$JOB_ID" --json 2>/dev/null); then :; else SNAP=""; fi
+    if ST=$(printf '%s' "$SNAP" | jq -r '.job.status // empty' 2>/dev/null); then :; else ST=""; fi
+    [ "$ST" = completed ] && break
+    { [ "$ST" = failed ] || [ "$ST" = cancelled ]; } && break
+    (( SECONDS - START >= 900 )) && break
+    (( SECONDS - OVERALL_START >= OVERALL )) && break
+    sleep 15
+  done
+  if [ "$ST" != completed ]; then
+    # deadline / hang / self-failed / self-cancelled — いずれも cancel を1回発行し次段は Haiku
+    timeout --kill-after=5 60 node "$CODEX_COMPANION" cancel "$JOB_ID" --json >/dev/null 2>&1 || true
+    CURRENT_JOB=""
+    CANCEL_ISSUED=1
+    return 1
+  fi
+  # 自力 completed（cancel 未発行）
+  if RAW=$(timeout --kill-after=5 120 node "$CODEX_COMPANION" result "$JOB_ID" --json 2>/dev/null); then rrc=0; else rrc=$?; fi
+  CURRENT_JOB=""
+  printf '%s' "$RAW" | jq -r '.storedJob.result.rawOutput // .storedJob.result.codex.stdout // empty' > "$PLANGEN_TMPDIR/$LABEL-raw.txt" 2>/dev/null || true
+  if _plangen_output_ok "$rrc" "$PLANGEN_TMPDIR/$LABEL-raw.txt"; then
+    PLANGEN_STAGE_RAW="$PLANGEN_TMPDIR/$LABEL-raw.txt"
+    return 0
+  fi
+  return 1   # completed だが構造 NG → cancel 未発行 → 次段 Luna 可
+}
+
 PLANGEN_ENGINE=""
 PLANGEN_MODEL=""
 PLANGEN_RAW=""
 if [ -n "$CODEX_COMPANION" ]; then
-  # Bound each model call so a hung model still reaches the Luna/Haiku fallback.
-  # timeout normally returns 124 on SIGTERM, which is a non-zero failure above.
-  timeout 300 node "$CODEX_COMPANION" task --model gpt-5.6-sol --prompt-file "$BRIEF_FILE" > "$PLANGEN_TMPDIR/sol-raw.txt" 2> "$PLANGEN_TMPDIR/sol-stderr.txt"
-  SOL_EXIT=$?
-  if _plangen_output_ok "$SOL_EXIT" "$PLANGEN_TMPDIR/sol-raw.txt"; then
+  if _plangen_run_model gpt-5.6-sol Sol; then
     PLANGEN_ENGINE="Sol"
     PLANGEN_MODEL="gpt-5.6-sol"
-    PLANGEN_RAW="$PLANGEN_TMPDIR/sol-raw.txt"
-  else
-    timeout 300 node "$CODEX_COMPANION" task --model gpt-5.6-luna --prompt-file "$BRIEF_FILE" > "$PLANGEN_TMPDIR/luna-raw.txt" 2> "$PLANGEN_TMPDIR/luna-stderr.txt"
-    LUNA_EXIT=$?
-    if _plangen_output_ok "$LUNA_EXIT" "$PLANGEN_TMPDIR/luna-raw.txt"; then
-      PLANGEN_ENGINE="Luna"
-      PLANGEN_MODEL="gpt-5.6-luna"
-      PLANGEN_RAW="$PLANGEN_TMPDIR/luna-raw.txt"
-    fi
+    PLANGEN_RAW="$PLANGEN_STAGE_RAW"
+  elif [ "$CANCEL_ISSUED" = 1 ]; then
+    :   # Sol に cancel 発行済み → Luna を積まない（CODEX_FAILURE → Haiku）
+  elif _plangen_run_model gpt-5.6-luna Luna; then
+    PLANGEN_ENGINE="Luna"
+    PLANGEN_MODEL="gpt-5.6-luna"
+    PLANGEN_RAW="$PLANGEN_STAGE_RAW"
   fi
 fi
 
+[ -n "$CODEX_COMPANION" ] && : > "$MARK" 2>/dev/null || true
 if [ -n "$PLANGEN_RAW" ]; then
   printf 'REPORT: %s / %s\n' "$PLANGEN_ENGINE" "$PLANGEN_MODEL"
   cat -- "$PLANGEN_RAW"
@@ -124,28 +193,44 @@ else
 fi
 ```
 
-The block tries Sol once and, only when Sol fails the same checks, Luna once. A non-zero exit,
-empty raw output, or missing minimum plan structure (a heading plus implementation-like content)
-triggers the next stage; a valid draft stops the cascade immediately. Model-error wording is not
-inspected as a cascade condition. The `--prompt-file` input is reused for Luna. When Sol or Luna
-succeeds, the block prints the engine/model REPORT and then `cat`s the selected raw file; cleanup
-is deliberately performed only after that output, and the trap is disabled after explicit
-cleanup.
+Each stage starts one background job and polls it until terminal or the 900-second deadline. The
+900 seconds / `OVERALL=2400` values are approximate upper bounds that include the 15-second
+polling interval and up to 60-second `status` RPC timeout, not exact cutoff times; terminal results
+(including `completed`) observed after the deadline are adopted as-is. A
+non-zero exit, empty raw output, or missing minimum plan structure (a heading plus
+implementation-like content) triggers the next stage when cancellation has not been issued; a
+valid draft stops the cascade immediately. Model-error wording is not inspected as a cascade
+condition. The `--prompt-file` input is reused for Luna. When Sol or Luna succeeds, the block
+prints the engine/model REPORT and then `cat`s the selected raw file; cleanup is deliberately
+performed only after that output, and the trap is disabled after explicit cleanup.
 
-Known limitation: `timeout 300` stops only the local `codex-companion` client process; it does
-not cancel the turn running on the shared broker because `codex-companion.mjs` currently provides
-no client API equivalent to `turn/interrupt`. After a timeout, the model call may therefore
-continue on the broker while the subsequent Luna call starts, so Sol and Luna may run in
-parallel. Resolving this requires a feature addition to `codex-companion.mjs` itself and cannot
-be handled by the plangen skill alone.
+Known limitation: The root cause was that foreground `timeout` terminated only the local
+`codex-companion` client process, did not send an interrupt to the shared broker, and did not
+preserve a job ID. Each stage now uses `task --background`, polls until terminal or a 900-second
+deadline, and issues one `cancel` (`turn/interrupt` RPC) for a deadline, hang, or launch failure
+when a job ID is available. If launch produces no job ID, Luna is not started and Haiku is used.
+Luna runs only when Sol reaches terminal by itself without a cancel being issued; if cancel is
+issued for Sol, Luna is not started and Haiku is used. Therefore the Sol/Luna turns have no
+cascade path to run in parallel on the broker.
 
-If the block reports `CODEX_FAILURE` (including an unavailable companion), call
+`turnInterrupted` is an RPC acknowledgement, not proof that the broker has finished draining a
+turn. A cancelled Sol turn may remain briefly on the broker, but Luna is not started in that
+case. Complete broker single-flight across jobs created by other tools or Claude sessions is
+outside this change because it requires an API addition to `codex-companion.mjs`.
+
+The GENERATE block runs in the background and the harness invokes Claude again after it exits. The
+cascade has an `OVERALL=2400` elapsed guard, and INT, TERM, or HUP issues one cancel for an
+in-flight job before exit. At startup it reads the previous marker file and cancels residual jobs;
+this does not provide a full crash-recovery protocol or prevent two `/plangen` processes on the
+same host from colliding.
+
+If the background block reports `CODEX_FAILURE` (including an unavailable companion), call
 `Agent(subagent_type="general-purpose", model="haiku")` exactly once with the same complete
 prompt that was base64-encoded above, verbatim. Ask Haiku for an implementation-plan draft
 only; do not ask it to edit files, run commands, or communicate externally. Treat the returned
-text itself as the Haiku raw output, since the Bash process and its temporary directory have
-already ended; do not refer to `$PLANGEN_RAW`, `$BRIEF_FILE`, or `$PLANGEN_TMPDIR` from a later
-tool call.
+text itself as the Haiku raw output, since the background Bash process and its temporary directory
+have already ended; do not refer to `$PLANGEN_RAW`, `$BRIEF_FILE`, or `$PLANGEN_TMPDIR` from a
+later tool call.
 
 Apply the equivalent minimum structural checks to that returned text: the Agent call must
 succeed, the text must be non-empty, and it must contain both a Markdown heading and
