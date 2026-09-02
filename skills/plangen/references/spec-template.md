@@ -162,7 +162,7 @@ _plangen_run_model() {
     if SNAP=$(timeout --kill-after=5 60 node "$CODEX_COMPANION" status "$JOB_ID" --json 2>/dev/null); then :; else SNAP=""; fi
     if ST=$(printf '%s' "$SNAP" | jq -r '.job.status // empty' 2>/dev/null); then :; else ST=""; fi
     [ "$ST" = completed ] && break
-    [ "$ST" = failed ] && break
+    { [ "$ST" = failed ] || [ "$ST" = cancelled ]; } && break
     (( SECONDS - START >= 900 )) && break
     (( SECONDS - OVERALL_START >= OVERALL )) && break
     sleep 15
