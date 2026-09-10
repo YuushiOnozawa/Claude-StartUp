@@ -42,15 +42,21 @@ fi
 パス解決は `skills/dev-flow-fast/references/codex-review.md` ステップ4と同じ探索・status確認パターンを使う。見つからない、status が timeout（124/137）、non-zero、または `Session runtime` を含まない場合は、ローカルモデルへフォールバックせず監査エラーを出力する。
 
 ```bash
-CODEX_COMPANION=$(ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs 2>/dev/null | sort -V | tail -1)
-if [ -z "$CODEX_COMPANION" ]; then
-  jq -n '{error: "AUDIT_ERROR", message: "Codex companion が利用できません"}' > "$RESULT_FILE"
-  return 0
+CODEX_BROKER_RUN=""
+if [[ -n "${CLAUDE_PLUGIN_ROOT:-}" && -r "${CLAUDE_PLUGIN_ROOT}/scripts/codex-broker-run.sh" ]]; then
+  CODEX_BROKER_RUN="${CLAUDE_PLUGIN_ROOT}/scripts/codex-broker-run.sh"
+else
+  CODEX_DISTRIBUTION_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  if [[ -n "$CODEX_DISTRIBUTION_ROOT" && -r "$CODEX_DISTRIBUTION_ROOT/skills/flow-common/execution-budget.json" \
+    && -r "$CODEX_DISTRIBUTION_ROOT/scripts/codex-broker-run.sh" ]]; then
+    CODEX_BROKER_RUN="$CODEX_DISTRIBUTION_ROOT/scripts/codex-broker-run.sh"
+  else
+    CODEX_BROKER_RUN="$HOME/.claude/scripts/codex-broker-run.sh"
+  fi
 fi
-
 STATUS_OUTPUT_FILE="$AUDIT_TMPDIR/codex-status.txt"
 STATUS_ERROR_FILE="$AUDIT_TMPDIR/codex-status.err"
-timeout 30s node "$CODEX_COMPANION" status > "$STATUS_OUTPUT_FILE" 2> "$STATUS_ERROR_FILE"
+timeout 30s bash "$CODEX_BROKER_RUN" --check > "$STATUS_OUTPUT_FILE" 2> "$STATUS_ERROR_FILE"
 STATUS_EXIT=$?
 if [ "$STATUS_EXIT" -eq 124 ] || [ "$STATUS_EXIT" -eq 137 ] || \
    [ "$STATUS_EXIT" -ne 0 ] || ! grep -q 'Session runtime' "$STATUS_OUTPUT_FILE"; then
@@ -141,7 +147,7 @@ prompt は `--prompt-file` で渡し、`--write` は使わない。raw と stder
 ```bash
 RAW_FILE="$AUDIT_TMPDIR/codex-audit-raw.txt"
 ERR_FILE="$AUDIT_TMPDIR/codex-audit.err"
-timeout 600s node "$CODEX_COMPANION" task --prompt-file "$PROMPT_FILE" \
+timeout 600s bash "$CODEX_BROKER_RUN" task --prompt-file "$PROMPT_FILE" \
   > "$RAW_FILE" 2> "$ERR_FILE"
 CODEX_EXIT=$?
 

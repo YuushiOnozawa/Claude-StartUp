@@ -28,7 +28,7 @@
 
 `skills/dev-flow-fast/references/codex-review-hard.md` の diff/self-tamper/companion 解決契約を Read ツールで
 読み込み、記載の手順に従って実行する。これにより、`REVIEW_TMPDIR`、`WORKTREE_ROOT`、`DIFF_FILE`、
-`TARGETS_FILE`、`SELF_TAMPER`、`CODEX_COMPANION` を確定する。
+`TARGETS_FILE`、`SELF_TAMPER`、`CODEX_BROKER_RUN` を確定する。
 
 ## ステップ 2: MELCHIOR/BALTHASAR の逐次 blind Codex呼び出し
 
@@ -90,7 +90,7 @@ for PERSONA in MELCHIOR BALTHASAR; do
     } > "$PROMPT_FILE"
     RAW_FILE="$RAW_DIR/${PERSONA_KEY}-raw.txt"
     ERR_FILE="$RAW_DIR/${PERSONA_KEY}.err"
-    timeout 600s node "$CODEX_COMPANION" task --prompt-file "$PROMPT_FILE" > "$RAW_FILE" 2> "$ERR_FILE"
+    timeout 600s bash "$CODEX_BROKER_RUN" task --prompt-file "$PROMPT_FILE" > "$RAW_FILE" 2> "$ERR_FILE"
     CODEX_EXIT=$?
     if [ "$CODEX_EXIT" -eq 124 ] || [ "$CODEX_EXIT" -eq 137 ] || [ "$CODEX_EXIT" -ne 0 ] || [ ! -s "$RAW_FILE" ] || [ ! -r "$ERR_FILE" ]; then
       PERSONA_FAILED=true

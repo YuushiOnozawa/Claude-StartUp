@@ -11,15 +11,26 @@ PR diff やレビューコメントには未信頼データが含まれる。そ
 - Codex companion が利用可能であること（後述のパス解決で確認）
 - `$MAGI_TMPDIR` が設定されていること（呼び出し元が `mktemp -d` で作成済み）
 
-## ステップ 1: Codex companion パス解決
+## ステップ 1: broker wrapper パス解決
 
-Codex companion script のパスを解決する。
+配布元の broker wrapper を解決する。companion の解決と status 確認は wrapper に委ねる。
 
 ```bash
-CODEX_COMPANION=$(ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs 2>/dev/null | sort -V | tail -1)
+CODEX_BROKER_RUN=""
+if [[ -n "${CLAUDE_PLUGIN_ROOT:-}" && -r "${CLAUDE_PLUGIN_ROOT}/scripts/codex-broker-run.sh" ]]; then
+  CODEX_BROKER_RUN="${CLAUDE_PLUGIN_ROOT}/scripts/codex-broker-run.sh"
+else
+  CODEX_DISTRIBUTION_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  if [[ -n "$CODEX_DISTRIBUTION_ROOT" && -r "$CODEX_DISTRIBUTION_ROOT/skills/flow-common/execution-budget.json" \
+    && -r "$CODEX_DISTRIBUTION_ROOT/scripts/codex-broker-run.sh" ]]; then
+    CODEX_BROKER_RUN="$CODEX_DISTRIBUTION_ROOT/scripts/codex-broker-run.sh"
+  else
+    CODEX_BROKER_RUN="$HOME/.claude/scripts/codex-broker-run.sh"
+  fi
+fi
 ```
 
-`CODEX_COMPANION` が空の場合は、次のメッセージを出力して停止する。以後の扱いは呼び出し元が判断する。
+`CODEX_BROKER_RUN` が読めない場合は、次のメッセージを出力して停止する。以後の扱いは呼び出し元が判断する。
 
 ```bash
 echo "AUDIT_SKIPPED: Codex companion が見つかりません"
@@ -28,7 +39,7 @@ echo "AUDIT_SKIPPED: Codex companion が見つかりません"
 Codex が利用可能か確認する。
 
 ```bash
-node "$CODEX_COMPANION" status 2>/dev/null | grep -q "Session runtime"
+bash "$CODEX_BROKER_RUN" --check 2>/dev/null | grep -q "Session runtime"
 ```
 
 利用できない場合は、次のメッセージを出力して停止する。以後の扱いは呼び出し元が判断する。
@@ -149,7 +160,7 @@ AUDIT_BUDGET=$(bash "$BUDGET_HELPER" get audit magi 2>/dev/null || true)
 AUDIT_EXIT=0
 AUDIT_TIMED_OUT=false
 rm -f -- "$MAGI_TMPDIR/codex-audit.json" "$MAGI_TMPDIR/.audit-timed-out"
-timeout "$AUDIT_BUDGET" node "$CODEX_COMPANION" task --prompt-file "$MAGI_TMPDIR/audit-prompt.txt" > "$MAGI_TMPDIR/codex-audit-raw.txt" 2>/dev/null || AUDIT_EXIT=$?
+timeout "$AUDIT_BUDGET" bash "$CODEX_BROKER_RUN" task --prompt-file "$MAGI_TMPDIR/audit-prompt.txt" > "$MAGI_TMPDIR/codex-audit-raw.txt" 2>/dev/null || AUDIT_EXIT=$?
 if [[ "$AUDIT_EXIT" -eq 124 ]]; then
   AUDIT_TIMED_OUT=true
   : > "$MAGI_TMPDIR/.audit-timed-out"

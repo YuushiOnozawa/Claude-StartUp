@@ -19,36 +19,42 @@ Draft the task description in this structure before calling Codex:
 ### Codex availability check
 
 ```bash
-CODEX_COMPANION="${CODEX_COMPANION:-}"
-if [ -n "$CODEX_COMPANION" ] && [ ! -f "$CODEX_COMPANION" ]; then
-  CODEX_COMPANION=""
+CODEX_BROKER_RUN=""
+if [[ -n "${CLAUDE_PLUGIN_ROOT:-}" && -r "${CLAUDE_PLUGIN_ROOT}/scripts/codex-broker-run.sh" ]]; then
+  CODEX_BROKER_RUN="${CLAUDE_PLUGIN_ROOT}/scripts/codex-broker-run.sh"
+else
+  CODEX_DISTRIBUTION_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  if [[ -n "$CODEX_DISTRIBUTION_ROOT" && -r "$CODEX_DISTRIBUTION_ROOT/skills/flow-common/execution-budget.json" \
+    && -r "$CODEX_DISTRIBUTION_ROOT/scripts/codex-broker-run.sh" ]]; then
+    CODEX_BROKER_RUN="$CODEX_DISTRIBUTION_ROOT/scripts/codex-broker-run.sh"
+  else
+    CODEX_BROKER_RUN="$HOME/.claude/scripts/codex-broker-run.sh"
+  fi
 fi
-if [ -z "$CODEX_COMPANION" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "${CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.mjs" ]; then
-  CODEX_COMPANION="${CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.mjs"
-fi
-if [ -z "$CODEX_COMPANION" ]; then
-  CODEX_COMPANION=$(ls -d "${HOME}/.claude/plugins/cache/openai-codex/codex/"*/scripts/codex-companion.mjs 2>/dev/null | sort -V | tail -1)
-fi
-node "$CODEX_COMPANION" status 2>/dev/null
+bash "$CODEX_BROKER_RUN" --check 2>/dev/null
 ```
 
 ### If Codex available — pass task description via heredoc (writes files directly via --write)
 
 ```bash
-CODEX_COMPANION="${CODEX_COMPANION:-}"
-if [ -n "$CODEX_COMPANION" ] && [ ! -f "$CODEX_COMPANION" ]; then
-  CODEX_COMPANION=""
+CODEX_BROKER_RUN=""
+if [[ -n "${CLAUDE_PLUGIN_ROOT:-}" && -r "${CLAUDE_PLUGIN_ROOT}/scripts/codex-broker-run.sh" ]]; then
+  CODEX_BROKER_RUN="${CLAUDE_PLUGIN_ROOT}/scripts/codex-broker-run.sh"
+else
+  CODEX_DISTRIBUTION_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  if [[ -n "$CODEX_DISTRIBUTION_ROOT" && -r "$CODEX_DISTRIBUTION_ROOT/skills/flow-common/execution-budget.json" \
+    && -r "$CODEX_DISTRIBUTION_ROOT/scripts/codex-broker-run.sh" ]]; then
+    CODEX_BROKER_RUN="$CODEX_DISTRIBUTION_ROOT/scripts/codex-broker-run.sh"
+  else
+    CODEX_BROKER_RUN="$HOME/.claude/scripts/codex-broker-run.sh"
+  fi
 fi
-if [ -z "$CODEX_COMPANION" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "${CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.mjs" ]; then
-  CODEX_COMPANION="${CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.mjs"
-fi
-if [ -z "$CODEX_COMPANION" ]; then
-  CODEX_COMPANION=$(ls -d "${HOME}/.claude/plugins/cache/openai-codex/codex/"*/scripts/codex-companion.mjs 2>/dev/null | sort -V | tail -1)
-fi
-node "$CODEX_COMPANION" task "$(cat <<'TASK_EOF'
+CODEGEN_PROMPT_FILE="$(mktemp)"
+trap 'rm -f -- "$CODEGEN_PROMPT_FILE"' EXIT
+cat > "$CODEGEN_PROMPT_FILE" <<'TASK_EOF'
 <expand the task description drafted in SPEC phase here>
 TASK_EOF
-)" --write
+bash "$CODEX_BROKER_RUN" task --prompt-file "$CODEGEN_PROMPT_FILE" --write
 ```
 
 ### If Codex unavailable — Haiku fallback

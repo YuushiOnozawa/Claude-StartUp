@@ -223,6 +223,8 @@ else
 fi
 ```
 
+plangen の GENERATE は Issue #412 の background job + poll + best-effort cancel（`turnInterrupted` 確認込み）を維持し、broker wrapper を経由しない。したがって plangen は broker lock の非参加者であり、plangen と review の間に broker wedge が残ることは既知の残余リスクである。
+
 Each stage starts one background job and polls it until terminal or the 900-second deadline. The
 900 seconds / `OVERALL=2400` values are approximate upper bounds that include the 15-second
 polling interval and up to 60-second `status` RPC timeout, not exact cutoff times; terminal results

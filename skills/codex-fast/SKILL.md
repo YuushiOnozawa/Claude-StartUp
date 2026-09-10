@@ -16,7 +16,7 @@ CASPERの結果はバッチNormalizerを経て統合し、hardと同じレビュ
 
 ## 前提
 
-- Codex companionが利用可能であること（`~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs`）。
+- Codex companion と、レビュー・codegen・design-review の task 単位共有排他を行う `scripts/codex-broker-run.sh` が利用可能であること。
 - カレントディレクトリがGitリポジトリであること。
 
 ## ステップ 1: 参照手順の読み込みと実行

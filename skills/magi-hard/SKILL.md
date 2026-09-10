@@ -766,6 +766,7 @@ fi
 
 jq -n \
   --arg engine "magi" \
+  --arg forge_host "${FORGE_HOST:-github.com}" \
   --arg owner "$OWNER" \
   --arg repo "$REPO" \
   --argjson number "$PR_NUM" \
@@ -782,7 +783,7 @@ jq -n \
   --rawfile finding_list "$REVIEW_POST_FINDING_LIST" \
   --arg result_path "$REVIEW_POST_RESULT" \
   '{
-    schema_version:"1", artifact_type:"review-post-request", engine:$engine,
+    schema_version:"1", artifact_type:"review-post-request", engine:$engine, forge_host:$forge_host,
     pr:{owner:$owner, repo:$repo, number:$number, head_sha:$head_sha},
     inputs:{
       findings_artifact:(if $artifact == "" then null else $artifact end),

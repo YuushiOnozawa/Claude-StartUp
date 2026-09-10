@@ -16,6 +16,7 @@ request は手書きの JSON 連結ではなく、呼び出し元が `jq -n --ar
   "schema_version": "1",
   "artifact_type": "review-post-request",
   "engine": "magi",
+  "forge_host": "github.com",
   "pr": { "owner": "string", "repo": "string", "number": 123, "head_sha": "string" },
   "inputs": {
     "findings_artifact": "/path/findings-artifact.json",
@@ -44,6 +45,14 @@ request は手書きの JSON 連結ではなく、呼び出し元が `jq -n --ar
 `post_inline` はステップ7相当（インラインコメントと通常 PR コメント退避）だけを制御する。
 サマリコメントは常に投稿する。`block_layer: "importance"` と anchor 層の失敗は
 `post_inline` を変更しない。
+
+## post lock の段階導入（PR-2）
+
+PR-2 が担うのは、6ステップの fencing 契約の step 2（post lock 取得）と step 6（lock 保持中に
+既存コメント一覧の取得・dedup から全 GitHub write までを行う）だけである。step 1/3/4/5
+（lease_id 必須化、lock 内での lease 再確認、mismatch 時の停止、force-release 側の post lock）は
+PR-3 で実装する。PR-2 では `REVIEW_POST_USE_LOCK=1` のときだけ host-local flock を有効にし、
+未設定の非 managed 実行は従来どおり lock を取得しない。PR-3 でこのゲートを managed 判定へ接続する。
 
 ## 単一 JSON 値の検証と request の構造検証
 
@@ -78,6 +87,7 @@ contract violation は終了コード2、サマリのみ投稿・投稿対象0�
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
+REVIEW_POST_STARTED_AT="$(date +%s)"
 
 die_contract() {
   echo "review-post contract violation: $*" >&2
@@ -106,6 +116,7 @@ if ! jq -e '
   and .schema_version == "1"
   and .artifact_type == "review-post-request"
   and (.engine | type == "string" and IN("magi", "codex"))
+  and ((has("forge_host") | not) or (.forge_host | nonempty_string))
   and (.pr | type == "object"
        and (.owner | nonempty_string)
        and (.repo | nonempty_string)
@@ -147,19 +158,38 @@ if ! jq -e '
   die_contract "request の構造または層別組合せが不正です"
 fi
 
+ENGINE="$(jq -r '.engine' <<<"$REQUEST_JSON")"
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 BUDGET_HELPER="$ROOT/skills/flow-common/execution-budget.sh"
 [[ -r "$BUDGET_HELPER" ]] || BUDGET_HELPER="$HOME/.claude/skills/flow-common/execution-budget.sh"
+REVIEW_POST_BUDGET=$(bash "$BUDGET_HELPER" get review_post "$ENGINE" 2>/dev/null || true)
 REVIEW_POST_API_TIMEOUT=$(bash "$BUDGET_HELPER" review-post api_timeout 2>/dev/null || true)
 REVIEW_POST_PAGE_LIMIT=$(bash "$BUDGET_HELPER" review-post page_limit 2>/dev/null || true)
 REVIEW_POST_INLINE_SOFT=$(bash "$BUDGET_HELPER" review-post inline_soft 2>/dev/null || true)
 : "${REVIEW_POST_API_TIMEOUT:=60}"
 : "${REVIEW_POST_PAGE_LIMIT:=10}"
 : "${REVIEW_POST_INLINE_SOFT:=1800}"
-ENGINE="$(jq -r '.engine' <<<"$REQUEST_JSON")"
+: "${REVIEW_POST_BUDGET:=3120}"
+
+review_post_remaining() {
+  local elapsed
+  elapsed=$(( $(date +%s) - REVIEW_POST_STARTED_AT ))
+  (( elapsed < REVIEW_POST_BUDGET )) || return 1
+  printf '%s\n' "$((REVIEW_POST_BUDGET - elapsed))"
+}
+
+review_post_api() {
+  local remaining limit
+  remaining="$(review_post_remaining)" || return 124
+  limit="$REVIEW_POST_API_TIMEOUT"
+  (( remaining < limit )) && limit="$remaining"
+  timeout "$limit" "$@"
+}
+
 OWNER="$(jq -r '.pr.owner' <<<"$REQUEST_JSON")"
 REPO="$(jq -r '.pr.repo' <<<"$REQUEST_JSON")"
 PR_NUM="$(jq -r '.pr.number' <<<"$REQUEST_JSON")"
+FORGE_HOST="$(jq -r '.forge_host // "github.com"' <<<"$REQUEST_JSON")"
 HEAD_SHA="$(jq -r '.pr.head_sha' <<<"$REQUEST_JSON")"
 DIFF_FILE="$(jq -r '.inputs.diff' <<<"$REQUEST_JSON")"
 RESULT_PATH="$(jq -r '.result_path' <<<"$REQUEST_JSON")"
@@ -537,6 +567,34 @@ DELIVERY_JSON="$(jq -n -c --argjson results "$ADJUDICATION_RESULTS" --arg inline
 REUSED_JSON='{}'
 GITHUB_WRITES='[]'
 GITHUB_FAILED=false
+POST_LOCK_READY=true
+POST_LOCK_ACQUIRED=false
+
+# PR-2 は fencing 契約の step 2 / 6 のみを担う。lease_id の必須化・再確認・
+# mismatch 停止・force-release との協調（step 1 / 3 / 4 / 5）は PR-3 で接続する。
+if [[ "${REVIEW_POST_USE_LOCK:-0}" == "1" ]]; then
+  REVIEW_POST_LOCK_BUDGET="$(review_post_remaining || true)"
+  POST_LOCK_HASH="$(printf '%s\0%s/%s\0%s' "$FORGE_HOST" "${OWNER,,}" "${REPO,,}" "$PR_NUM" | sha256sum | cut -d' ' -f1)"
+  POST_LOCK_PREFIX="$(printf '%s-%s-%s' "${OWNER,,}" "${REPO,,}" "$PR_NUM" | tr -cs 'a-z0-9._-' '-' | cut -c1-48)"
+  POST_LOCK="${XDG_RUNTIME_DIR:-/tmp}/claude-review-post-${POST_LOCK_PREFIX}-${POST_LOCK_HASH}.lock"
+  if ! mkdir -p "$(dirname "$POST_LOCK")"; then
+    echo "review-post lock directory を作成できません: $(dirname "$POST_LOCK")" >&2
+    POST_LOCK_READY=false
+    GITHUB_FAILED=true
+  elif ! { exec 8>"$POST_LOCK"; } 2>/dev/null; then
+    echo "review-post lock file を開けません: $POST_LOCK" >&2
+    POST_LOCK_READY=false
+    GITHUB_FAILED=true
+  elif [[ ! "$REVIEW_POST_LOCK_BUDGET" =~ ^[1-9][0-9]*$ ]] \
+    || ! flock -w "$REVIEW_POST_LOCK_BUDGET" -E 9 8; then
+    echo "review-post 排他ロックを${REVIEW_POST_LOCK_BUDGET}秒以内に取得できませんでした" >&2
+    exec 8>&- 2>/dev/null || true
+    POST_LOCK_READY=false
+    GITHUB_FAILED=true
+  else
+    POST_LOCK_ACQUIRED=true
+  fi
+fi
 
 record_write() {
   local kind="$1"
@@ -552,57 +610,69 @@ PULL_COMMENTS_ERR="$TMP_DIR/pull-comments.err"
 ISSUE_LIST_EXIT=0
 : > "$ISSUE_COMMENTS_RAW"
 # execution-budget.json: review_post pagination hard budget
-for PAGE in $(seq 1 "$REVIEW_POST_PAGE_LIMIT"); do
-  PAGE_RAW="$TMP_DIR/issue-comments-$PAGE.json"
-  timeout "$REVIEW_POST_API_TIMEOUT" gh api "repos/$OWNER/$REPO/issues/$PR_NUM/comments?page=$PAGE&per_page=100" >"$PAGE_RAW" 2>"$ISSUE_COMMENTS_ERR" || {
-    ISSUE_LIST_EXIT=$?
-    break
-  }
-  PAGE_COUNT="$(jq -s -e 'if length == 1 and (.[0] | type) == "array" then (.[0] | length) else error("expected exactly one array") end' "$PAGE_RAW" 2>/dev/null)" || {
-    ISSUE_LIST_EXIT=1
-    break
-  }
-  [[ "$PAGE_COUNT" -gt 0 ]] || break
-  jq -c '.[] | {id, body, login: (.user.login // null)}' "$PAGE_RAW" >> "$ISSUE_COMMENTS_RAW" || {
-    ISSUE_LIST_EXIT=1
-    break
-  }
-  if [[ "$PAGE_COUNT" -eq 100 && "$PAGE" -eq "$REVIEW_POST_PAGE_LIMIT" ]]; then
-    ISSUE_LIST_EXIT=1
-    break
-  fi
-  [[ "$PAGE_COUNT" -eq 100 ]] || break
-done
+if [[ "$POST_LOCK_READY" == true ]]; then
+  for PAGE in $(seq 1 "$REVIEW_POST_PAGE_LIMIT"); do
+    PAGE_RAW="$TMP_DIR/issue-comments-$PAGE.json"
+    review_post_api gh api "repos/$OWNER/$REPO/issues/$PR_NUM/comments?page=$PAGE&per_page=100" >"$PAGE_RAW" 2>"$ISSUE_COMMENTS_ERR" || {
+      ISSUE_LIST_EXIT=$?
+      break
+    }
+    PAGE_COUNT="$(jq -s -e 'if length == 1 and (.[0] | type) == "array" then (.[0] | length) else error("expected exactly one array") end' "$PAGE_RAW" 2>/dev/null)" || {
+      ISSUE_LIST_EXIT=1
+      break
+    }
+    [[ "$PAGE_COUNT" -gt 0 ]] || break
+    jq -c '.[] | {id, body, login: (.user.login // null)}' "$PAGE_RAW" >> "$ISSUE_COMMENTS_RAW" || {
+      ISSUE_LIST_EXIT=1
+      break
+    }
+    if [[ "$PAGE_COUNT" -eq 100 && "$PAGE" -eq "$REVIEW_POST_PAGE_LIMIT" ]]; then
+      ISSUE_LIST_EXIT=1
+      break
+    fi
+    [[ "$PAGE_COUNT" -eq 100 ]] || break
+  done
+else
+  ISSUE_LIST_EXIT=1
+fi
 PULL_LIST_EXIT=0
 : > "$PULL_COMMENTS_RAW"
-for PAGE in $(seq 1 "$REVIEW_POST_PAGE_LIMIT"); do
-  PAGE_RAW="$TMP_DIR/pull-comments-$PAGE.json"
-  timeout "$REVIEW_POST_API_TIMEOUT" gh api "repos/$OWNER/$REPO/pulls/$PR_NUM/comments?page=$PAGE&per_page=100" >"$PAGE_RAW" 2>"$PULL_COMMENTS_ERR" || {
-    PULL_LIST_EXIT=$?
-    break
-  }
-  PAGE_COUNT="$(jq -s -e 'if length == 1 and (.[0] | type) == "array" then (.[0] | length) else error("expected exactly one array") end' "$PAGE_RAW" 2>/dev/null)" || {
-    PULL_LIST_EXIT=1
-    break
-  }
-  [[ "$PAGE_COUNT" -gt 0 ]] || break
-  jq -c '.[] | {id, body, login: (.user.login // null)}' "$PAGE_RAW" >> "$PULL_COMMENTS_RAW" || {
-    PULL_LIST_EXIT=1
-    break
-  }
-  if [[ "$PAGE_COUNT" -eq 100 && "$PAGE" -eq "$REVIEW_POST_PAGE_LIMIT" ]]; then
-    PULL_LIST_EXIT=1
-    break
-  fi
-  [[ "$PAGE_COUNT" -eq 100 ]] || break
-done
+if [[ "$POST_LOCK_READY" == true ]]; then
+  for PAGE in $(seq 1 "$REVIEW_POST_PAGE_LIMIT"); do
+    PAGE_RAW="$TMP_DIR/pull-comments-$PAGE.json"
+    review_post_api gh api "repos/$OWNER/$REPO/pulls/$PR_NUM/comments?page=$PAGE&per_page=100" >"$PAGE_RAW" 2>"$PULL_COMMENTS_ERR" || {
+      PULL_LIST_EXIT=$?
+      break
+    }
+    PAGE_COUNT="$(jq -s -e 'if length == 1 and (.[0] | type) == "array" then (.[0] | length) else error("expected exactly one array") end' "$PAGE_RAW" 2>/dev/null)" || {
+      PULL_LIST_EXIT=1
+      break
+    }
+    [[ "$PAGE_COUNT" -gt 0 ]] || break
+    jq -c '.[] | {id, body, login: (.user.login // null)}' "$PAGE_RAW" >> "$PULL_COMMENTS_RAW" || {
+      PULL_LIST_EXIT=1
+      break
+    }
+    if [[ "$PAGE_COUNT" -eq 100 && "$PAGE" -eq "$REVIEW_POST_PAGE_LIMIT" ]]; then
+      PULL_LIST_EXIT=1
+      break
+    fi
+    [[ "$PAGE_COUNT" -eq 100 ]] || break
+  done
+else
+  PULL_LIST_EXIT=1
+fi
 
 MY_LOGIN_ERR="$TMP_DIR/whoami.err"
 MY_LOGIN=""
 MY_LOGIN_EXIT=0
-MY_LOGIN="$(timeout "$REVIEW_POST_API_TIMEOUT" gh api user \
-  --jq 'if (.login | type) == "string" and (.login | length) > 0 then .login else error("missing login") end' \
-  2>"$MY_LOGIN_ERR")" || MY_LOGIN_EXIT=$?
+if [[ "$POST_LOCK_READY" == true ]]; then
+  MY_LOGIN="$(review_post_api gh api user \
+    --jq 'if (.login | type) == "string" and (.login | length) > 0 then .login else error("missing login") end' \
+    2>"$MY_LOGIN_ERR")" || MY_LOGIN_EXIT=$?
+else
+  MY_LOGIN_EXIT=1
+fi
 if [[ "$MY_LOGIN_EXIT" -eq 0 && -z "$MY_LOGIN" ]]; then
   MY_LOGIN_EXIT=1
 fi
@@ -633,7 +703,7 @@ else
   ' <<<"$ISSUE_COMMENTS")"
   if [[ -n "$SUMMARY_COMMENT_ID" ]]; then
     SUMMARY_URL=""
-    SUMMARY_URL="$(timeout "$REVIEW_POST_API_TIMEOUT" gh api -X PATCH "repos/$OWNER/$REPO/issues/comments/$SUMMARY_COMMENT_ID" \
+    SUMMARY_URL="$(review_post_api gh api -X PATCH "repos/$OWNER/$REPO/issues/comments/$SUMMARY_COMMENT_ID" \
       -f body="$SUMMARY_MARKDOWN" --jq '.html_url' 2>"$SUMMARY_ERR")" || SUMMARY_EXIT=$?
     if [[ "$SUMMARY_EXIT" -eq 0 ]]; then
       record_write "summary" "$SUMMARY_URL" update
@@ -641,7 +711,7 @@ else
       GITHUB_FAILED=true
     fi
   else
-    SUMMARY_URL="$(timeout "$REVIEW_POST_API_TIMEOUT" gh api -X POST "repos/$OWNER/$REPO/issues/$PR_NUM/comments" \
+    SUMMARY_URL="$(review_post_api gh api -X POST "repos/$OWNER/$REPO/issues/$PR_NUM/comments" \
       -f body="$SUMMARY_MARKDOWN" --jq '.html_url' 2>"$SUMMARY_ERR")" || SUMMARY_EXIT=$?
     if [[ "$SUMMARY_EXIT" -eq 0 ]]; then
       record_write "summary" "$SUMMARY_URL"
@@ -674,7 +744,7 @@ post_pr_comment() {
   local status=0
   comment_body="$(printf '[%s] **[%s] %s** `%s:%s`\n\n%s' "$prefix" "$severity" "$persona" "$path" "$line" "$body")"
   comment_body="${comment_body}"$'\n\n'"${marker}"
-  url="$(timeout "$REVIEW_POST_API_TIMEOUT" gh api -X POST "repos/$OWNER/$REPO/issues/$PR_NUM/comments" \
+  url="$(review_post_api gh api -X POST "repos/$OWNER/$REPO/issues/$PR_NUM/comments" \
     -f body="$comment_body" --jq '.html_url' 2>"$error_file")" || status=$?
   if [[ "$status" -ne 0 ]]; then
     GITHUB_FAILED=true
@@ -765,7 +835,7 @@ if [[ "$SUMMARY_EXIT" -eq 0 && "$POST_INLINE" == "true" && "$BLOCK_COUNT" -gt 0 
       INLINE_ERR="$TMP_DIR/inline-$ID.err"
       INLINE_URL=""
       INLINE_EXIT=0
-      INLINE_URL="$(timeout "$REVIEW_POST_API_TIMEOUT" gh api -X POST "repos/$OWNER/$REPO/pulls/$PR_NUM/comments" \
+      INLINE_URL="$(review_post_api gh api -X POST "repos/$OWNER/$REPO/pulls/$PR_NUM/comments" \
         -f body="$COMMENT_BODY" -f path="$ANCHORED_PATH" -F line="$ANCHORED_LINE" \
         -f side="$SIDE" -f commit_id="$HEAD_SHA" --jq '.html_url' 2>"$INLINE_ERR")" || INLINE_EXIT=$?
       if [[ "$INLINE_EXIT" -eq 0 ]]; then
@@ -786,6 +856,12 @@ elif [[ "$SUMMARY_EXIT" -ne 0 ]]; then
     [[ -n "$ID" ]] || continue
     set_delivery "$ID" "not_posted"
   done < <(jq -r '.[] | select(.final_gate == "block") | .id' <<<"$ADJUDICATION_RESULTS")
+fi
+
+# 最後の record_write より後まで保持し、一覧 GET → dedup → 全 write を原子的に見せる。
+if [[ "$POST_LOCK_ACQUIRED" == true ]]; then
+  exec 8>&-
+  POST_LOCK_ACQUIRED=false
 fi
 
 if [[ "$SUMMARY_EXIT" -ne 0 ]]; then
@@ -875,7 +951,8 @@ multiset 突合とする。サマリは同じ engine と head_sha なら PATCH �
 summary も新規 POST する）。マーカーのない旧コメントは dedup 対象外である。この冪等性が保証するのは、
 同一 `$HEAD_SHA` に対する逐次再実行と部分失敗後の再試行のみである。同一 PR・同一 HEAD で `/review-post`
 を同時並行実行した場合、一覧取得と投稿の間に別 run が割り込むと重複投稿が起こり得る。GitHub のコメント
-API に原子的な idempotency key がないため、プロセス間ロックによる同時実行対策は本スキルの対象外とする。
+API に原子的な idempotency key がないため、managed 実行では host-local post lock も併用する。
+PR-2 時点では `REVIEW_POST_USE_LOCK=1` の明示時だけ有効で、別ホスト間の排他は保証対象外である。
 
 ```text
 [MAGI-HARD] **[<severity>] <persona>（<観点>）**

@@ -20,7 +20,7 @@ CASPER の呼び出し・検出・正規化・persona固定・失敗捕捉・ded
 
 ## 前提
 
-- Codex companionが利用可能であること（`~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs`）。
+- Codex companion と、レビュー・codegen・design-review の task 単位共有排他を行う `scripts/codex-broker-run.sh` が利用可能であること。
 - カレントディレクトリがGitリポジトリであること。
 
 ## ステップ 1: 参照手順の読み込みと実行
