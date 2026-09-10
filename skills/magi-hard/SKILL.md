@@ -36,6 +36,43 @@ DIFF=$(printf '%s\n' "$DIFF" | bash scripts/magi-diff-filter.sh)
 
 差分が空の場合は「差分がありません」と報告して終了。
 
+filter 後の差分を既存の hunk splitter へ渡した直後に、absolute cap と soft warning を判定する。
+総変更行数は `+++` / `---` を除く追加・削除行で数え、binary diff は拒否し、generated / lockfile は除外しない。
+
+```bash
+# execution-budget.json: diff_cap
+if grep -aFq 'Binary files ' <<<"$DIFF"; then
+  echo "バイナリ差分はレビューできません"
+  return 1
+fi
+DIFF_CHANGED_LINES=$(awk '/^[+-]/ && !/^\+\+\+ / && !/^--- / { count++ } END { print count + 0 }' <<<"$DIFF")
+DIFF_CAP_CHUNKS_FILE=$(mktemp)
+if ! printf '%s' "$DIFF" | bash scripts/magi-split-hunk.sh 400 > "$DIFF_CAP_CHUNKS_FILE"; then
+  rm -f -- "$DIFF_CAP_CHUNKS_FILE"
+  echo "レビューを停止します: diff splitter が失敗し、cap を判定できません"
+  return 1
+fi
+DIFF_CHUNK_COUNT=$(awk '/^=== CHUNK:/ { count++ } END { print count + 0 }' "$DIFF_CAP_CHUNKS_FILE")
+rm -f -- "$DIFF_CAP_CHUNKS_FILE"
+BUDGET_HELPER="skills/flow-common/execution-budget.sh"
+[[ -r "$BUDGET_HELPER" ]] || BUDGET_HELPER="$HOME/.claude/skills/flow-common/execution-budget.sh"
+DIFF_CAP_CHANGED_LINES=$(bash "$BUDGET_HELPER" diff-cap changed_lines 2>/dev/null || true)
+DIFF_CAP_CHUNKS=$(bash "$BUDGET_HELPER" diff-cap chunks 2>/dev/null || true)
+DIFF_CAP_SOFT_WARNING=$(bash "$BUDGET_HELPER" diff-cap soft_warning 2>/dev/null || true)
+DIFF_CAP_RECOMMENDED=$(bash "$BUDGET_HELPER" diff-cap recommended_split_by 2>/dev/null || true)
+: "${DIFF_CAP_CHANGED_LINES:=3200}"
+: "${DIFF_CAP_CHUNKS:=8}"
+: "${DIFF_CAP_SOFT_WARNING:=800}"
+: "${DIFF_CAP_RECOMMENDED:=1200}"
+if [[ "$DIFF_CHANGED_LINES" -gt "$DIFF_CAP_CHANGED_LINES" && "$DIFF_CHUNK_COUNT" -gt "$DIFF_CAP_CHUNKS" ]]; then
+  echo "レビューを拒否します: 総変更行数とチャンク数が absolute cap を超えています"
+  return 1
+fi
+if [[ "$DIFF_CHANGED_LINES" -ge "$DIFF_CAP_SOFT_WARNING" ]]; then
+  echo "⚠ 大きな差分です（${DIFF_CAP_SOFT_WARNING}〜${DIFF_CAP_RECOMMENDED}行を目安に PR の分割を推奨します）" >&2
+fi
+```
+
 PR 全体で使う作業ディレクトリを作る：
 
 ```bash

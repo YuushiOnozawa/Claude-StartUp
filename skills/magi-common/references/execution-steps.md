@@ -130,14 +130,29 @@ curl -sf --max-time 5 "${_magi_base_url:-http://localhost:11434}/api/tags" 2>/de
 
 3. 一時ファイルを Ollama に渡す:
    ```bash
-   OLLAMA_KEEP_ALIVE=5m bash ~/.claude/scripts/ollama-run.sh "$OLLAMA_MODEL" "$MAGI_TMPDIR/system.txt" < "$MAGI_TMPDIR/prompt.txt" || {
-     echo "⚠ Ollama 排他ロック取得失敗。ollama プロセスを確認してください。"
+   BUDGET_HELPER="skills/flow-common/execution-budget.sh"
+   [[ -r "$BUDGET_HELPER" ]] || BUDGET_HELPER="$HOME/.claude/skills/flow-common/execution-budget.sh"
+   OLLAMA_BUDGET=$(bash "$BUDGET_HELPER" get ollama_call_wall_clock magi 2>/dev/null || true)
+   : "${OLLAMA_BUDGET:=900}"
+   OLLAMA_KEEP_ALIVE=5m timeout "$OLLAMA_BUDGET" bash ~/.claude/scripts/ollama-run.sh "$OLLAMA_MODEL" "$MAGI_TMPDIR/system.txt" < "$MAGI_TMPDIR/prompt.txt" || {
+     OLLAMA_EXIT=$?
+     if [[ "$OLLAMA_EXIT" -eq 124 ]]; then
+       echo "⚠ Ollama 呼び出しが実行時間バジェットを超過しました。"
+     elif [[ "$OLLAMA_EXIT" -eq 9 ]]; then
+       echo "⚠ Ollama 排他ロック取得失敗。ollama プロセスを確認してください。"
+     else
+       echo "⚠ Ollama 推論に失敗しました（終了コード: $OLLAMA_EXIT）。"
+     fi
      rm -rf "$MAGI_TMPDIR"
-     bash ~/.claude/scripts/ollama-run.sh --unload "$OLLAMA_MODEL"
+     if [[ "$OLLAMA_EXIT" -ne 124 ]]; then
+       bash ~/.claude/scripts/ollama-run.sh --unload "$OLLAMA_MODEL"
+     fi
      exit 1
    }
    rm -rf "$MAGI_TMPDIR"
    ```
+   `timeout "$OLLAMA_BUDGET"` は `execution-budget.json: ollama_call_wall_clock` の flock 待ちと推論を合わせた
+   wall-clock 上限であり、終了コード124も上記の既存失敗経路で扱う。
    `OLLAMA_KEEP_ALIVE=5m` は次のチャンクでモデルを再ロードしないための保持指定。
    `$MAGI_TMPDIR` の作成と削除は**チャンク単位**のまま変更しない（モデルの解放とは責務が別）。
 

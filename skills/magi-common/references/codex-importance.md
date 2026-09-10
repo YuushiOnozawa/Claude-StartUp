@@ -74,10 +74,29 @@ prompt には必ず次を含める。
 ## ステップ 5: Codex 呼び出し
 
 ```bash
-node "$CODEX_COMPANION" task --prompt-file "$MAGI_TMPDIR/importance-prompt.txt" > "$MAGI_TMPDIR/codex-importance-raw.txt" 2>/dev/null
+BUDGET_HELPER="skills/flow-common/execution-budget.sh"
+[[ -r "$BUDGET_HELPER" ]] || BUDGET_HELPER="$HOME/.claude/skills/flow-common/execution-budget.sh"
+IMPORTANCE_BUDGET=$(bash "$BUDGET_HELPER" get importance magi 2>/dev/null || true)
+: "${IMPORTANCE_BUDGET:=900}"
+IMPORTANCE_EXIT=0
+IMPORTANCE_TIMED_OUT=false
+rm -f -- "$MAGI_TMPDIR/codex-importance.json" "$MAGI_TMPDIR/.importance-timed-out"
+timeout "$IMPORTANCE_BUDGET" node "$CODEX_COMPANION" task --prompt-file "$MAGI_TMPDIR/importance-prompt.txt" > "$MAGI_TMPDIR/codex-importance-raw.txt" 2>/dev/null || IMPORTANCE_EXIT=$?
+if [[ "$IMPORTANCE_EXIT" -eq 124 ]]; then
+  IMPORTANCE_TIMED_OUT=true
+  : > "$MAGI_TMPDIR/.importance-timed-out"
+  echo "IMPORTANCE_SKIPPED: Codex 重要度判定が実行時間バジェットを超過しました"
+elif [[ "$IMPORTANCE_EXIT" -ne 0 ]]; then
+  jq -n --arg status "$IMPORTANCE_EXIT" \
+    '{error:"IMPORTANCE_ERROR", message:("Codex companion failed with exit " + $status)}' \
+    > "$MAGI_TMPDIR/codex-importance.json"
+fi
 ```
 
-`--write` flag は使わない。command が non-zero exit で失敗した場合は、`codex-importance.json` に次を書き込んで停止する。
+`timeout "$IMPORTANCE_BUDGET"` は `execution-budget.json: importance` の hard 上限であり、終了コード124は
+`IMPORTANCE_SKIPPED` の fail-soft 経路へ合流させ、以後の抽出を行わず呼び出し元へ戻る。
+`--write` flag は使わない。それ以外の
+non-zero exit で失敗した場合は、`codex-importance.json` に次を書き込んで停止する。
 
 ```json
 {"error": "IMPORTANCE_ERROR", "message": "..."}
@@ -88,6 +107,7 @@ node "$CODEX_COMPANION" task --prompt-file "$MAGI_TMPDIR/importance-prompt.txt" 
 `codex-audit.md` ステップ6と同じ抽出パターン（候補を順に試し、検証を通った最初のものを採用）を使う。`$MAGI_TMPDIR/codex-importance-raw.txt` は常に残す。
 
 ```bash
+if [[ ! -e "$MAGI_TMPDIR/.importance-timed-out" && ! -e "$MAGI_TMPDIR/codex-importance.json" ]]; then
 _importance_valid() {
   local f="$1" expected_ids_var="$2" all uniq expected
   [ -s "$f" ] || return 1
@@ -105,12 +125,14 @@ _importance_valid() {
   expected=$(printf '%s\n' "${!expected_ids_var}" | sort -u)
   [ "$expected" = "$uniq" ]
 }
+fi
 ```
 
 候補を採用する呼び出し元は、ID一覧の変数名を第2引数に渡す。
 
 ```bash
-if _importance_valid "$CANDIDATE" EXPECTED_IMPORTANCE_IDS; then
+if [[ ! -e "$MAGI_TMPDIR/.importance-timed-out" && ! -e "$MAGI_TMPDIR/codex-importance.json" ]] \
+  && _importance_valid "$CANDIDATE" EXPECTED_IMPORTANCE_IDS; then
   cp "$CANDIDATE" "$IMPORTANCE_RESULT_FILE"
 fi
 ```

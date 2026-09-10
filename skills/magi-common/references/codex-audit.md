@@ -142,8 +142,28 @@ Codex の出力は JSON array のみとし、`$MAGI_TMPDIR/codex-audit.json` に
 prompt は先に `$MAGI_TMPDIR/audit-prompt.txt` に書き込む。heredoc を変数内で扱う shell escaping 問題を避けるため、prompt ファイル経由で渡す。
 
 ```bash
-node "$CODEX_COMPANION" task --prompt-file "$MAGI_TMPDIR/audit-prompt.txt" > "$MAGI_TMPDIR/codex-audit-raw.txt" 2>/dev/null
+BUDGET_HELPER="skills/flow-common/execution-budget.sh"
+[[ -r "$BUDGET_HELPER" ]] || BUDGET_HELPER="$HOME/.claude/skills/flow-common/execution-budget.sh"
+AUDIT_BUDGET=$(bash "$BUDGET_HELPER" get audit magi 2>/dev/null || true)
+: "${AUDIT_BUDGET:=900}"
+AUDIT_EXIT=0
+AUDIT_TIMED_OUT=false
+rm -f -- "$MAGI_TMPDIR/codex-audit.json" "$MAGI_TMPDIR/.audit-timed-out"
+timeout "$AUDIT_BUDGET" node "$CODEX_COMPANION" task --prompt-file "$MAGI_TMPDIR/audit-prompt.txt" > "$MAGI_TMPDIR/codex-audit-raw.txt" 2>/dev/null || AUDIT_EXIT=$?
+if [[ "$AUDIT_EXIT" -eq 124 ]]; then
+  AUDIT_TIMED_OUT=true
+  : > "$MAGI_TMPDIR/.audit-timed-out"
+  echo "AUDIT_SKIPPED: Codex 監査が実行時間バジェットを超過しました"
+elif [[ "$AUDIT_EXIT" -ne 0 ]]; then
+  jq -n --arg status "$AUDIT_EXIT" \
+    '{error:"AUDIT_ERROR", message:("Codex companion failed with exit " + $status)}' \
+    > "$MAGI_TMPDIR/codex-audit.json"
+fi
 ```
+
+`timeout "$AUDIT_BUDGET"` は `execution-budget.json: audit` の hard 上限であり、終了コード124は
+`AUDIT_SKIPPED` の fail-soft 経路へ合流させ、以後の抽出を行わず呼び出し元へ戻る。
+それ以外の non-zero exit は従来どおり `AUDIT_ERROR` とする。
 
 単一引数に prompt 全体を渡すと Codex companion CLI の `normalizeArgv` で再トークン化され、diff/finding 内の `-m` が CLI の `--model` 短縮として解釈されることがある。`--prompt-file` はファイルを直接読むため、この経路を通らない。
 
@@ -169,6 +189,7 @@ command が non-zero exit で失敗した場合は、`codex-audit.json` に次�
 **候補を順に試し、検証を通った最初のものを採用する。**
 
 ```bash
+if [[ ! -e "$MAGI_TMPDIR/.audit-timed-out" && ! -e "$MAGI_TMPDIR/codex-audit.json" ]]; then
 RAW="$MAGI_TMPDIR/codex-audit-raw.txt"
 OUT="$MAGI_TMPDIR/codex-audit.json"
 CAND_DIR="$MAGI_TMPDIR/cand"
@@ -194,6 +215,7 @@ if [ -n "$END_LINE" ]; then
     sed -n "${START_LINE},${END_LINE}p" "$RAW" > "$CAND_DIR/$(printf '03-%02d' "$I").json"
   done
 fi
+fi
 ```
 
 ### 検証
@@ -204,6 +226,7 @@ fi
 取りこぼしがあると、欠落した ID がそのまま投稿される。**産出側と受け手側で同じ条件を持つ。**
 
 ```bash
+if [[ ! -e "$MAGI_TMPDIR/.audit-timed-out" && ! -e "$MAGI_TMPDIR/codex-audit.json" ]]; then
 _audit_valid() {
   local f="$1" expected
   [ -s "$f" ] || return 1
@@ -235,6 +258,7 @@ if [ -n "$ADOPTED" ]; then
 else
   jq -n --arg raw "$RAW" \
     '{error: "AUDIT_ERROR", message: "監査結果の抽出または検証に失敗", raw: $raw}' > "$OUT"
+fi
 fi
 ```
 

@@ -84,6 +84,29 @@ else
 fi
 record_result "正常な配列の連結JSON値を拒否する" "$result"
 
+START_SNIPPET="$TEST_ROOT/casper-start.sh"
+BOUNDARY_SNIPPET="$TEST_ROOT/casper-boundary.sh"
+extract_code_block "## diff チャンクと raw 出力" "$REPO_ROOT/$ENGINE_REF" "$START_SNIPPET" 1
+extract_code_block "## diff チャンクと raw 出力" "$REPO_ROOT/$ENGINE_REF" "$BOUNDARY_SNIPPET" 2
+CASPER_TMPDIR="$TEST_ROOT/casper-budget"
+CASPER_FAILURE_SINK="$CASPER_TMPDIR/failure.json"
+mkdir -p "$CASPER_TMPDIR"
+CASPER_TMPDIR="$CASPER_TMPDIR" bash "$START_SNIPPET"
+printf '%s\n' "$(( $(date +%s) - 2 ))" > "$CASPER_TMPDIR/started_at"
+CASPER_BUDGET_JSON="$TEST_ROOT/casper-budget.json"
+jq '.phases.casper.magi = 1' "$REPO_ROOT/skills/flow-common/execution-budget.json" > "$CASPER_BUDGET_JSON"
+if CASPER_TMPDIR="$CASPER_TMPDIR" CASPER_FAILURE_SINK="$CASPER_FAILURE_SINK" \
+  EXECUTION_BUDGET_JSON="$CASPER_BUDGET_JSON" bash "$BOUNDARY_SNIPPET" \
+  && jq -e '.failed_personas == ["CASPER"] and .failure_stage == "invoke_failed"' \
+    "$CASPER_FAILURE_SINK" >/dev/null 2>&1 \
+  && ! grep -Fq 'for CHUNK_FILE' "$REPO_ROOT/$ENGINE_REF" \
+  && grep -Fq -- '-ge "$CASPER_BUDGET"' "$BOUNDARY_SNIPPET"; then
+  result=0
+else
+  result=1
+fi
+record_result "CASPER は保存 epoch と helper soft budget を各 Agent 前に -ge 判定する" "$result"
+
 run_path_validation_case() {
   local mode="$1"
   local heading="$2"

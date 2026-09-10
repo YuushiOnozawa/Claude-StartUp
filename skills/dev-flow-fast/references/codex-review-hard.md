@@ -13,7 +13,7 @@
 
 - merge 出力は fast では `{pipeline_status, findings, manual_review, failed_personas}`、hard では `{artifact_type, pipeline_status, grouping_global_failure, validity_global_failure, findings, manual_review, failed_personas}`。
 - merge の終了コード `0` は正常、`1` は監査全体失敗（全件 raw/manual）、`2` は入力契約違反。
-- `/codex-hard` は Codex 最大8回（5ペルソナ+監査+妥当性監査+重要度判定）。各600秒 timeout、想定最悪ケース約80分。
+- `/codex-hard` は Codex 最大8回（5ペルソナ+監査+妥当性監査+重要度判定）。各呼び出しの timeout は execution-budget helper から取得し、想定最悪ケースは約80分。
 - hard mode の終了コード `2` は findings table・監査など既存入力に加え、adjudication artifact の入力契約違反でも発生する。
 - CASPER（Haiku、diffサイズ依存のチャンク分割）1〜数回 + CASPER結果のバッチNormalizer（Haiku/Ollama）1回が別途発生する。チャンク数によりCASPERのHaiku呼び出し数は変動するため、固定回数と断定しない。
 - GitHub への投稿は行わない。
@@ -65,7 +65,40 @@ if [ ! -s "$DIFF_FILE" ] && [ "$UNTRACKED_COUNT" -eq 0 ]; then
   echo "差分がありません"
   return 2
 fi
+
+# execution-budget.json: diff_cap
+if grep -aFq 'Binary files ' "$DIFF_FILE"; then
+  echo "CODEX_HARD_FAILED: バイナリ差分はレビューできません"
+  return 1
+fi
+DIFF_CHANGED_LINES=$(awk '/^[+-]/ && !/^\+\+\+ / && !/^--- / { count++ } END { print count + 0 }' "$DIFF_FILE")
+DIFF_CAP_CHUNKS_FILE="$REVIEW_TMPDIR/diff-cap-chunks.txt"
+if ! bash "$WORKTREE_ROOT/scripts/magi-split-hunk.sh" 400 < "$DIFF_FILE" > "$DIFF_CAP_CHUNKS_FILE"; then
+  echo "CODEX_HARD_FAILED: diff splitter が失敗し、cap を判定できません"
+  return 1
+fi
+DIFF_CHUNK_COUNT=$(awk '/^=== CHUNK:/ { count++ } END { print count + 0 }' "$DIFF_CAP_CHUNKS_FILE")
+BUDGET_HELPER="$WORKTREE_ROOT/skills/flow-common/execution-budget.sh"
+[[ -r "$BUDGET_HELPER" ]] || BUDGET_HELPER="$HOME/.claude/skills/flow-common/execution-budget.sh"
+DIFF_CAP_CHANGED_LINES=$(bash "$BUDGET_HELPER" diff-cap changed_lines 2>/dev/null || true)
+DIFF_CAP_CHUNKS=$(bash "$BUDGET_HELPER" diff-cap chunks 2>/dev/null || true)
+DIFF_CAP_SOFT_WARNING=$(bash "$BUDGET_HELPER" diff-cap soft_warning 2>/dev/null || true)
+DIFF_CAP_RECOMMENDED=$(bash "$BUDGET_HELPER" diff-cap recommended_split_by 2>/dev/null || true)
+: "${DIFF_CAP_CHANGED_LINES:=3200}"
+: "${DIFF_CAP_CHUNKS:=8}"
+: "${DIFF_CAP_SOFT_WARNING:=800}"
+: "${DIFF_CAP_RECOMMENDED:=1200}"
+if [[ "$DIFF_CHANGED_LINES" -gt "$DIFF_CAP_CHANGED_LINES" && "$DIFF_CHUNK_COUNT" -gt "$DIFF_CAP_CHUNKS" ]]; then
+  echo "CODEX_HARD_FAILED: 総変更行数とチャンク数が absolute cap を超えています"
+  return 1
+fi
+if [[ "$DIFF_CHANGED_LINES" -ge "$DIFF_CAP_SOFT_WARNING" ]]; then
+  echo "⚠ 大きな差分です（${DIFF_CAP_SOFT_WARNING}〜${DIFF_CAP_RECOMMENDED}行を目安に PR の分割を推奨します）" >&2
+fi
 ```
+
+キャップは filter 後の追加・削除行（`+++` / `---` を除く）と既存 splitter のチャンク数で判定する。
+generated / lockfile は除外せず、拒否条件は両方の上限超過が同時に成立した場合だけである。
 
 ## ステップ 2: 対象ファイル一覧の完成と完全性確認
 
@@ -177,7 +210,11 @@ for PERSONA in MELCHIOR BALTHASAR METATRON SANDALPHON LELIEL; do
     } > "$PROMPT_FILE"
     RAW_FILE="$RAW_DIR/${PERSONA_KEY}-raw.txt"
     ERR_FILE="$RAW_DIR/${PERSONA_KEY}.err"
-    timeout 600s node "$CODEX_COMPANION" task --prompt-file "$PROMPT_FILE" > "$RAW_FILE" 2> "$ERR_FILE"
+    BUDGET_HELPER="$WORKTREE_ROOT/skills/flow-common/execution-budget.sh"
+    [[ -r "$BUDGET_HELPER" ]] || BUDGET_HELPER="$HOME/.claude/skills/flow-common/execution-budget.sh"
+    CODEX_TASK_BUDGET=$(bash "$BUDGET_HELPER" generation-factor per_chunk_seconds codex 2>/dev/null || true)
+    : "${CODEX_TASK_BUDGET:=600}"
+    timeout "${CODEX_TASK_BUDGET}s" node "$CODEX_COMPANION" task --prompt-file "$PROMPT_FILE" > "$RAW_FILE" 2> "$ERR_FILE"
     CODEX_EXIT=$?
     if [ "$CODEX_EXIT" -eq 124 ] || [ "$CODEX_EXIT" -eq 137 ] || [ "$CODEX_EXIT" -ne 0 ] || [ ! -s "$RAW_FILE" ] || [ ! -r "$ERR_FILE" ]; then
       PERSONA_FAILED=true

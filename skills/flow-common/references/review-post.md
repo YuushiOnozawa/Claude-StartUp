@@ -148,6 +148,14 @@ if ! jq -e '
 fi
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+BUDGET_HELPER="$ROOT/skills/flow-common/execution-budget.sh"
+[[ -r "$BUDGET_HELPER" ]] || BUDGET_HELPER="$HOME/.claude/skills/flow-common/execution-budget.sh"
+REVIEW_POST_API_TIMEOUT=$(bash "$BUDGET_HELPER" review-post api_timeout 2>/dev/null || true)
+REVIEW_POST_PAGE_LIMIT=$(bash "$BUDGET_HELPER" review-post page_limit 2>/dev/null || true)
+REVIEW_POST_INLINE_SOFT=$(bash "$BUDGET_HELPER" review-post inline_soft 2>/dev/null || true)
+: "${REVIEW_POST_API_TIMEOUT:=60}"
+: "${REVIEW_POST_PAGE_LIMIT:=10}"
+: "${REVIEW_POST_INLINE_SOFT:=1800}"
 ENGINE="$(jq -r '.engine' <<<"$REQUEST_JSON")"
 OWNER="$(jq -r '.pr.owner' <<<"$REQUEST_JSON")"
 REPO="$(jq -r '.pr.repo' <<<"$REQUEST_JSON")"
@@ -542,18 +550,57 @@ ISSUE_COMMENTS_ERR="$TMP_DIR/issue-comments.err"
 PULL_COMMENTS_RAW="$TMP_DIR/pull-comments.raw"
 PULL_COMMENTS_ERR="$TMP_DIR/pull-comments.err"
 ISSUE_LIST_EXIT=0
-gh api --paginate "repos/$OWNER/$REPO/issues/$PR_NUM/comments?per_page=100" \
-  --jq '.[] | {id, body, login: (.user.login // null)}' >"$ISSUE_COMMENTS_RAW" 2>"$ISSUE_COMMENTS_ERR" \
-  || ISSUE_LIST_EXIT=$?
+: > "$ISSUE_COMMENTS_RAW"
+# execution-budget.json: review_post pagination hard budget
+for PAGE in $(seq 1 "$REVIEW_POST_PAGE_LIMIT"); do
+  PAGE_RAW="$TMP_DIR/issue-comments-$PAGE.json"
+  timeout "$REVIEW_POST_API_TIMEOUT" gh api "repos/$OWNER/$REPO/issues/$PR_NUM/comments?page=$PAGE&per_page=100" >"$PAGE_RAW" 2>"$ISSUE_COMMENTS_ERR" || {
+    ISSUE_LIST_EXIT=$?
+    break
+  }
+  PAGE_COUNT="$(jq -s -e 'if length == 1 and (.[0] | type) == "array" then (.[0] | length) else error("expected exactly one array") end' "$PAGE_RAW" 2>/dev/null)" || {
+    ISSUE_LIST_EXIT=1
+    break
+  }
+  [[ "$PAGE_COUNT" -gt 0 ]] || break
+  jq -c '.[] | {id, body, login: (.user.login // null)}' "$PAGE_RAW" >> "$ISSUE_COMMENTS_RAW" || {
+    ISSUE_LIST_EXIT=1
+    break
+  }
+  if [[ "$PAGE_COUNT" -eq 100 && "$PAGE" -eq "$REVIEW_POST_PAGE_LIMIT" ]]; then
+    ISSUE_LIST_EXIT=1
+    break
+  fi
+  [[ "$PAGE_COUNT" -eq 100 ]] || break
+done
 PULL_LIST_EXIT=0
-gh api --paginate "repos/$OWNER/$REPO/pulls/$PR_NUM/comments?per_page=100" \
-  --jq '.[] | {id, body, login: (.user.login // null)}' >"$PULL_COMMENTS_RAW" 2>"$PULL_COMMENTS_ERR" \
-  || PULL_LIST_EXIT=$?
+: > "$PULL_COMMENTS_RAW"
+for PAGE in $(seq 1 "$REVIEW_POST_PAGE_LIMIT"); do
+  PAGE_RAW="$TMP_DIR/pull-comments-$PAGE.json"
+  timeout "$REVIEW_POST_API_TIMEOUT" gh api "repos/$OWNER/$REPO/pulls/$PR_NUM/comments?page=$PAGE&per_page=100" >"$PAGE_RAW" 2>"$PULL_COMMENTS_ERR" || {
+    PULL_LIST_EXIT=$?
+    break
+  }
+  PAGE_COUNT="$(jq -s -e 'if length == 1 and (.[0] | type) == "array" then (.[0] | length) else error("expected exactly one array") end' "$PAGE_RAW" 2>/dev/null)" || {
+    PULL_LIST_EXIT=1
+    break
+  }
+  [[ "$PAGE_COUNT" -gt 0 ]] || break
+  jq -c '.[] | {id, body, login: (.user.login // null)}' "$PAGE_RAW" >> "$PULL_COMMENTS_RAW" || {
+    PULL_LIST_EXIT=1
+    break
+  }
+  if [[ "$PAGE_COUNT" -eq 100 && "$PAGE" -eq "$REVIEW_POST_PAGE_LIMIT" ]]; then
+    PULL_LIST_EXIT=1
+    break
+  fi
+  [[ "$PAGE_COUNT" -eq 100 ]] || break
+done
 
 MY_LOGIN_ERR="$TMP_DIR/whoami.err"
 MY_LOGIN=""
 MY_LOGIN_EXIT=0
-MY_LOGIN="$(gh api user \
+MY_LOGIN="$(timeout "$REVIEW_POST_API_TIMEOUT" gh api user \
   --jq 'if (.login | type) == "string" and (.login | length) > 0 then .login else error("missing login") end' \
   2>"$MY_LOGIN_ERR")" || MY_LOGIN_EXIT=$?
 if [[ "$MY_LOGIN_EXIT" -eq 0 && -z "$MY_LOGIN" ]]; then
@@ -586,7 +633,7 @@ else
   ' <<<"$ISSUE_COMMENTS")"
   if [[ -n "$SUMMARY_COMMENT_ID" ]]; then
     SUMMARY_URL=""
-    SUMMARY_URL="$(gh api -X PATCH "repos/$OWNER/$REPO/issues/comments/$SUMMARY_COMMENT_ID" \
+    SUMMARY_URL="$(timeout "$REVIEW_POST_API_TIMEOUT" gh api -X PATCH "repos/$OWNER/$REPO/issues/comments/$SUMMARY_COMMENT_ID" \
       -f body="$SUMMARY_MARKDOWN" --jq '.html_url' 2>"$SUMMARY_ERR")" || SUMMARY_EXIT=$?
     if [[ "$SUMMARY_EXIT" -eq 0 ]]; then
       record_write "summary" "$SUMMARY_URL" update
@@ -594,7 +641,7 @@ else
       GITHUB_FAILED=true
     fi
   else
-    SUMMARY_URL="$(gh api -X POST "repos/$OWNER/$REPO/issues/$PR_NUM/comments" \
+    SUMMARY_URL="$(timeout "$REVIEW_POST_API_TIMEOUT" gh api -X POST "repos/$OWNER/$REPO/issues/$PR_NUM/comments" \
       -f body="$SUMMARY_MARKDOWN" --jq '.html_url' 2>"$SUMMARY_ERR")" || SUMMARY_EXIT=$?
     if [[ "$SUMMARY_EXIT" -eq 0 ]]; then
       record_write "summary" "$SUMMARY_URL"
@@ -627,7 +674,7 @@ post_pr_comment() {
   local status=0
   comment_body="$(printf '[%s] **[%s] %s** `%s:%s`\n\n%s' "$prefix" "$severity" "$persona" "$path" "$line" "$body")"
   comment_body="${comment_body}"$'\n\n'"${marker}"
-  url="$(gh api -X POST "repos/$OWNER/$REPO/issues/$PR_NUM/comments" \
+  url="$(timeout "$REVIEW_POST_API_TIMEOUT" gh api -X POST "repos/$OWNER/$REPO/issues/$PR_NUM/comments" \
     -f body="$comment_body" --jq '.html_url' 2>"$error_file")" || status=$?
   if [[ "$status" -ne 0 ]]; then
     GITHUB_FAILED=true
@@ -665,7 +712,16 @@ if [[ "$SUMMARY_EXIT" -eq 0 && "$POST_INLINE" == "true" && "$BLOCK_COUNT" -gt 0 
       end
     )
   ' <<<"$ISSUE_COMMENTS")"
+  # execution-budget.json: review_post inline post loop (soft)
+  INLINE_STARTED_AT=$(date +%s)
   while IFS= read -r FINDING_ROW; do
+    if [[ "$(( $(date +%s) - INLINE_STARTED_AT ))" -ge "$REVIEW_POST_INLINE_SOFT" ]]; then
+      DELIVERY_JSON="$(jq -c --argjson rows "$BLOCK_ROWS" '
+        reduce $rows[].id as $id (.;
+          if .[$id] == "not_posted" then .[$id] = "summary_only" else . end)
+      ' <<<"$DELIVERY_JSON")"
+      break
+    fi
     ID="$(jq -r '.id' <<<"$FINDING_ROW")"
     STATUS="$(jq -r '.anchor_status // "unanchorable"' <<<"$FINDING_ROW")"
     SEVERITY="$(jq -r --arg id "$ID" --argjson results "$ADJUDICATION_RESULTS" 'first($results[] | select(.id == $id) | (.importance // "UNRATED"))' <<<"$FINDING_ROW")"
@@ -709,7 +765,7 @@ if [[ "$SUMMARY_EXIT" -eq 0 && "$POST_INLINE" == "true" && "$BLOCK_COUNT" -gt 0 
       INLINE_ERR="$TMP_DIR/inline-$ID.err"
       INLINE_URL=""
       INLINE_EXIT=0
-      INLINE_URL="$(gh api -X POST "repos/$OWNER/$REPO/pulls/$PR_NUM/comments" \
+      INLINE_URL="$(timeout "$REVIEW_POST_API_TIMEOUT" gh api -X POST "repos/$OWNER/$REPO/pulls/$PR_NUM/comments" \
         -f body="$COMMENT_BODY" -f path="$ANCHORED_PATH" -F line="$ANCHORED_LINE" \
         -f side="$SIDE" -f commit_id="$HEAD_SHA" --jq '.html_url' 2>"$INLINE_ERR")" || INLINE_EXIT=$?
       if [[ "$INLINE_EXIT" -eq 0 ]]; then

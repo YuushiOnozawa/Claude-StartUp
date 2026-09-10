@@ -119,6 +119,7 @@ _CURL_PID=""
 _RESP=""
 _CLEANED_UP=0
 _LOG_COMPLETED=0
+_LOCK_ACQUIRED=false
 _cleanup() {
   local _reason="${1:-exit}"
   [[ "$_CLEANED_UP" -eq 1 ]] && return 0
@@ -128,7 +129,8 @@ _cleanup() {
     wait "$_CURL_PID" 2>/dev/null || true
     _CURL_PID=""
   fi
-  if [[ "$_reason" == "signal" ]] || [[ "$_reason" == "exit" && "$KEEP_ALIVE_JSON" == "0" ]]; then
+  if [[ "$_LOCK_ACQUIRED" == true ]] \
+    && { [[ "$_reason" == "signal" ]] || [[ "$_reason" == "exit" && "$KEEP_ALIVE_JSON" == "0" ]]; }; then
     if [[ -n "${MODEL:-}" ]]; then
       _unload_model || true
     fi
@@ -171,7 +173,13 @@ fi
 # 排他ロック取得（subshell なし: main shell で _CURL_PID を管理するため）
 mkdir -p "$(dirname "$LOCK")"
 exec 9>"$LOCK"
-flock 9
+# Core script は skills/ に依存させない。literal は execution-budget.json の
+# ollama_call_wall_clock と scripts/test-execution-budget.sh で機械照合する。
+if ! flock -w 900 -E 9 9; then
+  echo "Ollama 排他ロックを900秒以内に取得できませんでした" >&2
+  exit 9
+fi
+_LOCK_ACQUIRED=true
 _LOG_START_EPOCH="$(date +%s)"
 _log_line "$(date '+%Y-%m-%d %H:%M:%S')"$'\t'"$MODEL"$'\t'"$$"
 
