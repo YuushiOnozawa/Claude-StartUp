@@ -20,6 +20,12 @@ CASPER の呼び出し・検出・正規化・persona固定・失敗捕捉・ded
 
 ## 前提
 
+`/review-hard` 経由の managed invocation では、dispatch が渡す `singleflight` object（`tmpdir`、
+`owner_token_file`、`canonical_key`、`lease_id`、`forge_host`、`scope`）を request JSON に含める。
+この object は `review-post` request までそのまま透過し、直接 `/codex-hard` を起動した場合は付けない。
+managed 実行では各 phase/persona 開始前にも token file と `lease_id` を helper の `verify` で再確認し、
+不一致・失効・token 消失時は次の phase と GitHub 副作用へ進まない。
+
 - Codex companion と、レビュー・codegen・design-review の task 単位共有排他を行う `scripts/codex-broker-run.sh` が利用可能であること。
 - カレントディレクトリがGitリポジトリであること。
 
