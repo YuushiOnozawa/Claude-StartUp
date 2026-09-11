@@ -858,11 +858,11 @@ else
       echo "review-post managed lease admission failure: summary PATCH 直前の verify に失敗しました" >&2
       exit 2
     else
+      POST_MUTATION_STARTED=true
       SUMMARY_URL="$(review_post_api gh api -X PATCH "repos/$OWNER/$REPO/issues/comments/$SUMMARY_COMMENT_ID" \
         -f body="$SUMMARY_MARKDOWN" --jq '.html_url' 2>"$SUMMARY_ERR")" || SUMMARY_EXIT=$?
       if [[ "$SUMMARY_EXIT" -eq 0 ]]; then
         record_write "summary" "$SUMMARY_URL" update
-        POST_MUTATION_STARTED=true
       else
         GITHUB_FAILED=true
       fi
@@ -872,11 +872,11 @@ else
       echo "review-post managed lease admission failure: summary POST 直前の verify に失敗しました" >&2
       exit 2
     else
+      POST_MUTATION_STARTED=true
       SUMMARY_URL="$(review_post_api gh api -X POST "repos/$OWNER/$REPO/issues/$PR_NUM/comments" \
         -f body="$SUMMARY_MARKDOWN" --jq '.html_url' 2>"$SUMMARY_ERR")" || SUMMARY_EXIT=$?
       if [[ "$SUMMARY_EXIT" -eq 0 ]]; then
         record_write "summary" "$SUMMARY_URL"
-        POST_MUTATION_STARTED=true
       else
         GITHUB_FAILED=true
       fi

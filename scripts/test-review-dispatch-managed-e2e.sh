@@ -102,6 +102,15 @@ cat >"$STATE_FAIL_HELPER" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ "\$*" == *'.per_pr.acquired=true'* ]]; then
+  state_path=""
+  while ((\$#)); do
+    if [[ "\$1" == "--dispatch-state" && \$# -ge 2 ]]; then
+      state_path="\$2"
+      break
+    fi
+    shift
+  done
+  printf '%s\n' "\$state_path" > "$TEST_ROOT/failure-state-path"
   echo 'injected state update failure' >&2
   exit 19
 fi
@@ -116,6 +125,7 @@ FAILURE_OUTPUT="$(OWNER=owner REPO=repo PR_NUM=44 HEAD_SHA=abc123 FORGE_HOST=git
   bash "$SNIPPET" 2>"$TEST_ROOT/state-failure.err")"
 FAILURE_RC=$?
 set -e
+FAILURE_STATE="$(<"$TEST_ROOT/failure-state-path")"
 REACQUIRE_TOKEN="$TEST_ROOT/reacquire-token"
 (umask 077; printf '%s\n' reacquire-token-secure >"$REACQUIRE_TOKEN")
 chmod 600 -- "$REACQUIRE_TOKEN"
@@ -126,7 +136,9 @@ REACQUIRE_OUTPUT="$(XDG_RUNTIME_DIR="$TEST_ROOT/runtime" REVIEW_SINGLEFLIGHT_TES
 REACQUIRE_RC=$?
 set -e
 if [[ "$FAILURE_RC" -eq 5 && ! "$FAILURE_OUTPUT" =~ 'review-dispatch handoff:' \
-  && "$REACQUIRE_RC" -eq 0 && "$(jq -r '.state' <<<"$REACQUIRE_OUTPUT")" == acquired ]]; then
+  && -s "$FAILURE_STATE" ]] \
+  && jq -e '.per_pr.acquired == false and .saved_rc == 5 and .phase == "aborted"' "$FAILURE_STATE" >/dev/null \
+  && [[ "$REACQUIRE_RC" -eq 0 && "$(jq -r '.state' <<<"$REACQUIRE_OUTPUT")" == acquired ]]; then
   result=0
 else
   result=1

@@ -480,6 +480,17 @@ else
 fi
 record_result "MAGI の投稿状況不明を posted envelope として保持する" "$result"
 
+# 41d. MAGI は review-post exit 3 を mutation 後の部分成功として保持する。
+if grep -Fq -- 'elif [ "$POST_RC" -eq 3 ]' "$MAGI_HARD_SKILL" \
+  && grep -Fq -- '.post_state="posted" | .phase="post_partial"' "$MAGI_HARD_SKILL" \
+  && grep -Fq -- 'review-post fencing failure after GitHub mutation; 投稿済みまたは投稿状況不明' "$MAGI_HARD_SKILL" \
+  && grep -Fq -- '--argjson rc 1' "$MAGI_HARD_SKILL"; then
+  result=0
+else
+  result=1
+fi
+record_result "MAGI の review-post exit 3 を post_partial / posted として保持する" "$result"
+
 # 42. acquire 後の状態更新と共通 cleanup は実行コードとして存在する。
 if grep -Fq -- 'sf_state_set' "$DISPATCH_REF" \
   && grep -Fq -- 'sf_cleanup()' "$DISPATCH_REF" \

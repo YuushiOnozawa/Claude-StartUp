@@ -864,22 +864,59 @@ POST_RC=0
 /review-post "$REVIEW_POST_REQUEST" || POST_RC=$?
 if [ "$POST_RC" -eq 0 ] && [ -s "$REVIEW_POST_RESULT" ]; then
   POST_STATE=posted
-  [ -n "${DISPATCH_STATE:-}" ] && jq '.post_state="posted" | .phase="post_complete"' "$DISPATCH_STATE" > "$DISPATCH_STATE.tmp" && mv -f "$DISPATCH_STATE.tmp" "$DISPATCH_STATE"
+  if [ -n "${DISPATCH_STATE:-}" ] && [ -r "$DISPATCH_STATE" ]; then
+    STATE_HELPER="$(jq -r '.state_helper // empty' "$DISPATCH_STATE" 2>/dev/null || true)"
+    if [ -r "$STATE_HELPER" ]; then
+      bash "$STATE_HELPER" set --dispatch-state "$DISPATCH_STATE" \
+        --filter '.post_state="posted" | .phase="post_complete"'
+    else
+      jq '.post_state="posted" | .phase="post_complete"' "$DISPATCH_STATE" > "$DISPATCH_STATE.tmp" && mv -f "$DISPATCH_STATE.tmp" "$DISPATCH_STATE"
+    fi
+  fi
 elif [ "$POST_RC" -eq 2 ] && [ ! -s "$REVIEW_POST_RESULT" ]; then
   POST_STATE=post_failed
   FAILURE_REASON="review-post managed guard failure; GitHub mutation 未実行"
   if [ -n "${DISPATCH_STATE:-}" ] && [ -r "$DISPATCH_STATE" ]; then
-    jq --arg reason "$FAILURE_REASON" '.post_state="post_failed" | .phase="post_failed" | .failure_reason=$reason | .saved_rc=2' "$DISPATCH_STATE" > "$DISPATCH_STATE.tmp" && mv -f "$DISPATCH_STATE.tmp" "$DISPATCH_STATE"
+    STATE_HELPER="$(jq -r '.state_helper // empty' "$DISPATCH_STATE" 2>/dev/null || true)"
+    if [ -r "$STATE_HELPER" ]; then
+      bash "$STATE_HELPER" set --dispatch-state "$DISPATCH_STATE" \
+        --filter '.post_state="post_failed" | .phase="post_failed" | .failure_reason=$reason | .saved_rc=$rc' \
+        --arg reason "$FAILURE_REASON" --argjson rc 2
+    else
+      jq --arg reason "$FAILURE_REASON" '.post_state="post_failed" | .phase="post_failed" | .failure_reason=$reason | .saved_rc=2' "$DISPATCH_STATE" > "$DISPATCH_STATE.tmp" && mv -f "$DISPATCH_STATE.tmp" "$DISPATCH_STATE"
+    fi
   fi
   printf 'dispatch handoff: {"request":"%s","result":"%s"}\n' "$(realpath -- "$REVIEW_POST_REQUEST")" "$(realpath -m -- "$REVIEW_POST_RESULT")"
   echo "MAGI_HARD_FAILED: $FAILURE_REASON" >&2
   return 2
+elif [ "$POST_RC" -eq 3 ]; then
+  POST_STATE=posted
+  FAILURE_REASON="review-post fencing failure after GitHub mutation; 投稿済みまたは投稿状況不明"
+  if [ -n "${DISPATCH_STATE:-}" ] && [ -r "$DISPATCH_STATE" ]; then
+    STATE_HELPER="$(jq -r '.state_helper // empty' "$DISPATCH_STATE" 2>/dev/null || true)"
+    if [ -r "$STATE_HELPER" ]; then
+      bash "$STATE_HELPER" set --dispatch-state "$DISPATCH_STATE" \
+        --filter '.post_state="posted" | .phase="post_partial" | .failure_reason=$reason | .saved_rc=$rc' \
+        --arg reason "$FAILURE_REASON" --argjson rc 1
+    else
+      jq --arg reason "$FAILURE_REASON" '.post_state="posted" | .phase="post_partial" | .failure_reason=$reason | .saved_rc=1' "$DISPATCH_STATE" > "$DISPATCH_STATE.tmp" && mv -f "$DISPATCH_STATE.tmp" "$DISPATCH_STATE"
+    fi
+  fi
+  echo "MAGI_HARD_FAILED: $FAILURE_REASON" >&2
+  return 1
 elif [ "$POST_RC" -ne 0 ]; then
   POST_STATE=posted
   if [ -n "${DISPATCH_STATE:-}" ] && [ -r "$DISPATCH_STATE" ]; then
-    jq --arg reason "review-post の終了コードが非0で投稿状況を確認できません" \
-      '.post_state="posted" | .phase="post_unknown" | .failure_reason=$reason | .saved_rc=1' \
-      "$DISPATCH_STATE" > "$DISPATCH_STATE.tmp" && mv -f "$DISPATCH_STATE.tmp" "$DISPATCH_STATE"
+    STATE_HELPER="$(jq -r '.state_helper // empty' "$DISPATCH_STATE" 2>/dev/null || true)"
+    if [ -r "$STATE_HELPER" ]; then
+      bash "$STATE_HELPER" set --dispatch-state "$DISPATCH_STATE" \
+        --filter '.post_state="posted" | .phase="post_unknown" | .failure_reason=$reason | .saved_rc=$rc' \
+        --arg reason "review-post の終了コードが非0で投稿状況を確認できません" --argjson rc 1
+    else
+      jq --arg reason "review-post の終了コードが非0で投稿状況を確認できません" \
+        '.post_state="posted" | .phase="post_unknown" | .failure_reason=$reason | .saved_rc=1' \
+        "$DISPATCH_STATE" > "$DISPATCH_STATE.tmp" && mv -f "$DISPATCH_STATE.tmp" "$DISPATCH_STATE"
+    fi
   fi
   echo "MAGI_HARD_FAILED: review-post の投稿状況を確認できません" >&2
   return 1

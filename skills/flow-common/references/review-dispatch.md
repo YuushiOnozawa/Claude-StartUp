@@ -476,7 +476,12 @@ review_hard_dispatch() {
     local release_rc=0
     sf_release_after_acquire || release_rc=$?
     SAVED_RC=5
-    [[ "$release_rc" -eq 0 ]] || echo "review-dispatch: lease を自動解放できないため fail-closed で終了します" >&2
+    if [[ "$release_rc" -eq 0 ]]; then
+      sf_state_set '.per_pr.acquired=false | .saved_rc=$rc | .phase="aborted"' --argjson rc "$SAVED_RC" || true
+    else
+      sf_state_set '.saved_rc=$rc | .phase="cleanup_failed"' --argjson rc "$SAVED_RC" || true
+      echo "review-dispatch: lease を自動解放できないため fail-closed で終了します" >&2
+    fi
   }
 
   SF_MAX_ALLOWANCE="$(bash "$BUDGET_HELPER" max-allowance "$BACKEND" 2>/dev/null || true)"
