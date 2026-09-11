@@ -15,7 +15,7 @@ Falls back to Haiku when Codex is unavailable.
 |---|-------|---------|
 | 1 | ORIENT | Read target files; extract style, naming, patterns |
 | 2 | SPEC | Draft task description for Codex |
-| 3 | GENERATE | Run Codex via `codex-companion.mjs` — writes files directly (or Haiku fallback) |
+| 3 | GENERATE | Run Codex via the shared `codex-broker-run.sh` lock wrapper — writes files directly (or Haiku fallback) |
 | 4 | REPORT | State which path was used (Codex / Haiku fallback) |
 
 For spec format and generate commands, see `references/spec-template.md`.

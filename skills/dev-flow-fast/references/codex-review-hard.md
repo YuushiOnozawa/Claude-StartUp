@@ -147,11 +147,21 @@ printf '%s\n' "$SELF_TAMPER" > "$REVIEW_TMPDIR/self-tamper.json"
 `codex-review.md` ステップ4と同じ探索・status確認を行う。companion が見つからない、status が timeout（124/137）または non-zero、`Session runtime` がない場合はローカルLLMへフォールバックせず停止する。
 
 ```bash
-CODEX_COMPANION=$(ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs 2>/dev/null | sort -V | tail -1)
-[ -n "$CODEX_COMPANION" ] || { echo "CODEX_HARD_FAILED: Codex companion が見つかりません"; return 1; }
+CODEX_BROKER_RUN=""
+if [[ -n "${CLAUDE_PLUGIN_ROOT:-}" && -r "${CLAUDE_PLUGIN_ROOT}/scripts/codex-broker-run.sh" ]]; then
+  CODEX_BROKER_RUN="${CLAUDE_PLUGIN_ROOT}/scripts/codex-broker-run.sh"
+else
+  CODEX_DISTRIBUTION_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  if [[ -n "$CODEX_DISTRIBUTION_ROOT" && -r "$CODEX_DISTRIBUTION_ROOT/skills/flow-common/execution-budget.json" \
+    && -r "$CODEX_DISTRIBUTION_ROOT/scripts/codex-broker-run.sh" ]]; then
+    CODEX_BROKER_RUN="$CODEX_DISTRIBUTION_ROOT/scripts/codex-broker-run.sh"
+  else
+    CODEX_BROKER_RUN="$HOME/.claude/scripts/codex-broker-run.sh"
+  fi
+fi
 STATUS_OUTPUT_FILE="$REVIEW_TMPDIR/codex-status.txt"
 STATUS_ERROR_FILE="$REVIEW_TMPDIR/codex-status.err"
-timeout 30s node "$CODEX_COMPANION" status > "$STATUS_OUTPUT_FILE" 2> "$STATUS_ERROR_FILE"
+timeout 30s bash "$CODEX_BROKER_RUN" --check > "$STATUS_OUTPUT_FILE" 2> "$STATUS_ERROR_FILE"
 STATUS_EXIT=$?
 if [ "$STATUS_EXIT" -eq 124 ] || [ "$STATUS_EXIT" -eq 137 ] || [ "$STATUS_EXIT" -ne 0 ] || ! grep -q 'Session runtime' "$STATUS_OUTPUT_FILE"; then
   echo "CODEX_HARD_FAILED: Codex companion が利用できません"
@@ -214,7 +224,7 @@ for PERSONA in MELCHIOR BALTHASAR METATRON SANDALPHON LELIEL; do
     [[ -r "$BUDGET_HELPER" ]] || BUDGET_HELPER="$HOME/.claude/skills/flow-common/execution-budget.sh"
     CODEX_TASK_BUDGET=$(bash "$BUDGET_HELPER" generation-factor per_chunk_seconds codex 2>/dev/null || true)
     : "${CODEX_TASK_BUDGET:=600}"
-    timeout "${CODEX_TASK_BUDGET}s" node "$CODEX_COMPANION" task --prompt-file "$PROMPT_FILE" > "$RAW_FILE" 2> "$ERR_FILE"
+    timeout "${CODEX_TASK_BUDGET}s" bash "$CODEX_BROKER_RUN" task --prompt-file "$PROMPT_FILE" > "$RAW_FILE" 2> "$ERR_FILE"
     CODEX_EXIT=$?
     if [ "$CODEX_EXIT" -eq 124 ] || [ "$CODEX_EXIT" -eq 137 ] || [ "$CODEX_EXIT" -ne 0 ] || [ ! -s "$RAW_FILE" ] || [ ! -r "$ERR_FILE" ]; then
       PERSONA_FAILED=true
@@ -660,6 +670,7 @@ REVIEW_POST_REQUEST="$REVIEW_TMPDIR/review-post-request.json"
 REVIEW_POST_RESULT="$REVIEW_TMPDIR/review-post-result.json"
 jq -n \
   --arg engine "codex" \
+  --arg forge_host "${FORGE_HOST:-github.com}" \
   --arg owner "$OWNER" \
   --arg repo "$REPO" \
   --argjson number "$PR_NUM" \
@@ -675,7 +686,7 @@ jq -n \
   --rawfile finding_list "$REVIEW_POST_FINDING_LIST_FILE" \
   --arg result_path "$REVIEW_POST_RESULT" \
   '{
-    schema_version:"1", artifact_type:"review-post-request", engine:$engine,
+    schema_version:"1", artifact_type:"review-post-request", engine:$engine, forge_host:$forge_host,
     pr:{owner:$owner, repo:$repo, number:$number, head_sha:$head_sha},
     inputs:{findings_artifact:$artifact, adjudication_result:$adjudication, diff:$diff},
     engine_state:{
@@ -721,6 +732,7 @@ else
 
   jq -n \
     --arg engine "codex" \
+    --arg forge_host "${FORGE_HOST:-github.com}" \
     --arg owner "$OWNER" \
     --arg repo "$REPO" \
     --argjson number "$PR_NUM" \
@@ -730,7 +742,7 @@ else
     --arg artifact_note "$ARTIFACT_NOTE" \
     --arg result_path "$REVIEW_POST_RESULT" \
     '{
-      schema_version:"1", artifact_type:"review-post-request", engine:$engine,
+      schema_version:"1", artifact_type:"review-post-request", engine:$engine, forge_host:$forge_host,
       pr:{owner:$owner, repo:$repo, number:$number, head_sha:$head_sha},
       inputs:{findings_artifact:null, adjudication_result:null, diff:$diff},
       engine_state:{

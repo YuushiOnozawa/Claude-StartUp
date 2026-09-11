@@ -256,19 +256,26 @@ Codex prompt にもこの制約を明示し、結果を抽出した後に wrappe
 {"id":"F-SELF-001","path":"skills/dev-flow-fast/SKILL.md","line":null,"headline":"レビュー手順自身の変更","body":"dev-flow-fast または codex-review.md 自身の変更は、検出と手順の信頼境界が同じ差分にあるため無条件に人手確認が必要です。","gate":"manual","persona":"CASPER"}
 ```
 
-## ステップ 4: Codex companion のパス解決と利用確認
+## ステップ 4: broker wrapper のパス解決と利用確認
 
 指定された探索順で companion を解決する。見つからない、runtime が利用できない、または呼び出しに失敗した場合はローカル LLM へフォールバックせず、`CODEX_REVIEW_FAILED` を出力して停止する。
 
 ```bash
-CODEX_COMPANION=$(ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs 2>/dev/null | sort -V | tail -1)
-if [ -z "$CODEX_COMPANION" ]; then
-  echo "CODEX_REVIEW_FAILED: Codex companion が見つかりません"
-  return 1
+CODEX_BROKER_RUN=""
+if [[ -n "${CLAUDE_PLUGIN_ROOT:-}" && -r "${CLAUDE_PLUGIN_ROOT}/scripts/codex-broker-run.sh" ]]; then
+  CODEX_BROKER_RUN="${CLAUDE_PLUGIN_ROOT}/scripts/codex-broker-run.sh"
+else
+  CODEX_DISTRIBUTION_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  if [[ -n "$CODEX_DISTRIBUTION_ROOT" && -r "$CODEX_DISTRIBUTION_ROOT/skills/flow-common/execution-budget.json" \
+    && -r "$CODEX_DISTRIBUTION_ROOT/scripts/codex-broker-run.sh" ]]; then
+    CODEX_BROKER_RUN="$CODEX_DISTRIBUTION_ROOT/scripts/codex-broker-run.sh"
+  else
+    CODEX_BROKER_RUN="$HOME/.claude/scripts/codex-broker-run.sh"
+  fi
 fi
 STATUS_OUTPUT_FILE="$REVIEW_TMPDIR/codex-status.txt"
 STATUS_ERROR_FILE="$REVIEW_TMPDIR/codex-status.err"
-timeout 30s node "$CODEX_COMPANION" status > "$STATUS_OUTPUT_FILE" 2> "$STATUS_ERROR_FILE"
+timeout 30s bash "$CODEX_BROKER_RUN" --check > "$STATUS_OUTPUT_FILE" 2> "$STATUS_ERROR_FILE"
 STATUS_EXIT=$?
 if [ "$STATUS_EXIT" -eq 124 ] || [ "$STATUS_EXIT" -eq 137 ]; then
   echo "CODEX_REVIEW_FAILED: Codex呼び出しがタイムアウトしました"
@@ -383,7 +390,7 @@ raw output と stderr は一時ディレクトリに保持する。non-zero exit
 ```bash
 RAW_FILE="$REVIEW_TMPDIR/codex-review-raw.txt"
 ERR_FILE="$REVIEW_TMPDIR/codex-review.err"
-timeout 600s node "$CODEX_COMPANION" task --prompt-file "$PROMPT_FILE" \
+timeout 600s bash "$CODEX_BROKER_RUN" task --prompt-file "$PROMPT_FILE" \
     > "$RAW_FILE" 2> "$ERR_FILE"
 CODEX_EXIT=$?
 if [ "$CODEX_EXIT" -eq 124 ] || [ "$CODEX_EXIT" -eq 137 ]; then

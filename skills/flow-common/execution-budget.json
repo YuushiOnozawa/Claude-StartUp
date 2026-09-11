@@ -1,6 +1,13 @@
 {
   "schema_version": "1",
   "phases": {
+    "resource_wait": {
+      "class": "hard",
+      "magi": 900,
+      "codex": 900,
+      "forcing_location": "resource flock acquisition only",
+      "notes": "資源 lock の取得待ち上限。worker の実行時間上限には流用しない。"
+    },
     "ollama_call_wall_clock": {
       "class": "hard",
       "magi": 900,
@@ -113,6 +120,7 @@
     }
   },
   "wiring": [
+    {"file":"scripts/codex-broker-run.sh","variable":"RESOURCE_WAIT","helper_args":["get","resource_wait","codex"]},
     {"file":"skills/magi-common/references/execution-steps.md","variable":"OLLAMA_BUDGET","helper_args":["get","ollama_call_wall_clock","magi"]},
     {"file":"skills/magi-common/references/normalizer.md","variable":"NORMALIZER_BUDGET","helper_args":["get","normalizer","magi"]},
     {"file":"skills/magi-common/references/codex-audit.md","variable":"AUDIT_BUDGET","helper_args":["get","audit","magi"]},

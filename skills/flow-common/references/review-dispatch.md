@@ -214,6 +214,7 @@ post_state=not_applicable とする。
 ## hard 正規化と GitHub 投稿
 
 両 backend とも schema_version:"1"、artifact_type:"review-post-request" の同形 request を生成する。
+dispatch が解決した forge host を `forge_host` に引き継ぎ、未指定時は `github.com` とする。
 差は投稿を誰が行うかだけである。
 
 ### dispatch handoff 行

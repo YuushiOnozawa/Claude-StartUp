@@ -30,7 +30,7 @@ record_result() {
 
 if jq -e '
   .schema_version == "1"
-  and (.phases | type == "object" and length == 9)
+  and (.phases | type == "object" and length == 10)
   and (.derived | type == "object")
   and (.wiring | type == "array" and length > 0)
   and (.policy | type == "object")
@@ -64,7 +64,7 @@ else
 fi
 
 if jq -e '
-  ["ollama_call_wall_clock","generation_total","diff_cap","casper","normalizer","audit","importance","review_post","cleanup"] as $expected
+  ["resource_wait","ollama_call_wall_clock","generation_total","diff_cap","casper","normalizer","audit","importance","review_post","cleanup"] as $expected
   | (.phases | keys | sort) == ($expected | sort)
   and all(.phases[];
     has("class") and has("magi") and has("codex") and has("forcing_location") and has("notes")
@@ -151,6 +151,9 @@ extract_first_bash_after_heading() {
 }
 
 printf '%s\n' 'setTimeout(() => {}, 5000);' > "$TEST_ROOT/slow.mjs"
+mkdir -p "$TEST_ROOT/plugin/scripts" "$TEST_ROOT/plugin/skills/flow-common"
+cp "$REPO_ROOT/scripts/codex-broker-run.sh" "$TEST_ROOT/plugin/scripts/codex-broker-run.sh"
+cp "$BUDGET_HELPER" "$TEST_ROOT/plugin/skills/flow-common/execution-budget.sh"
 for kind in audit importance; do
   upper="${kind^^}"
   snippet="$TEST_ROOT/$kind-step5.sh"
@@ -160,8 +163,11 @@ for kind in audit importance; do
   mkdir -p "$case_dir"
   kind_override="$TEST_ROOT/$kind-budget.json"
   jq --arg kind "$kind" '.phases[$kind].magi = 1' "$BUDGET_JSON" > "$kind_override"
-  snippet_output="$(cd "$REPO_ROOT" && MAGI_TMPDIR="$case_dir" CODEX_COMPANION="$TEST_ROOT/slow.mjs" \
-    EXECUTION_BUDGET_JSON="$kind_override" bash "$snippet")"
+  mkdir -p "$case_dir/slow-runtime" "$case_dir/fail-runtime"
+  cp "$TEST_ROOT/slow.mjs" "$TEST_ROOT/plugin/scripts/codex-companion.mjs"
+  snippet_output="$(cd "$REPO_ROOT" && MAGI_TMPDIR="$case_dir" CLAUDE_PLUGIN_ROOT="$TEST_ROOT/plugin" \
+    CODEX_BROKER_RUN="$TEST_ROOT/plugin/scripts/codex-broker-run.sh" \
+    EXECUTION_BUDGET_JSON="$kind_override" XDG_RUNTIME_DIR="$case_dir/slow-runtime" bash "$snippet")"
   result_file="$case_dir/codex-$kind.json"
   if [[ "$snippet_output" == *"${upper}_SKIPPED"* && ! -e "$result_file" ]] \
     && ! rg -q 'return 0' "$snippet"; then
@@ -171,9 +177,11 @@ for kind in audit importance; do
   fi
 
   printf '%s\n' 'process.exit(7);' > "$TEST_ROOT/fail.mjs"
+  cp "$TEST_ROOT/fail.mjs" "$TEST_ROOT/plugin/scripts/codex-companion.mjs"
   rm -f -- "$result_file"
-  (cd "$REPO_ROOT" && MAGI_TMPDIR="$case_dir" CODEX_COMPANION="$TEST_ROOT/fail.mjs" \
-    EXECUTION_BUDGET_JSON="$kind_override" bash "$snippet") >/dev/null
+  (cd "$REPO_ROOT" && MAGI_TMPDIR="$case_dir" CLAUDE_PLUGIN_ROOT="$TEST_ROOT/plugin" \
+    CODEX_BROKER_RUN="$TEST_ROOT/plugin/scripts/codex-broker-run.sh" \
+    EXECUTION_BUDGET_JSON="$kind_override" XDG_RUNTIME_DIR="$case_dir/fail-runtime" bash "$snippet") >/dev/null
   if jq -e --arg error "${upper}_ERROR" '.error == $error' "$result_file" >/dev/null 2>&1; then
     record_result "$kind の timeout 以外の失敗は ERROR JSON を生成する" 0
   else
@@ -198,7 +206,7 @@ NULL_EXIT=0
 NULL_OUTPUT="$($BUDGET_HELPER get audit codex)" || NULL_EXIT=$?
 if [[ "$NULL_EXIT" -eq 3 && -z "$NULL_OUTPUT" ]] \
   && [[ "$($BUDGET_HELPER get cleanup magi)" -eq 10 ]] \
-  && [[ "$($BUDGET_HELPER list | wc -l)" -eq 9 ]]; then
+  && [[ "$($BUDGET_HELPER list | wc -l)" -eq 10 ]]; then
   record_result "helper の get null 契約と list 出力が正しい" 0
 else
   record_result "helper の get null 契約と list 出力が正しい" 1
@@ -226,7 +234,14 @@ while IFS= read -r wiring_row; do
   variable="$(jq -r '.variable' <<<"$wiring_json")"
   mapfile -t helper_args < <(jq -r '.helper_args[]' <<<"$wiring_json")
   expected="$($BUDGET_HELPER "${helper_args[@]}")"
-  check_fallback "$file" "$variable" "$expected"
+  if [[ "$file" == "scripts/codex-broker-run.sh" && "$variable" == "RESOURCE_WAIT" ]]; then
+    if ! grep -Fq 'RESOURCE_WAIT=900' "$REPO_ROOT/$file"; then
+      echo "fallback drift: $file $variable=900" >&2
+      FALLBACK_FAILURES=$((FALLBACK_FAILURES + 1))
+    fi
+  else
+    check_fallback "$file" "$variable" "$expected"
+  fi
   if ! grep -Fq "bash \"\$BUDGET_HELPER\" ${helper_args[*]}" "$REPO_ROOT/$file"; then
     echo "helper wiring drift: $file ${helper_args[*]}" >&2
     FALLBACK_FAILURES=$((FALLBACK_FAILURES + 1))

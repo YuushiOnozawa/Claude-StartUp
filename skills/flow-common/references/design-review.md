@@ -27,14 +27,25 @@ DESIGN_REVIEW_TMPDIR=${DESIGN_REVIEW_TMPDIR:-$(mktemp -d)}
 
 `DESIGN_REVIEW_TMPDIR` は設計レビュー専用の一時ディレクトリとする。`MAGI_TMPDIR` とは別変数であり、共有しない。
 
-## ステップ 1: Codex companion パス解決
-Codex companion script のパスを解決する。
+## ステップ 1: broker wrapper パス解決
+配布元の broker wrapper を解決する。companion の解決と status 確認は wrapper に委ねる。
 
 ```bash
-CODEX_COMPANION=$(ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs 2>/dev/null | sort -V | tail -1)
+CODEX_BROKER_RUN=""
+if [[ -n "${CLAUDE_PLUGIN_ROOT:-}" && -r "${CLAUDE_PLUGIN_ROOT}/scripts/codex-broker-run.sh" ]]; then
+  CODEX_BROKER_RUN="${CLAUDE_PLUGIN_ROOT}/scripts/codex-broker-run.sh"
+else
+  CODEX_DISTRIBUTION_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  if [[ -n "$CODEX_DISTRIBUTION_ROOT" && -r "$CODEX_DISTRIBUTION_ROOT/skills/flow-common/execution-budget.json" \
+    && -r "$CODEX_DISTRIBUTION_ROOT/scripts/codex-broker-run.sh" ]]; then
+    CODEX_BROKER_RUN="$CODEX_DISTRIBUTION_ROOT/scripts/codex-broker-run.sh"
+  else
+    CODEX_BROKER_RUN="$HOME/.claude/scripts/codex-broker-run.sh"
+  fi
+fi
 ```
 
-`CODEX_COMPANION` が空の場合は、次のメッセージを出力してステップ 5 へ進む。
+`CODEX_BROKER_RUN` が読めない場合は、次のメッセージを出力してステップ 5 へ進む。
 
 ```bash
 echo "CODEX_REVIEW_SKIPPED: Codex companion が見つかりません"
@@ -43,7 +54,7 @@ echo "CODEX_REVIEW_SKIPPED: Codex companion が見つかりません"
 Codex runtime が利用可能か確認する。
 
 ```bash
-node "$CODEX_COMPANION" status 2>/dev/null | grep -q "Session runtime"
+bash "$CODEX_BROKER_RUN" --check 2>/dev/null | grep -q "Session runtime"
 ```
 
 利用できない場合は、次のメッセージを出力してステップ 5 へ進む。
@@ -124,7 +135,7 @@ prompt ファイル経由で Codex companion task を呼び出す。`--write` fl
 `--prompt-file` を使い、prompt 内の `-m` や `--model` を companion の CLI 引数として再解釈させない。
 
 ```bash
-node "$CODEX_COMPANION" task --prompt-file "$DESIGN_REVIEW_TMPDIR/design-review-prompt.txt" > "$DESIGN_REVIEW_TMPDIR/design-review-raw.txt" 2>/dev/null
+bash "$CODEX_BROKER_RUN" task --prompt-file "$DESIGN_REVIEW_TMPDIR/design-review-prompt.txt" > "$DESIGN_REVIEW_TMPDIR/design-review-raw.txt" 2>/dev/null
 ```
 
 cmd が non-zero exit で失敗した場合は、`CODEX_REVIEW_SKIPPED` としてステップ 5 へ進む。

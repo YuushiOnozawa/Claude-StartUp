@@ -4,6 +4,7 @@
 
 | フェーズ | 分類 | magi | codex | 強制箇所 |
 |---|---|---:|---:|---|
+| `resource_wait` | hard | 900s | 900s | resource flock acquisition only |
 | `ollama_call_wall_clock` | hard | 900s | 900s | caller timeout and scripts/ollama-run.sh flock wait |
 | `generation_total` | derived | 36000s | 4800s | derived.generation_total の式 |
 | `diff_cap` | gate | — | — | skills/magi-hard/SKILL.md and skills/dev-flow-fast/references/codex-review-hard.md step 1 |
