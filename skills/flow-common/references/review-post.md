@@ -18,6 +18,16 @@ request は手書きの JSON 連結ではなく、呼び出し元が `jq -n --ar
   "engine": "magi",
   "forge_host": "github.com",
   "pr": { "owner": "string", "repo": "string", "number": 123, "head_sha": "string" },
+  "singleflight": {
+    "managed_by": "review-hard",
+    "tmpdir": "/path/dispatch-tmp",
+    "owner_token_file": "/path/dispatch-tmp/sf-owner-token",
+    "lease_file_ref": "/path/dispatch-tmp/dispatch-state.json",
+    "scope": "per_pr",
+    "canonical_key": "github.com\nowner/repo\n123",
+    "lease_id": "lease-uuid",
+    "forge_host": "github.com"
+  },
   "inputs": {
     "findings_artifact": "/path/findings-artifact.json",
     "adjudication_result": "/path/adjudication-result.json",
@@ -46,13 +56,25 @@ request は手書きの JSON 連結ではなく、呼び出し元が `jq -n --ar
 サマリコメントは常に投稿する。`block_layer: "importance"` と anchor 層の失敗は
 `post_inline` を変更しない。
 
-## post lock の段階導入（PR-2）
+## post lock と managed single-flight fencing（PR-2 + PR-3）
 
-PR-2 が担うのは、6ステップの fencing 契約の step 2（post lock 取得）と step 6（lock 保持中に
-既存コメント一覧の取得・dedup から全 GitHub write までを行う）だけである。step 1/3/4/5
-（lease_id 必須化、lock 内での lease 再確認、mismatch 時の停止、force-release 側の post lock）は
-PR-3 で実装する。PR-2 では `REVIEW_POST_USE_LOCK=1` のときだけ host-local flock を有効にし、
-未設定の非 managed 実行は従来どおり lock を取得しない。PR-3 でこのゲートを managed 判定へ接続する。
+PR-2 が提供するのは fencing 契約の step 2（post lock 取得）と step 6（lock 保持中に既存コメント一覧の
+取得・dedup から全 GitHub write までを行うこと）である。PR-3 は step 1（managed request の lease_id
+必須化）、step 3（lock 内の per_pr lease 再確認）、step 4（不一致時の mutation 前停止）、step 5
+（force-release 側の post lock）を接続する（PR-3 の step 1/3/4/5）。`singleflight` が欠如する非 managed 実行は従来どおり lock に
+触れず、`singleflight` がある実行では `REVIEW_POST_USE_LOCK=1` を内部的に有効化する。
+
+managed request は次の検証を、一覧 GET を含む GitHub API 呼び出しより前に完了させる。
+
+- `singleflight` は object で、`managed_by=review-hard`、`scope=per_pr`、`tmpdir`、`owner_token_file`、
+  `lease_file_ref`、`canonical_key`、`lease_id`、`forge_host` がすべて非空文字列であること。
+- `tmpdir` は絶対パスの実在ディレクトリ、token file は `tmpdir` 配下の通常ファイル・実行 UID 所有・
+  mode `0600`・非空、state file は `tmpdir` 配下で読み取り可能であること（symlink は拒否）。
+- `lease_file_ref.per_pr.lease_id` が request の `singleflight.lease_id` と一致し、`canonical_key` が
+  `forge_host` と `pr.owner/repo/number`（owner/repo は小文字化）から再構成した値と一致すること。
+
+一つでも不正なら managed を非 managed に降格せず、GitHub mutation 前に終了コード 2（入力契約違反または
+managed lease admission failure、いずれも GitHub mutation 未実行）で停止する。
 
 ## 単一 JSON 値の検証と request の構造検証
 
@@ -82,7 +104,12 @@ GROUNDING_FAILED（アンカーを確認できなかったため全件を通常P
 
 以下が `/review-post` の実行本体である。`gh` が返す URL は result の `github_writes` に保存し、
 サマリを含むいずれかの API 呼び出しが失敗した場合は成功済みの write を保存したうえで終了コード1とする。
-contract violation は終了コード2、サマリのみ投稿・投稿対象0件・grounding fallback 後の投稿成功は終了コード0とする。
+contract violation は終了コード2、summary mutation 成功後の managed fencing 失敗は終了コード3、サマリのみ投稿・
+投稿対象0件・grounding fallback 後の投稿成功は終了コード0とする。終了コード3では後続の GitHub mutation を
+停止し、既に成功した write を含む result を必ず生成するため、投稿済みまたは投稿状況不明として扱う。
+終了コード2には、request / 入力 artifact の契約違反に加えて、managed single-flight の lease admission
+failure（singleflight 不正、post lock 内の lease_id 不一致、summary mutation 前の renew / verify の
+`not_owner` / I/O 失敗）を含める。summary mutation 前の失敗は GitHub mutation 未実行を保証する。
 
 ```bash
 #!/usr/bin/env bash
@@ -201,6 +228,90 @@ ARTIFACT_NOTE="$(jq -r '.engine_state.artifact_note // ""' <<<"$REQUEST_JSON")"
 NORMALIZED_RESULTS="$(jq -r '.engine_state.normalized_results // ""' <<<"$REQUEST_JSON")"
 FINDING_LIST="$(jq -r '.engine_state.finding_list // ""' <<<"$REQUEST_JSON")"
 [[ -r "$DIFF_FILE" ]] || die_contract "diff を読み取れません: $DIFF_FILE"
+
+MANAGED_SINGLEFLIGHT=false
+SINGLEFLIGHT_PRESENT="$(jq -r 'has("singleflight")' <<<"$REQUEST_JSON")"
+if [[ "$SINGLEFLIGHT_PRESENT" == true ]]; then
+  if ! jq -e '
+    (.singleflight) as $sf
+    | ($sf | type == "object")
+    and (["managed_by","tmpdir","owner_token_file","lease_file_ref","scope","canonical_key","lease_id","forge_host"]
+         | all(.[]; . as $key | $sf | has($key)))
+    and ($sf.managed_by == "review-hard")
+    and ($sf.scope == "per_pr")
+    and ($sf.tmpdir | type == "string" and length > 0)
+    and ($sf.owner_token_file | type == "string" and length > 0)
+    and ($sf.lease_file_ref | type == "string" and length > 0)
+    and ($sf.canonical_key | type == "string" and length > 0)
+    and ($sf.lease_id | type == "string" and length > 0)
+    and ($sf.forge_host | type == "string" and length > 0)
+  ' <<<"$REQUEST_JSON" >/dev/null 2>&1; then
+    echo "review-post managed lease admission failure: singleflight object が不正です" >&2
+    exit 2
+  fi
+  SINGLEFLIGHT_TMPDIR="$(jq -r '.singleflight.tmpdir' <<<"$REQUEST_JSON")"
+  SINGLEFLIGHT_OWNER_TOKEN_FILE="$(jq -r '.singleflight.owner_token_file' <<<"$REQUEST_JSON")"
+  SINGLEFLIGHT_STATE_FILE="$(jq -r '.singleflight.lease_file_ref' <<<"$REQUEST_JSON")"
+  SINGLEFLIGHT_LEASE_ID="$(jq -r '.singleflight.lease_id' <<<"$REQUEST_JSON")"
+  SINGLEFLIGHT_KEY="$(jq -r '.singleflight.canonical_key' <<<"$REQUEST_JSON")"
+  SINGLEFLIGHT_FORGE_HOST="$(jq -r '.singleflight.forge_host' <<<"$REQUEST_JSON")"
+  SINGLEFLIGHT_TMPDIR_REAL="$(realpath -e -- "$SINGLEFLIGHT_TMPDIR" 2>/dev/null || true)"
+  SINGLEFLIGHT_OWNER_TOKEN_REAL="$(realpath -e -- "$SINGLEFLIGHT_OWNER_TOKEN_FILE" 2>/dev/null || true)"
+  SINGLEFLIGHT_STATE_REAL="$(realpath -e -- "$SINGLEFLIGHT_STATE_FILE" 2>/dev/null || true)"
+  EXPECTED_SINGLEFLIGHT_KEY="$(printf '%s\n%s/%s\n%s' "$SINGLEFLIGHT_FORGE_HOST" "${OWNER,,}" "${REPO,,}" "$PR_NUM")"
+  if [[ "$SINGLEFLIGHT_TMPDIR" != /* || "$SINGLEFLIGHT_OWNER_TOKEN_FILE" != /* || "$SINGLEFLIGHT_STATE_FILE" != /* ]] \
+    || [[ -z "$SINGLEFLIGHT_TMPDIR_REAL" || ! -d "$SINGLEFLIGHT_TMPDIR_REAL" || -L "$SINGLEFLIGHT_TMPDIR" ]] \
+    || [[ -z "$SINGLEFLIGHT_OWNER_TOKEN_REAL" || ! -f "$SINGLEFLIGHT_OWNER_TOKEN_REAL" || -L "$SINGLEFLIGHT_OWNER_TOKEN_FILE" ]] \
+    || [[ -z "$SINGLEFLIGHT_STATE_REAL" || ! -f "$SINGLEFLIGHT_STATE_REAL" || -L "$SINGLEFLIGHT_STATE_FILE" ]] \
+    || [[ "$SINGLEFLIGHT_OWNER_TOKEN_REAL" != "$SINGLEFLIGHT_TMPDIR_REAL"/* ]] \
+    || [[ "$SINGLEFLIGHT_STATE_REAL" != "$SINGLEFLIGHT_TMPDIR_REAL"/* ]] \
+    || [[ "$SINGLEFLIGHT_FORGE_HOST" != "$FORGE_HOST" || "$SINGLEFLIGHT_KEY" != "$EXPECTED_SINGLEFLIGHT_KEY" ]]; then
+    echo "review-post managed lease admission failure: singleflight path または canonical key が不正です" >&2
+    exit 2
+  fi
+  SINGLEFLIGHT_TOKEN_OWNER="$(stat -c '%u' -- "$SINGLEFLIGHT_OWNER_TOKEN_REAL" 2>/dev/null || stat -f '%u' -- "$SINGLEFLIGHT_OWNER_TOKEN_REAL" 2>/dev/null || true)"
+  SINGLEFLIGHT_TOKEN_MODE="$(stat -c '%a' -- "$SINGLEFLIGHT_OWNER_TOKEN_REAL" 2>/dev/null || stat -f '%Lp' -- "$SINGLEFLIGHT_OWNER_TOKEN_REAL" 2>/dev/null || true)"
+  if [[ "$SINGLEFLIGHT_TOKEN_OWNER" != "$(id -u)" || "$SINGLEFLIGHT_TOKEN_MODE" != "600" || ! -s "$SINGLEFLIGHT_OWNER_TOKEN_REAL" ]]; then
+    echo "review-post managed lease admission failure: owner token file の owner/mode/content が不正です" >&2
+    exit 2
+  fi
+  SINGLEFLIGHT_TMP_OWNER="$(stat -c '%u' -- "$SINGLEFLIGHT_TMPDIR_REAL" 2>/dev/null || stat -f '%u' -- "$SINGLEFLIGHT_TMPDIR_REAL" 2>/dev/null || true)"
+  SINGLEFLIGHT_TMP_MODE="$(stat -c '%a' -- "$SINGLEFLIGHT_TMPDIR_REAL" 2>/dev/null || stat -f '%Lp' -- "$SINGLEFLIGHT_TMPDIR_REAL" 2>/dev/null || true)"
+  SINGLEFLIGHT_STATE_OWNER="$(stat -c '%u' -- "$SINGLEFLIGHT_STATE_REAL" 2>/dev/null || stat -f '%u' -- "$SINGLEFLIGHT_STATE_REAL" 2>/dev/null || true)"
+  SINGLEFLIGHT_STATE_MODE="$(stat -c '%a' -- "$SINGLEFLIGHT_STATE_REAL" 2>/dev/null || stat -f '%Lp' -- "$SINGLEFLIGHT_STATE_REAL" 2>/dev/null || true)"
+  if [[ "$SINGLEFLIGHT_TMP_OWNER" != "$(id -u)" || "$SINGLEFLIGHT_TMP_MODE" != "700" \
+    || "$SINGLEFLIGHT_STATE_OWNER" != "$(id -u)" || "$SINGLEFLIGHT_STATE_MODE" != "600" || ! -s "$SINGLEFLIGHT_STATE_REAL" ]]; then
+    echo "review-post managed lease admission failure: dispatch-state.json の owner/mode/content が不正です" >&2
+    exit 2
+  fi
+  if ! jq -e --arg expected "$SINGLEFLIGHT_LEASE_ID" --arg token_file "$SINGLEFLIGHT_OWNER_TOKEN_FILE" \
+    '.per_pr.acquired == true and .per_pr.lease_id == $expected and .owner_token_file == $token_file' \
+    "$SINGLEFLIGHT_STATE_REAL" >/dev/null 2>&1; then
+    echo "review-post managed lease admission failure: dispatch-state.json の lease_id が不正です" >&2
+    exit 2
+  fi
+  SINGLEFLIGHT_HELPER="$ROOT/scripts/review-singleflight.sh"
+  [[ -r "$SINGLEFLIGHT_HELPER" ]] || { echo "review-post managed lease admission failure: helper がありません" >&2; exit 2; }
+  MANAGED_SINGLEFLIGHT=true
+  # managed 判定から post lock gate を内部的に有効化する。非 managed request は従来どおり変更しない。
+  REVIEW_POST_USE_LOCK=1
+fi
+
+sf_verify() {
+  [[ "$MANAGED_SINGLEFLIGHT" == true ]] || return 0
+  bash "$SINGLEFLIGHT_HELPER" verify --scope per_pr --key "$SINGLEFLIGHT_KEY" \
+    --owner-token-file "$SINGLEFLIGHT_OWNER_TOKEN_FILE" --lease-id "$SINGLEFLIGHT_LEASE_ID" \
+    >"$TMP_DIR/singleflight-verify-${1:-mutation}.out" 2>"$TMP_DIR/singleflight-verify-${1:-mutation}.err"
+}
+
+sf_renew() {
+  [[ "$MANAGED_SINGLEFLIGHT" == true ]] || return 0
+  local phase="$1" post_state="$2"
+  bash "$SINGLEFLIGHT_HELPER" renew --scope per_pr --key "$SINGLEFLIGHT_KEY" \
+    --owner-token-file "$SINGLEFLIGHT_OWNER_TOKEN_FILE" --lease-id "$SINGLEFLIGHT_LEASE_ID" \
+    --current-phase "$phase" --phase-started-at "${REVIEW_SINGLEFLIGHT_NOW:-$(date +%s)}" --post-state "$post_state" \
+    >"$TMP_DIR/singleflight-renew-${phase}.out" 2>"$TMP_DIR/singleflight-renew-${phase}.err"
+}
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf -- "$TMP_DIR"' EXIT HUP INT TERM
@@ -567,16 +678,38 @@ DELIVERY_JSON="$(jq -n -c --argjson results "$ADJUDICATION_RESULTS" --arg inline
 REUSED_JSON='{}'
 GITHUB_WRITES='[]'
 GITHUB_FAILED=false
+POST_MUTATION_STARTED=false
+POST_FENCING_FAILED=false
+POST_FENCING_REASON=""
 POST_LOCK_READY=true
 POST_LOCK_ACQUIRED=false
 
-# PR-2 は fencing 契約の step 2 / 6 のみを担う。lease_id の必須化・再確認・
-# mismatch 停止・force-release との協調（step 1 / 3 / 4 / 5）は PR-3 で接続する。
-if [[ "${REVIEW_POST_USE_LOCK:-0}" == "1" ]]; then
+mark_post_fencing_failure() {
+  POST_FENCING_FAILED=true
+  POST_FENCING_REASON="$1"
+  GITHUB_FAILED=true
+}
+
+# PR-2 の step 2 / 6 と、PR-3 の step 1 / 3 / 4 / 5 を managed request に接続する。
+# singleflight 欠如時だけ REVIEW_POST_USE_LOCK の明示 opt-in という従来動作を残す。
+if [[ "$MANAGED_SINGLEFLIGHT" == true || "${REVIEW_POST_USE_LOCK:-0}" == "1" ]]; then
   REVIEW_POST_LOCK_BUDGET="$(review_post_remaining || true)"
+  REVIEW_POST_LOCK_BUDGET_EXPIRED=false
+  REVIEW_POST_LOCK_BUDGET_DISPLAY="$REVIEW_POST_LOCK_BUDGET"
+  if [[ ! "$REVIEW_POST_LOCK_BUDGET" =~ ^[1-9][0-9]*$ ]]; then
+    # 全体予算を使い切った場合は追加 wait をせず、診断上の最小待機単位だけ表示する。
+    REVIEW_POST_LOCK_BUDGET_EXPIRED=true
+    REVIEW_POST_LOCK_BUDGET_DISPLAY=1
+  fi
   POST_LOCK_HASH="$(printf '%s\0%s/%s\0%s' "$FORGE_HOST" "${OWNER,,}" "${REPO,,}" "$PR_NUM" | sha256sum | cut -d' ' -f1)"
   POST_LOCK_PREFIX="$(printf '%s-%s-%s' "${OWNER,,}" "${REPO,,}" "$PR_NUM" | tr -cs 'a-z0-9._-' '-' | cut -c1-48)"
-  POST_LOCK="${XDG_RUNTIME_DIR:-/tmp}/claude-review-post-${POST_LOCK_PREFIX}-${POST_LOCK_HASH}.lock"
+  if [[ "$MANAGED_SINGLEFLIGHT" == true ]]; then
+    [[ -n "${XDG_RUNTIME_DIR:-}" ]] || { echo "review-post managed lease admission failure: XDG_RUNTIME_DIR がありません" >&2; exit 2; }
+    POST_LOCK_RUNTIME="$XDG_RUNTIME_DIR"
+  else
+    POST_LOCK_RUNTIME="${XDG_RUNTIME_DIR:-/tmp}"
+  fi
+  POST_LOCK="$POST_LOCK_RUNTIME/claude-review-post-${POST_LOCK_PREFIX}-${POST_LOCK_HASH}.lock"
   if ! mkdir -p "$(dirname "$POST_LOCK")"; then
     echo "review-post lock directory を作成できません: $(dirname "$POST_LOCK")" >&2
     POST_LOCK_READY=false
@@ -585,14 +718,25 @@ if [[ "${REVIEW_POST_USE_LOCK:-0}" == "1" ]]; then
     echo "review-post lock file を開けません: $POST_LOCK" >&2
     POST_LOCK_READY=false
     GITHUB_FAILED=true
-  elif [[ ! "$REVIEW_POST_LOCK_BUDGET" =~ ^[1-9][0-9]*$ ]] \
+  elif [[ "$REVIEW_POST_LOCK_BUDGET_EXPIRED" == true ]] \
     || ! flock -w "$REVIEW_POST_LOCK_BUDGET" -E 9 8; then
-    echo "review-post 排他ロックを${REVIEW_POST_LOCK_BUDGET}秒以内に取得できませんでした" >&2
+    echo "review-post 排他ロックを${REVIEW_POST_LOCK_BUDGET_DISPLAY}秒以内に取得できませんでした" >&2
     exec 8>&- 2>/dev/null || true
     POST_LOCK_READY=false
     GITHUB_FAILED=true
   else
     POST_LOCK_ACQUIRED=true
+  fi
+fi
+if [[ "$MANAGED_SINGLEFLIGHT" == true && "$POST_LOCK_READY" != true ]]; then
+  echo "review-post managed lease admission failure: post lock を取得できません" >&2
+  exit 2
+fi
+if [[ "$MANAGED_SINGLEFLIGHT" == true ]]; then
+  # post lock 内で current per_pr lease_id と token を再確認する（fencing step 3/4）。
+  if ! sf_verify "post-lock"; then
+    echo "review-post managed lease admission failure: per_pr lease verify に失敗しました" >&2
+    exit 2
   fi
 fi
 
@@ -694,6 +838,13 @@ if [[ "$ISSUE_LIST_EXIT" -ne 0 || "$PULL_LIST_EXIT" -ne 0 || "$MY_LOGIN_EXIT" -n
   SUMMARY_EXIT=1
   GITHUB_FAILED=true
 else
+  if [[ "$MANAGED_SINGLEFLIGHT" == true ]]; then
+    # GET/dedup の後、サマリ phase へ遷移して mutation 直前に再確認する。
+    if ! sf_renew "summary" "in_progress" || ! sf_verify "summary"; then
+      echo "review-post managed lease admission failure: GitHub mutation 前の per_pr renew に失敗しました" >&2
+      exit 2
+    fi
+  fi
   SUMMARY_COMMENT_ID="$(jq -r --arg marker "$SUMMARY_MARKER" --arg my_login "$MY_LOGIN" '
     [ .[]
       | select((.body | type) == "string" and (.body | endswith($marker)) and (.login == $my_login))
@@ -703,20 +854,32 @@ else
   ' <<<"$ISSUE_COMMENTS")"
   if [[ -n "$SUMMARY_COMMENT_ID" ]]; then
     SUMMARY_URL=""
-    SUMMARY_URL="$(review_post_api gh api -X PATCH "repos/$OWNER/$REPO/issues/comments/$SUMMARY_COMMENT_ID" \
-      -f body="$SUMMARY_MARKDOWN" --jq '.html_url' 2>"$SUMMARY_ERR")" || SUMMARY_EXIT=$?
-    if [[ "$SUMMARY_EXIT" -eq 0 ]]; then
-      record_write "summary" "$SUMMARY_URL" update
+    if ! sf_verify "summary-patch"; then
+      echo "review-post managed lease admission failure: summary PATCH 直前の verify に失敗しました" >&2
+      exit 2
     else
-      GITHUB_FAILED=true
+      POST_MUTATION_STARTED=true
+      SUMMARY_URL="$(review_post_api gh api -X PATCH "repos/$OWNER/$REPO/issues/comments/$SUMMARY_COMMENT_ID" \
+        -f body="$SUMMARY_MARKDOWN" --jq '.html_url' 2>"$SUMMARY_ERR")" || SUMMARY_EXIT=$?
+      if [[ "$SUMMARY_EXIT" -eq 0 ]]; then
+        record_write "summary" "$SUMMARY_URL" update
+      else
+        GITHUB_FAILED=true
+      fi
     fi
   else
-    SUMMARY_URL="$(review_post_api gh api -X POST "repos/$OWNER/$REPO/issues/$PR_NUM/comments" \
-      -f body="$SUMMARY_MARKDOWN" --jq '.html_url' 2>"$SUMMARY_ERR")" || SUMMARY_EXIT=$?
-    if [[ "$SUMMARY_EXIT" -eq 0 ]]; then
-      record_write "summary" "$SUMMARY_URL"
+    if ! sf_verify "summary-post"; then
+      echo "review-post managed lease admission failure: summary POST 直前の verify に失敗しました" >&2
+      exit 2
     else
-      GITHUB_FAILED=true
+      POST_MUTATION_STARTED=true
+      SUMMARY_URL="$(review_post_api gh api -X POST "repos/$OWNER/$REPO/issues/$PR_NUM/comments" \
+        -f body="$SUMMARY_MARKDOWN" --jq '.html_url' 2>"$SUMMARY_ERR")" || SUMMARY_EXIT=$?
+      if [[ "$SUMMARY_EXIT" -eq 0 ]]; then
+        record_write "summary" "$SUMMARY_URL"
+      else
+        GITHUB_FAILED=true
+      fi
     fi
   fi
 fi
@@ -742,6 +905,11 @@ post_pr_comment() {
   local error_file="$TMP_DIR/comment-$id.err"
   local url=""
   local status=0
+  if ! sf_verify "fallback-$id"; then
+    echo "review-post managed lease admission failure: fallback POST 直前の verify に失敗しました" >&2
+    mark_post_fencing_failure "fallback POST 直前の managed fencing に失敗しました"
+    return 2
+  fi
   comment_body="$(printf '[%s] **[%s] %s** `%s:%s`\n\n%s' "$prefix" "$severity" "$persona" "$path" "$line" "$body")"
   comment_body="${comment_body}"$'\n\n'"${marker}"
   url="$(review_post_api gh api -X POST "repos/$OWNER/$REPO/issues/$PR_NUM/comments" \
@@ -755,7 +923,14 @@ post_pr_comment() {
   return 0
 }
 
-if [[ "$SUMMARY_EXIT" -eq 0 && "$POST_INLINE" == "true" && "$BLOCK_COUNT" -gt 0 ]]; then
+if [[ "$MANAGED_SINGLEFLIGHT" == true && "$SUMMARY_EXIT" -eq 0 && "$POST_INLINE" == "true" && "$BLOCK_COUNT" -gt 0 ]]; then
+  if ! sf_renew "inline" "in_progress"; then
+    echo "review-post managed lease admission failure: inline phase への renew に失敗しました" >&2
+    mark_post_fencing_failure "inline phase への managed fencing renew に失敗しました"
+  fi
+fi
+
+if [[ "$SUMMARY_EXIT" -eq 0 && "$POST_INLINE" == "true" && "$BLOCK_COUNT" -gt 0 && "$POST_FENCING_FAILED" != true ]]; then
   PULL_REMAINING="$(jq -c --arg engine "$ENGINE_LABEL" --arg head_sha "$HEAD_SHA" --arg my_login "$MY_LOGIN" '
     reduce .[] as $comment ({};
       if ($comment.body | type) != "string" then .
@@ -835,6 +1010,11 @@ if [[ "$SUMMARY_EXIT" -eq 0 && "$POST_INLINE" == "true" && "$BLOCK_COUNT" -gt 0 
       INLINE_ERR="$TMP_DIR/inline-$ID.err"
       INLINE_URL=""
       INLINE_EXIT=0
+      if ! sf_verify "inline-$ID"; then
+        echo "review-post managed lease admission failure: inline POST 直前の verify に失敗しました" >&2
+        mark_post_fencing_failure "inline POST 直前の managed fencing に失敗しました"
+        break
+      fi
       INLINE_URL="$(review_post_api gh api -X POST "repos/$OWNER/$REPO/pulls/$PR_NUM/comments" \
         -f body="$COMMENT_BODY" -f path="$ANCHORED_PATH" -F line="$ANCHORED_LINE" \
         -f side="$SIDE" -f commit_id="$HEAD_SHA" --jq '.html_url' 2>"$INLINE_ERR")" || INLINE_EXIT=$?
@@ -842,12 +1022,18 @@ if [[ "$SUMMARY_EXIT" -eq 0 && "$POST_INLINE" == "true" && "$BLOCK_COUNT" -gt 0 
         record_write "inline" "$INLINE_URL"
         set_delivery "$ID" "inline"
       elif grep -Eq '(^|[^0-9])422([^0-9]|$)' "$INLINE_ERR"; then
-        post_pr_comment "$ID" "$SEVERITY" "$PERSONA" "$ORIGINAL_PATH" "$ORIGINAL_LINE" "$BODY" "$PREFIX" "$FINDING_MARKER" || true
+        post_pr_comment "$ID" "$SEVERITY" "$PERSONA" "$ORIGINAL_PATH" "$ORIGINAL_LINE" "$BODY" "$PREFIX" "$FINDING_MARKER" || {
+          FALLBACK_RC=$?
+          [[ "$FALLBACK_RC" -eq 2 ]] && break
+        }
       else
         GITHUB_FAILED=true
       fi
     else
-      post_pr_comment "$ID" "$SEVERITY" "$PERSONA" "$ORIGINAL_PATH" "$ORIGINAL_LINE" "$BODY" "$PREFIX" "$FINDING_MARKER" || true
+      post_pr_comment "$ID" "$SEVERITY" "$PERSONA" "$ORIGINAL_PATH" "$ORIGINAL_LINE" "$BODY" "$PREFIX" "$FINDING_MARKER" || {
+        FALLBACK_RC=$?
+        [[ "$FALLBACK_RC" -eq 2 ]] && break
+      }
     fi
   done < <(jq -c --argjson rows "$BLOCK_ROWS" '$rows[]' <<<"$BLOCK_ROWS")
 elif [[ "$SUMMARY_EXIT" -ne 0 ]]; then
@@ -859,6 +1045,18 @@ elif [[ "$SUMMARY_EXIT" -ne 0 ]]; then
 fi
 
 # 最後の record_write より後まで保持し、一覧 GET → dedup → 全 write を原子的に見せる。
+if [[ "$MANAGED_SINGLEFLIGHT" == true ]]; then
+  POST_FINAL_STATE="complete"
+  [[ "$GITHUB_FAILED" == true ]] && POST_FINAL_STATE="unknown"
+  if ! sf_renew "post-complete" "$POST_FINAL_STATE"; then
+    echo "review-post managed lease admission failure: post phase 完了の renew に失敗しました" >&2
+    if [[ "$POST_MUTATION_STARTED" == true ]]; then
+      mark_post_fencing_failure "post phase 完了の managed fencing renew に失敗しました"
+    else
+      exit 2
+    fi
+  fi
+fi
 if [[ "$POST_LOCK_ACQUIRED" == true ]]; then
   exec 8>&-
   POST_LOCK_ACQUIRED=false
@@ -921,6 +1119,9 @@ if ! jq -n \
   exit 1
 fi
 
+if [[ "$POST_FENCING_FAILED" == true ]]; then
+  exit 3
+fi
 if [[ "$GITHUB_FAILED" == true ]]; then
   exit 1
 fi
@@ -951,8 +1152,15 @@ multiset 突合とする。サマリは同じ engine と head_sha なら PATCH �
 summary も新規 POST する）。マーカーのない旧コメントは dedup 対象外である。この冪等性が保証するのは、
 同一 `$HEAD_SHA` に対する逐次再実行と部分失敗後の再試行のみである。同一 PR・同一 HEAD で `/review-post`
 を同時並行実行した場合、一覧取得と投稿の間に別 run が割り込むと重複投稿が起こり得る。GitHub のコメント
-API に原子的な idempotency key がないため、managed 実行では host-local post lock も併用する。
-PR-2 時点では `REVIEW_POST_USE_LOCK=1` の明示時だけ有効で、別ホスト間の排他は保証対象外である。
+API に原子的な idempotency key がないため、managed 実行では host-local post lock を必ず併用する。
+非 managed の直接実行は `REVIEW_POST_USE_LOCK=1` の明示時だけ lock を取得し、別ホスト間の排他は保証対象外である。
+managed 実行は lock 内で `review-singleflight.sh verify` を行い、サマリ mutation 直前に per_pr lease を
+`review-singleflight.sh renew`（acquire / release はしない）する。summary mutation 前の renew または verify が
+失敗した場合は GitHub write 前に exit 2 とし、dispatch 側で `post_state=post_failed` / `dispatch_status=failed` に
+写像する。summary mutation 成功後の inline/fallback 直前 verify、phase renew、または post-complete renew の
+失敗は後続 mutation を止め、成功済み write を含む result を生成して exit 3 とし、dispatch 側では
+`post_state=posted`（投稿済みまたは投稿状況不明）として扱う。
+force-release は同じ post lock を保持しているため進行中の POST の終了を待ち、旧 owner を kill しない。
 
 ```text
 [MAGI-HARD] **[<severity>] <persona>（<観点>）**
@@ -994,8 +1202,8 @@ PR-2 時点では `REVIEW_POST_USE_LOCK=1` の明示時だけ有効で、別ホ�
 `github_writes` に入らない。サマリを PATCH した場合は `github_writes[].operation` が `"update"` になり、
 新規投稿は `"create"` になる。一覧取得（issues または pulls）が失敗した場合は mutation を行わず、
 終了コード1、`github_writes: []`、全 block finding の `delivery: "not_posted"` / `reused: false` で result を
-生成する。終了コード2では GET を含むすべての GitHub API 呼び出しを行わない。exit 0/1/2 と
-`review-dispatch.md` の写像は変更しない。
+生成する。終了コード2では GET を含むすべての GitHub API 呼び出しを行わない。既存の exit 0/1/2 の写像は
+維持し、managed lease admission failure の exit 2 は `review-dispatch.md` の hard 写像へ合流する。
 
 self-identity（`gh api user`）の取得に失敗した場合、または login が文字列でない・空・欠落の
 場合（`--jq` の型検証で gh が非ゼロ終了する）も一覧取得失敗と同じ

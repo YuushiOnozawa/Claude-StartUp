@@ -199,7 +199,28 @@ SUCCESS_DIR="$REVIEW_TMPDIR/success"
 RAW_DIR="$REVIEW_TMPDIR/raw"
 mkdir -p "$SUCCESS_DIR" "$RAW_DIR"
 FAILED_PERSONAS_JSON='[]'
+sf_phase_gate() {
+  local phase="$1"
+  local sf_file="${DISPATCH_TMPDIR:+$DISPATCH_TMPDIR/singleflight.json}"
+  local helper key token_file lease_id phase_started_at
+  [ -n "$sf_file" ] && [ -r "$sf_file" ] || return 0
+  helper="$(jq -r '.helper // empty' "$sf_file")"
+  key="$(jq -r '.canonical_key // empty' "$sf_file")"
+  token_file="$(jq -r '.owner_token_file // empty' "$sf_file")"
+  lease_id="$(jq -r '.lease_id // empty' "$sf_file")"
+  [ -r "$helper" ] && [ -n "$key" ] && [ -n "$token_file" ] && [ -n "$lease_id" ] || return 1
+  if ! bash "$helper" verify --scope per_pr --key "$key" --owner-token-file "$token_file" --lease-id "$lease_id" \
+    >"$REVIEW_TMPDIR/singleflight-${phase}-verify.json" 2>"$REVIEW_TMPDIR/singleflight-${phase}-verify.err"; then
+    echo "CODEX_HARD_FAILED: managed singleflight verify failed before $phase" >&2
+    return 1
+  fi
+  phase_started_at="${REVIEW_SINGLEFLIGHT_NOW:-$(date +%s)}"
+  bash "$helper" renew --scope per_pr --key "$key" --owner-token-file "$token_file" --lease-id "$lease_id" \
+    --current-phase "$phase" --phase-started-at "$phase_started_at" --post-state in_progress \
+    >"$REVIEW_TMPDIR/singleflight-${phase}-renew.json" 2>"$REVIEW_TMPDIR/singleflight-${phase}-renew.err"
+}
 for PERSONA in MELCHIOR BALTHASAR METATRON SANDALPHON LELIEL; do
+  if ! sf_phase_gate "$PERSONA"; then return 2; fi
   PERSONA_KEY=$(printf '%s' "$PERSONA" | tr '[:upper:]' '[:lower:]')
   CRITERIA_FILE="$WORKTREE_ROOT/skills/dev-flow-fast/references/codex-personas/${PERSONA_KEY}.md"
   PERSONA_FAILED=false
@@ -335,6 +356,7 @@ finding 0件に丸めず、共通契約の failure sink を次のように `$FAI
 
 ```bash
 CASPER_FAILED_PERSONAS=$(jq -c '.failed_personas // []' "$CASPER_FAILURE_SINK" 2>/dev/null || printf '%s\n' '[]')
+if ! sf_phase_gate "CASPER"; then return 2; fi
 if [ "$CASPER_ENGINE_STATUS" != "complete" ]; then
   CASPER_FAILED_PERSONAS=$(jq -cn --argjson failed "$CASPER_FAILED_PERSONAS" \
     'if ($failed | index("CASPER")) == null then $failed + ["CASPER"] else $failed end')
@@ -431,6 +453,7 @@ fi
 ```bash
 AUDIT_TMPDIR="$REVIEW_TMPDIR/audit"
 mkdir -p "$AUDIT_TMPDIR"
+if ! sf_phase_gate "AUDIT"; then return 2; fi
 AUDIT_FINDINGS_FILE="$AUDIT_TMPDIR/findings.json"
 jq 'map(del(.gate))' "$FINDINGS_TABLE_FILE" > "$AUDIT_FINDINGS_FILE" || return 1
 if jq -e 'length == 0' "$FINDINGS_TABLE_FILE" >/dev/null 2>&1; then
@@ -448,6 +471,7 @@ fi
 ```bash
 VALIDITY_TMPDIR="$REVIEW_TMPDIR/validity"
 mkdir -p "$VALIDITY_TMPDIR"
+if ! sf_phase_gate "VALIDITY"; then return 2; fi
 VALIDITY_FINDINGS_FILE="$VALIDITY_TMPDIR/findings.json"
 jq 'map(del(.gate))' "$FINDINGS_TABLE_FILE" > "$VALIDITY_FINDINGS_FILE" || return 1
 if jq -e 'length == 0' "$FINDINGS_TABLE_FILE" >/dev/null 2>&1; then
@@ -468,6 +492,7 @@ finding が0件の場合は Codex を呼ばず、`$VALIDITY_TMPDIR/codex-validit
 ```bash
 IMPORTANCE_TMPDIR="$REVIEW_TMPDIR/importance"
 mkdir -p "$IMPORTANCE_TMPDIR"
+if ! sf_phase_gate "IMPORTANCE"; then return 2; fi
 IMPORTANCE_TARGET_FINDINGS_FILE="$IMPORTANCE_TMPDIR/findings.json"
 if ! jq --slurpfile validity "$VALIDITY_TMPDIR/codex-validity-result.json" '
   ($validity[0]
@@ -537,6 +562,7 @@ fi
 
 ```bash
 ADJUDICATE_META_FILE="$REVIEW_TMPDIR/adjudicate-findings-meta.json"
+if ! sf_phase_gate "ADJUDICATE"; then return 2; fi
 jq 'map({id, source_persona, reported_gate: .gate})' "$FINDINGS_TABLE_FILE" > "$ADJUDICATE_META_FILE" || return 1
 
 ADJUDICATION_FILE="$REVIEW_TMPDIR/adjudication-result.json"
@@ -562,6 +588,7 @@ merge は `--mode hard` と、findings table、監査結果、self-tamper bool�
 ```bash
 MERGE_OUTPUT_FILE="$REVIEW_TMPDIR/merge-result.json"
 MERGE_EXIT=0
+if ! sf_phase_gate "MERGE"; then return 2; fi
 ADJUDICATION_FILE="$REVIEW_TMPDIR/adjudication-result.json"
 bash "$WORKTREE_ROOT/scripts/codex-review-merge.sh" --mode hard \
   "$FINDINGS_TABLE_FILE" "$AUDIT_TMPDIR/codex-audit-result.json" \
@@ -634,7 +661,16 @@ if [ -n "$ARTIFACT_NOTE" ]; then
   echo "canonical artifact: 生成失敗（⚠ $ARTIFACT_NOTE）"
 fi
 
+SINGLEFLIGHT_FILE="${DISPATCH_TMPDIR:+$DISPATCH_TMPDIR/singleflight.json}"
+if [ -n "$SINGLEFLIGHT_FILE" ] && [ -r "$SINGLEFLIGHT_FILE" ] && jq -e 'type == "object"' "$SINGLEFLIGHT_FILE" >/dev/null 2>&1; then
+  SINGLEFLIGHT_JSON="$(jq -c '.' "$SINGLEFLIGHT_FILE")"
+else
+  SINGLEFLIGHT_JSON="${REVIEW_HARD_SINGLEFLIGHT_JSON:-}"
+fi
 if [ -z "$ARTIFACT_NOTE" ]; then
+# /review-hard が managed invocation context に明示的に渡す JSON。直接 /codex-hard は空のままにする。
+# owner token と lease_id の正本は DISPATCH_TMPDIR 配下のファイルであり、env 継承を正本にしない。
+# managed 実行では各ステップ開始前にこの object の token file / lease_id を verify し、失敗時は後続へ進まない。
 # merge の監査・妥当性監査が投稿可能な状態かを、engine の成果物から導出する。
 # pipeline_status=incomplete、監査/妥当性の全体失敗、または manual_review が残る場合は
 # audit 層として扱い、指摘をインライン/通常コメントへ送らず summary の一覧へ退避する。
@@ -684,6 +720,7 @@ jq -n \
   --arg importance_note "" \
   --arg artifact_note "${ARTIFACT_NOTE:-}" \
   --rawfile finding_list "$REVIEW_POST_FINDING_LIST_FILE" \
+  --arg singleflight "$SINGLEFLIGHT_JSON" \
   --arg result_path "$REVIEW_POST_RESULT" \
   '{
     schema_version:"1", artifact_type:"review-post-request", engine:$engine, forge_host:$forge_host,
@@ -699,7 +736,7 @@ jq -n \
       finding_list:(if $finding_list == "" then null else $finding_list end)
     },
     result_path:$result_path
-  }' > "$REVIEW_POST_REQUEST" || return 1
+  } + (if $singleflight == "" then {} else {singleflight:($singleflight | fromjson)} end)' > "$REVIEW_POST_REQUEST" || return 1
 
 echo "review-post request を生成しました: $REVIEW_POST_REQUEST"
 printf 'dispatch handoff: {"request":"%s","result":"%s"}\n' \
@@ -739,6 +776,7 @@ else
     --arg head_sha "$HEAD_SHA" \
     --arg diff "$DIFF_FILE" \
     --rawfile normalized_results "$REVIEW_POST_DIAGNOSTIC_FILE" \
+    --arg singleflight "$SINGLEFLIGHT_JSON" \
     --arg artifact_note "$ARTIFACT_NOTE" \
     --arg result_path "$REVIEW_POST_RESULT" \
     '{
@@ -755,7 +793,7 @@ else
         finding_list:null
       },
       result_path:$result_path
-    }' > "$REVIEW_POST_REQUEST" || return 1
+    } + (if $singleflight == "" then {} else {singleflight:($singleflight | fromjson)} end)' > "$REVIEW_POST_REQUEST" || return 1
   echo "review-post request を生成しました（report-only）: $REVIEW_POST_REQUEST"
   printf 'dispatch handoff: {"request":"%s","result":"%s"}\n' \
     "$(realpath -- "$REVIEW_POST_REQUEST")" "$(realpath -m -- "$REVIEW_POST_RESULT")"

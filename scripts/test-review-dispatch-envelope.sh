@@ -204,6 +204,8 @@ write_envelope "$CASE_FILE" fast magi complete block false -1 false not_applicab
 expect_exit "blocking_count の負数を拒否する" 2 "$CASE_FILE"
 jq 'del(.native_result)' "$CASE_FILE" >"$TEST_ROOT/missing-key.json"
 expect_exit "必須キーの欠落を拒否する" 2 "$TEST_ROOT/missing-key.json"
+jq '.unexpected_key = true' "$CASE_FILE" >"$TEST_ROOT/extra-key.json"
+expect_exit "期待外の余分キーを拒否する" 2 "$TEST_ROOT/extra-key.json"
 
 # 5. null count を受理しつつ、0 への丸めを許さない。
 write_envelope "$CASE_FILE" fast magi incomplete indeterminate false null true not_applicable "" "" "count unavailable"

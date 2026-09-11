@@ -1,5 +1,95 @@
 # ERRORS.md — 再発防止ログ
 
+### ERR-20260911-001
+**Summary:** `gh pr merge --delete-branch` で base ブランチを削除すると、そのブランチを base にしている別PRが自動 closed になり `gh pr reopen`/`gh pr edit --base` 双方で復旧不能
+
+**Details:** PR#417（base=main）を `gh pr merge 417 --merge --delete-branch` でマージ。PR#418（base=feat/flow-review-execution-budget = PR#417のheadブランチ、PR#417の上に積んだスタック）は base ブランチ削除と同時に GitHub が自動的に CLOSED にした（mergeable=CONFLICTING/mergeStateStatus=DIRTY として表面化）。`gh pr edit 418 --base main` は無関係な `GraphQL: Projects (classic) is being deprecated` エラーで見かけ上失敗し反映もされず、`gh pr reopen 418` も `Could not open the pull request` で失敗（base ブランチが存在しない状態からは reopen 不可）。復旧は「同じ head ブランチ（まだ remote に存在）から base=main で新規 PR を作り直す」のみ。head ブランチの内容は不変（PR#417 の内容が既に main に入っているため diff も自動的に縮小される）。
+
+**Suggested Action:** 複数PRがスタックしている（PR-Bの base = PR-Aのheadブランチ）場合、PR-Aを `--delete-branch` でマージする前に、必ず先に PR-B の base を `gh pr edit <B> --base main`（または次段の実ブランチ）へ retarget してから PR-A をマージする。retarget 後は `gh pr view <B> --json baseRefName` で反映を確認すること（`gh pr edit` は Projects Classic 由来の無害な GraphQL エラーを返すことがあり、エラー表示だけでは実際に反映されたか判断できない）。手遅れで closed になった場合は reopen を試みず、同じ head ブランチから base=main で新規 PR を作成する。
+
+**Source:** Issue #411 PR-1(#417)/PR-2(#418→#419) マージ作業
+**Related Files:** N/A（gh CLI 操作手順の問題、特定ファイルに紐付かない）
+**Tags:** gh-cli, pr-stacking, branch-deletion, pr-merge
+**Pattern-Key:** gh-pr-delete-branch-closes-stacked-pr
+**Recurrence-Count:** 1
+**Status:** resolved
+**Knowledge-Status:** pending
+
+### ERR-20260907-001
+**Summary:** codex-companion `task --model gpt-5.6` が `400 invalid_request_error: The 'gpt-5.6' model is not supported when using Codex with a ChatGPT account.` で即失敗（4秒）
+
+**Details:** Issue #411 草案の R2 設計レビューを `node codex-companion.mjs task --background --model gpt-5.6 --prompt-file ...` で発行したところ turn 開始直後に上記エラーで failed。ChatGPT アカウント経由の Codex では `gpt-5.6` 素の指定が不可。`--model` を外してデフォルトモデルで再発行したら正常起動（task-mtqll343-asabwi）。plangen skill が使う `gpt-5.6-sol` / `gpt-5.6-luna` は許可されるが、素の `gpt-5.6` は別扱い。
+
+**Suggested Action:** codex-companion の `task` は原則 `--model` を付けない（デフォルトに任せる）。モデル固定が必要な場合は `gpt-5.6-sol` / `gpt-5.6-luna` のような許可された変種名を使う。`gpt-5.6` 素指定はしない。
+
+**Source:** Issue #411 R2 レビュー発行
+**Related Files:** ~/.claude/plugins/cache/openai-codex/codex/1.0.5/scripts/codex-companion.mjs
+**Tags:** codex-companion, model-selection, chatgpt-account
+**Pattern-Key:** codex-companion-task-model-gpt56-unsupported
+**Recurrence-Count:** 1
+**Status:** resolved
+**Knowledge-Status:** pending
+
+### ERR-20260825-004
+**Summary:** `.wslconfig`のmemory=26GB化後もFreeToken cold startが host RAM不足でクラッシュ（`cudaHostRegister failed: out of memory`）。WSL全体のフリーズは再発せず、プロセス単体の異常終了に抑制できた
+
+**Details:** [[ERR-20260825-003]]の`model.safetensors.index.json`ワークアラウンド適用後、WSL2 `.wslconfig`を`memory=26GB`（swap込み計32GB）に変更・`wsl --shutdown`で反映確認済みの状態で、`systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0`配下（`timeout 900`併用）で`ft serve --model-path <NVFP4 snapshot> --moe-backend offload --nvfp4-backend auto`を起動した。mixed-fp8 weightsロード(3/3, 36秒)は成功、続くNVFP4 expert banksロード(3/3, 3分11秒、"low free RAM -> serial build"警告あり)も進行完了したが、直後の`PinPipeline`でのpinned host memory登録(`freetoken/moe/host_banks.py:91` `bank.pin()` → `cudaHostRegister`)が`RuntimeError: cudaHostRegister failed: out of memory`で失敗し、バックエンドworkerがクラッシュ、サーバーが`503`→`server unavailable: maintenance failed (restart required)`で応答不能になった（プロセスは`INFO: Shutting down`で正常終了し、systemdスコープも自然消滅）。cgroup memory使用量をポーリングした結果、expert bank構築中に線形増加し(21.8G→22.5G→23.4G→23.6G→24.0G)、クラッシュ直前に`MemoryMax=24G`上限へ到達していたことを確認済み。エラー文言が"cudaHostRegister failed for 0.0 GiB"（サイズ0GiB表示）となっており、これはFreeToken側のログ整形バグの可能性がある（実際に登録しようとしたバッファサイズがログに正しく出ていない）が、根本原因はホストRAM枯渇でpinned page確保に失敗したことで一致している。**前回セッションで疑われた「WSL2ごとフリーズ」は今回発生せず**、`systemd-run`のcgroupメモリ上限がOOM killerより先にCUDA側のメモリ確保失敗として顕在化し、プロセス単体のクラッシュに抑制できたことが確認できた（安全策としては機能した）。
+
+**Suggested Action:** 22GB checkpoint + NVFP4 expert bank構築時のpinned memory要求は、`.wslconfig memory=26GB`（`MemoryMax=24G`のcgroup制限込み）でもホストRAM不足でcold startが失敗する。次に試すなら(1) `MemoryMax`を26GBのVM上限ぎりぎり（例: 25.5G）まで引き上げる、(2) `.wslconfig`のmemory自体を28GB以上に再度引き上げる（Windows側実測空き12.8GBとの兼ね合いを再確認）、(3) `--expert-load serial`は既定で自動選択されており変更余地なし、(4) pinned memory自体を使わない構成（`--moe-backend cpu`等、性能は落ちる）を検討、のいずれか。現状のfeasibility gateはNG判定継続。
+
+**Source:** project_freetoken_magi_upgrade_rejected.md — Step 0 feasibility gate（cold start計測、`.wslconfig`変更・`wsl --shutdown`後の再試行）
+**Related Files:** (プロジェクト外) freetoken/moe/host_banks.py:89-91 `pin()`、/mnt/c/Users/ylocal/.wslconfig
+**Tags:** freetoken, wsl2, cudaHostRegister, oom, pinned-memory, cold-start
+**Pattern-Key:** freetoken-nvfp4-coldstart-pinned-memory-oom
+**Recurrence-Count:** 1
+**Status:** confirmed
+**Knowledge-Status:** pending
+
+### ERR-20260825-003
+**Summary:** FreeTokenのHFダウンローダーが`*.safetensors`のみ許可するallow_patternsのため、NVFP4チェックポイントの必須`model.safetensors.index.json`を取得できず、約24GBのダウンロード完了直後にロード失敗する
+
+**Details:** `ft serve --model nvidia/Qwen3.6-35B-A3B-NVFP4`実行時、checkpointダウンロード自体（~24GB、mixed-fp8 weights 3/3ロード成功）は正常完了したが、その後のNVFP4 expert-bank構築(`freetoken/models/nvfp4_banks.py:91` `load_nvfp4_expert_source_banks`)が`model.safetensors.index.json`を開こうとして`FileNotFoundError`でクラッシュし、バックエンドworkerが落ちてサーバー全体が停止した。原因は`freetoken/utils/hf.py:207-215`の`download_hf_weight()`が`snapshot_download(model_path, allow_patterns=["*.safetensors"])`のみを使っており、JSON拡張子の`model.safetensors.index.json`がこのglobにマッチせず一度もダウンロード対象にならないため。この関数はqwen3_5_moe/glm4_moe/glm_moe_dsa/minimax_m3/deepseek_v4等、全MoEモデルの重みロード経路で共通利用されている（`weight.py`は各shardのsafetensorsヘッダから自力でshard mapを再構成するため気づかれにくいが、`nvfp4_banks`だけは事前ビルド済みindexファイルを必須とする）。GitHub側で既知: Issue #124が報告、PR #129（未マージ、2026-08-24作成）が`allow_patterns`に`*.json`を追加する修正を提出済み。PR本文には「repoから該当ファイルを手動でsnapshotディレクトリに配置するワークアラウンドで動作確認済み（RTX 4090、262,144 ctx、42.2 tok/s decode）」との記載あり。同じワークアラウンドを適用: `huggingface_hub.hf_hub_download(repo_id="nvidia/Qwen3.6-35B-A3B-NVFP4", filename="model.safetensors.index.json")`で該当ファイルのみ追加ダウンロードし、HFキャッシュの同一snapshotディレクトリに正しく配置(シンボリックリンク込み)されることを確認。
+
+**Suggested Action:** FreeTokenでHF repo idを直接`--model`に渡してNVFP4/量子化チェックポイントをロードする場合、ダウンロード完了後に`model.safetensors.index.json`欠落によるクラッシュが起き得ることを事前に想定する。クラッシュしたら都度手動ダウンロードでしのぐより、事前に`hf_hub_download(repo_id=..., filename="model.safetensors.index.json")`を先回りで実行してから`ft serve`を起動すると手戻りが無い。PR #129がマージされたら本ワークアラウンドは不要になる想定——freetokenのバージョンアップ時にリグレッションが直っているか確認すること。
+
+**Source:** project_freetoken_magi_upgrade_rejected.md — Step 0 feasibility gate（checkpointダウンロード〜`ft serve`起動）
+**Related Files:** (プロジェクト外) freetoken/utils/hf.py:207-215 `download_hf_weight()`、freetoken/models/nvfp4_banks.py:91
+**Tags:** freetoken, huggingface, nvfp4, download, upstream-bug
+**Pattern-Key:** freetoken-nvfp4-missing-index-json-download
+**Recurrence-Count:** 1
+**Status:** confirmed
+**Knowledge-Status:** documented
+
+### ERR-20260825-001
+**Summary:** FreeToken(`freetoken[accel]`)のCUDA JITビルドが、pip単独導入のCUDAコンポーネント群で3層の環境不整合を起こした
+
+**Details:** MAGI MELCHIORのFreeTokenアップグレード検証（feasibility gate、`ft bench bw`実行）で、`uv pip install "freetoken[accel]"`のみ導入した状態から`ft bench bw --model qwen3.6-moe`のPCIe gatherカーネル(`fast_index_copy`)JITビルドが3段階で失敗した。(1) `nvidia-cuda-nvcc==13.0.88`を追加導入したが、依存解決で`nvidia-nvvm`/`nvidia-cuda-crt`が最新の`13.3.73`に引かれ、nvcc(13.0.88)がPTX .version 9.0までしか扱えないのにnvvm(13.3.73)がPTX .version 9.3を生成し`ptxas fatal: Unsupported .version 9.3; current version is '9.0'`で失敗。(2) `gcc`本体が未導入（`nvidia-cuda-runtime`等のpipパッケージはランタイムライブラリのみでホストコンパイラを含まない）で`nvcc fatal: Failed to preprocess host compiler properties`が先に発生していた（ユーザーが`apt install build-essential`で解消）。(3) nvcc/nvvmをどちらも`13.3.73`に揃えてコンパイルは通ったが、リンク時に`-lcudart`が解決できず失敗——pipの`nvidia-cuda-nvcc`パッケージ群は`lib/`配下に`libcudart.so.13`のみを配置し、`lib64/`ディレクトリも無版数シンボリックリンク`libcudart.so`も持たない。一方FreeTokenのビルドスクリプトは`-L.../nvidia/cu13/lib64`を決め打ちで参照するため、pipオンリー構成とは構造的に噛み合わない。install.mdには"need a CUDA 13 toolkit with nvcc on PATH"としか書かれておらず、pipオンリー構成向けの注意書きは無い（公式に非対応の組み合わせ）。
+
+**Suggested Action:** FreeTokenのJITビルドを使う場合は最初から`sudo apt-get install -y cuda-toolkit-13-<minor>`でNVIDIA公式CUDA toolkitをフル導入する（WSL2は`https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/`のkeyringを先に登録）。`nvidia-cuda-nvcc`等の分割pipパッケージだけで揃えようとしない——lib64構成・無版数シンボリックリンク・依存パッケージ間のバージョン整合が保証されない。[[ERR-20260825-002]]（同じ検証で連続発生したCUDA/glibc不整合）と合わせて、CUDA toolkitのバージョンはUbuntu側のglibcとの組み合わせも要確認。
+
+**Source:** project_freetoken_magi_upgrade_rejected.md — Step 0 feasibility gate（`ft bench bw`実行）
+**Related Files:** (プロジェクト外、FreeTokenパッケージ側) freetoken/kernel/csrc配下のJITビルド、docs/install.md
+**Tags:** freetoken, cuda, nvcc, pip-packaging, jit-build
+**Pattern-Key:** freetoken-pip-only-cuda-jit-build-mismatch
+**Recurrence-Count:** 1
+**Status:** confirmed
+**Knowledge-Status:** documented
+
+### ERR-20260825-002
+**Summary:** apt導入のCUDA 13.0 toolkitがUbuntu 26.04の新しいglibcヘッダと衝突し`rsqrt`/`rsqrtf`の例外指定不一致でコンパイル失敗
+
+**Details:** [[ERR-20260825-001]]のリンクエラー解消のため`sudo apt-get install -y cuda-toolkit-13-0`（NVIDIA公式wsl-ubuntuリポジトリ、13.0.3）を導入し`CUDA_HOME=/usr/local/cuda`で`ft bench bw`を再実行したところ、FreeTokenのJITビルド(`fast_index_copy`カーネル)コンパイルが`/usr/include/x86_64-linux-gnu/bits/mathcalls.h(206): error: exception specification is incompatible with that of previous function "rsqrt"`（`rsqrtf`も同様）で失敗した。CUDA 13.0(`crt/math_functions.h`)がリリースされた時点（2025年半ば）ではUbuntu 26.04 "Resolute Raccoon"（本セッション時点の稼働OS、glibc版が新しく`rsqrt`/`rsqrtf`をnoexcept付きで再宣言）がまだ存在せず、両者のGNU拡張関数宣言のnoexcept指定が食い違うバージョン間非互換だった。apt-cache policyで`cuda-toolkit-13-3`(13.3.1)が同リポジトリから入手可能と判明し、これに切り替えたところ（ユーザーが`sudo apt-get install -y cuda-toolkit-13-3`実行）問題なくコンパイル・リンクとも成功した。
+
+**Suggested Action:** 非常に新しいUbuntuリリース（LTS未満の中間バージョン含む）でCUDA toolkitを導入する際、まずディストリのデフォルト最新（このケースでは13-0）を疑わずに試すのではなく、`apt-cache policy cuda-toolkit-13-<N>`で入手可能な最新マイナーバージョンを先に確認し、それを導入する。ビルドエラーの文言に`mathcalls.h`や`exception specification is incompatible`が出た場合はCUDA toolkitとglibcのバージョンスキューを疑い、まずCUDA toolkitを最新マイナーに上げてみる（glibc側のダウングレードは非現実的）。
+
+**Source:** project_freetoken_magi_upgrade_rejected.md — Step 0 feasibility gate（`ft bench bw`実行、[[ERR-20260825-001]]の続き）
+**Related Files:** /usr/local/cuda（apt管理シンボリックリンク）
+**Tags:** cuda, glibc, ubuntu, toolkit-version-skew
+**Pattern-Key:** cuda-toolkit-glibc-rsqrt-exception-spec-mismatch
+**Recurrence-Count:** 1
+**Status:** confirmed
+**Knowledge-Status:** documented
+
 ### ERR-20260710-001
 **Summary:** `/finished-pr` で worktree 削除後、CWD が不在になり後続の git コマンドが全滅した
 

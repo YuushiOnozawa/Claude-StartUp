@@ -9,6 +9,13 @@ MAGI の6体を順次実行し、PR の全差分を深くレビューする。
 各体は担当ドメインに専念し、ドメイン分離によって重複を防ぐ。
 `final_gate:"block"` の指摘を GitHub PR へ投稿し、サマリも別途投稿する。
 
+`/review-hard` managed invocation では、dispatch が渡す `singleflight` object（`tmpdir`、
+`owner_token_file`、`canonical_key`、`lease_id`、`forge_host`、`scope`）を保持し、ステップ5で生成する
+`/review-post` request にそのまま引き継ぐ。直接 `/magi-hard` を起動した場合は object を付けず、
+`/review-post` は非 managed として動作する。
+managed 実行では各 phase/persona 開始前にも同じ object の token file と `lease_id` を helper の `verify` で
+再確認し、不一致・失効・token 消失時は次の phase と GitHub 副作用へ進まない。
+
 ## 前提
 
 - `gh` CLI が認証済み
@@ -141,6 +148,27 @@ record_magi_persona_result() {
     fi
   fi
 }
+
+sf_phase_gate() {
+  local phase="$1"
+  local sf_file="${DISPATCH_TMPDIR:+$DISPATCH_TMPDIR/singleflight.json}"
+  local helper key token_file lease_id phase_started_at
+  [ -n "$sf_file" ] && [ -r "$sf_file" ] || return 0
+  helper="$(jq -r '.helper // empty' "$sf_file")"
+  key="$(jq -r '.canonical_key // empty' "$sf_file")"
+  token_file="$(jq -r '.owner_token_file // empty' "$sf_file")"
+  lease_id="$(jq -r '.lease_id // empty' "$sf_file")"
+  [ -r "$helper" ] && [ -n "$key" ] && [ -n "$token_file" ] && [ -n "$lease_id" ] || return 1
+  if ! bash "$helper" verify --scope per_pr --key "$key" --owner-token-file "$token_file" --lease-id "$lease_id" \
+    >"$MAGI_RUN_DIR/singleflight-${phase}-verify.json" 2>"$MAGI_RUN_DIR/singleflight-${phase}-verify.err"; then
+    echo "MAGI_HARD_FAILED: managed singleflight verify failed before $phase" >&2
+    return 1
+  fi
+  phase_started_at="${REVIEW_SINGLEFLIGHT_NOW:-$(date +%s)}"
+  bash "$helper" renew --scope per_pr --key "$key" --owner-token-file "$token_file" --lease-id "$lease_id" \
+    --current-phase "$phase" --phase-started-at "$phase_started_at" --post-state in_progress \
+    >"$MAGI_RUN_DIR/singleflight-${phase}-renew.json" 2>"$MAGI_RUN_DIR/singleflight-${phase}-renew.err"
+}
 ```
 
 ## ステップ 3.1: MELCHIOR 実行（最初）
@@ -150,6 +178,7 @@ record_magi_persona_result() {
 実行終了ステータスは `$MELCHIOR_EXIT` として保持し、成功・失敗を問わず次を実行してからステップ 3.2 に進む。
 
 ```bash
+if ! sf_phase_gate "MELCHIOR"; then return 2; fi
 record_magi_persona_result "MELCHIOR" "$MELCHIOR_RESULT" "$MELCHIOR_EXIT"
 ```
 
@@ -161,6 +190,7 @@ record_magi_persona_result "MELCHIOR" "$MELCHIOR_RESULT" "$MELCHIOR_EXIT"
 実行終了ステータスは `$BALTHASAR_EXIT` として保持し、成功・失敗を問わず次を実行してからステップ 3.3 に進む。
 
 ```bash
+if ! sf_phase_gate "BALTHASAR"; then return 2; fi
 record_magi_persona_result "BALTHASAR" "$BALTHASAR_RESULT" "$BALTHASAR_EXIT"
 ```
 
@@ -174,6 +204,7 @@ record_magi_persona_result "BALTHASAR" "$BALTHASAR_RESULT" "$BALTHASAR_EXIT"
 入力の実体と failure sink は次のように確保する。
 
 ```bash
+if ! sf_phase_gate "CASPER"; then return 2; fi
 CASPER_RAW_FILE="$MAGI_RUN_DIR/raw/casper.txt"
 CASPER_NORMALIZER_TMPDIR="$MAGI_RUN_DIR/casper-normalizer"
 CASPER_FAILURE_SINK="$MAGI_RUN_DIR/casper-failure.json"
@@ -191,6 +222,7 @@ Normalizer、`source_persona=CASPER` 固定、失敗段階の記録までを担�
 成功・失敗を問わず次を実行してからステップ 3.4 に進む。
 
 ```bash
+if ! sf_phase_gate "CASPER"; then return 2; fi
 if [ -r "$CASPER_FAILURE_SINK" ]; then
   CASPER_FAILED_PERSONAS=$(jq -c '.failed_personas // []' "$CASPER_FAILURE_SINK" 2>/dev/null || printf '%s\n' '[]')
   FAILED_PERSONAS_JSON=$(jq -cn \
@@ -221,6 +253,7 @@ record_magi_persona_result "CASPER" "$CASPER_RESULT" "$CASPER_EXIT"
 実行終了ステータスは `$METATRON_EXIT` として保持し、成功・失敗を問わず次を実行してからステップ 3.5 に進む。
 
 ```bash
+if ! sf_phase_gate "METATRON"; then return 2; fi
 record_magi_persona_result "METATRON" "$METATRON_RESULT" "$METATRON_EXIT"
 ```
 
@@ -232,6 +265,7 @@ record_magi_persona_result "METATRON" "$METATRON_RESULT" "$METATRON_EXIT"
 実行終了ステータスは `$SANDALPHON_EXIT` として保持し、成功・失敗を問わず次を実行してからステップ 3.6 に進む。
 
 ```bash
+if ! sf_phase_gate "SANDALPHON"; then return 2; fi
 record_magi_persona_result "SANDALPHON" "$SANDALPHON_RESULT" "$SANDALPHON_EXIT"
 ```
 
@@ -243,6 +277,7 @@ record_magi_persona_result "SANDALPHON" "$SANDALPHON_RESULT" "$SANDALPHON_EXIT"
 実行終了ステータスは `$LELIEL_EXIT` として保持し、成功・失敗を問わず次を実行してからステップ 3.7 に進む。
 
 ```bash
+if ! sf_phase_gate "LELIEL"; then return 2; fi
 record_magi_persona_result "LELIEL" "$LELIEL_RESULT" "$LELIEL_EXIT"
 ```
 
@@ -759,6 +794,14 @@ POST_INLINE_JSON="${POST_INLINE:-true}"
 BLOCK_LAYER_VALUE="${BLOCK_LAYER:-}"
 ARTIFACT_PATH_VALUE="${ARTIFACT_FILE:-}"
 ADJUDICATION_PATH_VALUE="${ADJUDICATION_RESULT:-}"
+# /review-hard が managed invocation context に明示的に渡す JSON。未 managed の直接起動では空にする。
+# token/lease の正本自体は DISPATCH_TMPDIR のファイルであり、次の Bash 呼び出しへの env 継承には依存しない。
+SINGLEFLIGHT_FILE="${DISPATCH_TMPDIR:+$DISPATCH_TMPDIR/singleflight.json}"
+if [ -n "$SINGLEFLIGHT_FILE" ] && [ -r "$SINGLEFLIGHT_FILE" ] && jq -e 'type == "object"' "$SINGLEFLIGHT_FILE" >/dev/null 2>&1; then
+  SINGLEFLIGHT_JSON="$(jq -c '.' "$SINGLEFLIGHT_FILE")"
+else
+  SINGLEFLIGHT_JSON="${REVIEW_HARD_SINGLEFLIGHT_JSON:-}"
+fi
 if [ "$BLOCK_LAYER_VALUE" = "structure" ]; then
   ARTIFACT_PATH_VALUE=""
   ADJUDICATION_PATH_VALUE=""
@@ -781,6 +824,7 @@ jq -n \
   --arg artifact_note "${ARTIFACT_NOTE:-}" \
   --rawfile normalized_results "$REVIEW_POST_NORMALIZED" \
   --rawfile finding_list "$REVIEW_POST_FINDING_LIST" \
+  --arg singleflight "$SINGLEFLIGHT_JSON" \
   --arg result_path "$REVIEW_POST_RESULT" \
   '{
     schema_version:"1", artifact_type:"review-post-request", engine:$engine, forge_host:$forge_host,
@@ -800,7 +844,7 @@ jq -n \
       finding_list:(if $finding_list == "" then null else $finding_list end)
     },
     result_path:$result_path
-  }' > "$REVIEW_POST_REQUEST" || return 1
+  } + (if $singleflight == "" then {} else {singleflight:($singleflight | fromjson)} end)' > "$REVIEW_POST_REQUEST" || return 1
 ```
 
 この request を次のステップで `/review-post` へ渡す。structure 経路では artifact と adjudication を null にし、
@@ -814,6 +858,79 @@ review-post 契約に従う。
 実行後は `$REVIEW_POST_RESULT` を読み、サマリ投稿が完了したこと、または終了コード1/2の理由を確認する。
 サマリは `post_inline` の値に関係なく review-post が常に投稿する。終了コード2は入力契約違反として停止し、
 終了コード1は GitHub API の失敗として後続へ成功扱いで渡さない。
+
+```bash
+POST_RC=0
+/review-post "$REVIEW_POST_REQUEST" || POST_RC=$?
+if [ "$POST_RC" -eq 0 ] && [ -s "$REVIEW_POST_RESULT" ]; then
+  POST_STATE=posted
+  if [ -n "${DISPATCH_STATE:-}" ] && [ -r "$DISPATCH_STATE" ]; then
+    STATE_HELPER="$(jq -r '.state_helper // empty' "$DISPATCH_STATE" 2>/dev/null || true)"
+    if [ -r "$STATE_HELPER" ]; then
+      bash "$STATE_HELPER" set --dispatch-state "$DISPATCH_STATE" \
+        --filter '.post_state="posted" | .phase="post_complete"'
+    else
+      jq '.post_state="posted" | .phase="post_complete"' "$DISPATCH_STATE" > "$DISPATCH_STATE.tmp" && mv -f "$DISPATCH_STATE.tmp" "$DISPATCH_STATE"
+    fi
+  fi
+elif [ "$POST_RC" -eq 2 ] && [ ! -s "$REVIEW_POST_RESULT" ]; then
+  POST_STATE=post_failed
+  FAILURE_REASON="review-post managed guard failure; GitHub mutation 未実行"
+  if [ -n "${DISPATCH_STATE:-}" ] && [ -r "$DISPATCH_STATE" ]; then
+    STATE_HELPER="$(jq -r '.state_helper // empty' "$DISPATCH_STATE" 2>/dev/null || true)"
+    if [ -r "$STATE_HELPER" ]; then
+      bash "$STATE_HELPER" set --dispatch-state "$DISPATCH_STATE" \
+        --filter '.post_state="post_failed" | .phase="post_failed" | .failure_reason=$reason | .saved_rc=$rc' \
+        --arg reason "$FAILURE_REASON" --argjson rc 2
+    else
+      jq --arg reason "$FAILURE_REASON" '.post_state="post_failed" | .phase="post_failed" | .failure_reason=$reason | .saved_rc=2' "$DISPATCH_STATE" > "$DISPATCH_STATE.tmp" && mv -f "$DISPATCH_STATE.tmp" "$DISPATCH_STATE"
+    fi
+  fi
+  printf 'dispatch handoff: {"request":"%s","result":"%s"}\n' "$(realpath -- "$REVIEW_POST_REQUEST")" "$(realpath -m -- "$REVIEW_POST_RESULT")"
+  echo "MAGI_HARD_FAILED: $FAILURE_REASON" >&2
+  return 2
+elif [ "$POST_RC" -eq 3 ]; then
+  POST_STATE=posted
+  FAILURE_REASON="review-post fencing failure after GitHub mutation; 投稿済みまたは投稿状況不明"
+  if [ -n "${DISPATCH_STATE:-}" ] && [ -r "$DISPATCH_STATE" ]; then
+    STATE_HELPER="$(jq -r '.state_helper // empty' "$DISPATCH_STATE" 2>/dev/null || true)"
+    if [ -r "$STATE_HELPER" ]; then
+      bash "$STATE_HELPER" set --dispatch-state "$DISPATCH_STATE" \
+        --filter '.post_state="posted" | .phase="post_partial" | .failure_reason=$reason | .saved_rc=$rc' \
+        --arg reason "$FAILURE_REASON" --argjson rc 1
+    else
+      jq --arg reason "$FAILURE_REASON" '.post_state="posted" | .phase="post_partial" | .failure_reason=$reason | .saved_rc=1' "$DISPATCH_STATE" > "$DISPATCH_STATE.tmp" && mv -f "$DISPATCH_STATE.tmp" "$DISPATCH_STATE"
+    fi
+  fi
+  echo "MAGI_HARD_FAILED: $FAILURE_REASON" >&2
+  return 1
+elif [ "$POST_RC" -ne 0 ]; then
+  POST_STATE=posted
+  if [ -n "${DISPATCH_STATE:-}" ] && [ -r "$DISPATCH_STATE" ]; then
+    STATE_HELPER="$(jq -r '.state_helper // empty' "$DISPATCH_STATE" 2>/dev/null || true)"
+    if [ -r "$STATE_HELPER" ]; then
+      bash "$STATE_HELPER" set --dispatch-state "$DISPATCH_STATE" \
+        --filter '.post_state="posted" | .phase="post_unknown" | .failure_reason=$reason | .saved_rc=$rc' \
+        --arg reason "review-post の終了コードが非0で投稿状況を確認できません" --argjson rc 1
+    else
+      jq --arg reason "review-post の終了コードが非0で投稿状況を確認できません" \
+        '.post_state="posted" | .phase="post_unknown" | .failure_reason=$reason | .saved_rc=1' \
+        "$DISPATCH_STATE" > "$DISPATCH_STATE.tmp" && mv -f "$DISPATCH_STATE.tmp" "$DISPATCH_STATE"
+    fi
+  fi
+  echo "MAGI_HARD_FAILED: review-post の投稿状況を確認できません" >&2
+  return 1
+fi
+SINGLEFLIGHT_FILE_POST="${DISPATCH_TMPDIR:+$DISPATCH_TMPDIR/singleflight.json}"
+if [ -n "$SINGLEFLIGHT_FILE_POST" ] && [ -r "$SINGLEFLIGHT_FILE_POST" ]; then
+  SF_HELPER_POST="$(jq -r '.helper' "$SINGLEFLIGHT_FILE_POST")"
+  SF_KEY_POST="$(jq -r '.canonical_key' "$SINGLEFLIGHT_FILE_POST")"
+  SF_TOKEN_POST="$(jq -r '.owner_token_file' "$SINGLEFLIGHT_FILE_POST")"
+  SF_LEASE_POST="$(jq -r '.lease_id' "$SINGLEFLIGHT_FILE_POST")"
+  bash "$SF_HELPER_POST" renew --scope per_pr --key "$SF_KEY_POST" --owner-token-file "$SF_TOKEN_POST" --lease-id "$SF_LEASE_POST" \
+    --current-phase POST_COMPLETE --post-state complete >"$MAGI_RUN_DIR/singleflight-post-complete.json" 2>"$MAGI_RUN_DIR/singleflight-post-complete.err" || return 2
+fi
+```
 
 ## ステップ 7: GitHub インラインコメント投稿
 
@@ -858,7 +975,9 @@ fi
 HANDOFF_DIR="$MAGI_RUN_DIR/dispatch-handoff"
 mkdir -p "$HANDOFF_DIR"
 cp -- "$REVIEW_POST_REQUEST" "$HANDOFF_DIR/review-post-request.json"
-cp -- "$REVIEW_POST_RESULT" "$HANDOFF_DIR/review-post-result.json"
+if [ "${POST_RC:-1}" -eq 0 ] && [ -s "$REVIEW_POST_RESULT" ]; then
+  cp -- "$REVIEW_POST_RESULT" "$HANDOFF_DIR/review-post-result.json"
+fi
 
 # request が指す成果物も handoff 配下へ退避し、request 内のパスを退避先の絶対パスへ書き換える。
 # これで handoff が自己完結し、dispatch の ref 実在検証（review-dispatch.md「hard の ref 事前検証」）を通る。
