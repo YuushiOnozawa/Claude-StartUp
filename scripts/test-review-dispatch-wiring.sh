@@ -440,18 +440,52 @@ record_result "dispatch H2 が owner token / engine / overdue / artifact を渡�
 
 # 41. managed object は固定ファイルから engine/request へ透過する。
 if grep -Fq -- 'printf '\''%s'\'' "$SF_OBJECT" > "$DISPATCH_TMPDIR/singleflight.json"' "$DISPATCH_REF" \
-  && grep -Fq -- 'SINGLEFLIGHT_FILE="${DISPATCH_TMPDIR:-}/singleflight.json"' "$MAGI_HARD_SKILL" \
-  && grep -Fq -- 'SINGLEFLIGHT_FILE="${DISPATCH_TMPDIR:-}/singleflight.json"' "$CODEX_HARD_REF_FILE"; then
+  && grep -Fq -- 'SINGLEFLIGHT_FILE="${DISPATCH_TMPDIR:+$DISPATCH_TMPDIR/singleflight.json}"' "$MAGI_HARD_SKILL" \
+  && grep -Fq -- 'SINGLEFLIGHT_FILE="${DISPATCH_TMPDIR:+$DISPATCH_TMPDIR/singleflight.json}"' "$CODEX_HARD_REF_FILE"; then
   result=0
 else
   result=1
 fi
 record_result "managed singleflight object が file 経由で magi/codex request に入る" "$result"
 
+# 41a. direct skill は DISPATCH_TMPDIR 空時に /singleflight.json を検査しない。
+if ! grep -Fq -- 'SINGLEFLIGHT_FILE="${DISPATCH_TMPDIR:-}/singleflight.json"' "$MAGI_HARD_SKILL" \
+  && ! grep -Fq -- 'SINGLEFLIGHT_FILE="${DISPATCH_TMPDIR:-}/singleflight.json"' "$CODEX_HARD_REF_FILE" \
+  && grep -Fq -- '[ -n "$SINGLEFLIGHT_FILE" ] && [ -r "$SINGLEFLIGHT_FILE" ]' "$MAGI_HARD_SKILL" \
+  && grep -Fq -- '[ -n "$SINGLEFLIGHT_FILE" ] && [ -r "$SINGLEFLIGHT_FILE" ]' "$CODEX_HARD_REF_FILE"; then
+  result=0
+else
+  result=1
+fi
+record_result "direct magi/codex は空の DISPATCH_TMPDIR を root-level singleflight と誤認しない" "$result"
+
+# 41b. mutation 後の fencing failure は result を残す別 exit code として dispatch が posted に寄せる。
+if grep -Fq -- 'summary mutation 成功後の managed fencing 失敗は終了コード3' "$POST_REF" \
+  && grep -Fq -- 'elif [[ "$POST_RC" -eq 3 ]]' "$DISPATCH_REF" \
+  && grep -Fq -- '--post-state posted' "$DISPATCH_REF"; then
+  result=0
+else
+  result=1
+fi
+record_result "mutation 後 fencing failure を exit 3 / posted envelope へ写像する" "$result"
+
+# 41c. MAGI の API failure/unknown でも dispatch は unavailable/not_applicable に潰さない。
+if grep -Fq -- 'ENGINE_POST_STATE="$(jq -r '\''.post_state // empty'\'' "$DISPATCH_STATE"' "$DISPATCH_REF" \
+  && grep -Fq -- '"$BACKEND" == magi && "$ENGINE_POST_STATE" == posted' "$DISPATCH_REF" \
+  && grep -Fq -- '.post_state="posted" | .phase="post_unknown"' "$MAGI_HARD_SKILL" \
+  && grep -Fq -- 'MAGI review-post の投稿後に終了したため投稿状況を確認できません' "$DISPATCH_REF"; then
+  result=0
+else
+  result=1
+fi
+record_result "MAGI の投稿状況不明を posted envelope として保持する" "$result"
+
 # 42. acquire 後の状態更新と共通 cleanup は実行コードとして存在する。
 if grep -Fq -- 'sf_state_set' "$DISPATCH_REF" \
   && grep -Fq -- 'sf_cleanup()' "$DISPATCH_REF" \
   && grep -Fq -- 'timeout 10 bash "$SF_HELPER" release' "$DISPATCH_REF" \
+  && grep -Fq -- 'if ! printf' "$DISPATCH_REF" \
+  && grep -Fq -- 'abort_after_acquire' "$DISPATCH_REF" \
   && grep -Fq -- 'post_failed' "$MAGI_HARD_SKILL"; then
   result=0
 else

@@ -68,7 +68,7 @@ dispatch は次の全フィールドを持つ単一 JSON 値を返す。余分�
 | manual_review | object / array / null | 未監査・要人手確認の内容 |
 | artifact_ref | パス / null | fast は常に null。hard は engine の run tmpdir（または dispatch handoff）内のパス。validator が検証するのは「null または非空文字列」という JSON 形状だけで、実在・run tmpdir 所属・当該 review との対応は dispatch が envelope 生成前に検証する（下記「返却、検証、寿命」） |
 | adjudication_ref | パス / null | fast は常に null。hard は engine の run tmpdir（または dispatch handoff）内のパス。実在確認などの責務は artifact_ref と同じ |
-| post_state | posted / post_failed / not_applicable | fast は常に not_applicable |
+| post_state | posted / post_failed / not_applicable | fast は常に not_applicable。`posted` は投稿完了だけでなく、mutation 後の部分投稿・投稿状況不明を含む保守的な値 |
 | failure_reason | 文字列 / null | dispatch_status が complete 以外のとき、非空文字列が必須 |
 | native_result | object | backend 固有の生結果。persona 別集計などを保持し、分岐には使わない |
 
@@ -358,7 +358,7 @@ broker 層の lease は追加しない（PR-2 の `codex-broker-run.sh` が、�
 6. **H2 admission**: run 開始時に実際の chunk 数・persona/task 数から `planned_overdue_at` を導出し、
    backend 選択後に次の完全な helper 契約で実行する。`SF_ENGINE=review-hard` とし、
    `SF_PLANNED_OVERDUE` は `execution-budget.sh max-allowance <backend>` を上限に実 chunk/persona 数から算出し、
-   算出不能時は max-allowance をそのまま使う。
+   acquire 時点で実 chunk/persona 数が未確定または算出不能なら max-allowance をそのまま使う。
 
    ```bash
    SF_ENGINE=review-hard
@@ -461,8 +461,26 @@ review_hard_dispatch() {
   }
   sf_state_set '.owner_token_file=$token_file' --arg token_file "$SF_TOKEN_FILE" || return 5
 
+  sf_release_after_acquire() {
+    local release_rc=0
+    timeout 10 bash "$SF_HELPER" release --scope per_pr --key "$SF_CANONICAL_KEY" \
+      --owner-token-file "$SF_TOKEN_FILE" --lease-id "$SF_LEASE_ID" \
+      >"$DISPATCH_TMPDIR/release-after-acquire.json" 2>"$DISPATCH_TMPDIR/release-after-acquire.err" || release_rc=$?
+    if [[ "$release_rc" -ne 0 ]]; then
+      echo "review-dispatch: acquire 後の初期化失敗時に lease release も失敗しました（stale_suspected）" >&2
+    fi
+    return "$release_rc"
+  }
+
+  abort_after_acquire() {
+    local release_rc=0
+    sf_release_after_acquire || release_rc=$?
+    SAVED_RC=5
+    [[ "$release_rc" -eq 0 ]] || echo "review-dispatch: lease を自動解放できないため fail-closed で終了します" >&2
+  }
+
   SF_MAX_ALLOWANCE="$(bash "$BUDGET_HELPER" max-allowance "$BACKEND" 2>/dev/null || true)"
-  SF_CHUNK_COUNT="${SF_CHUNK_COUNT:-${DIFF_CHUNK_COUNT:-1}}"; SF_PERSONA_COUNT="${SF_PERSONA_COUNT:-6}"
+  SF_CHUNK_COUNT="${SF_CHUNK_COUNT:-${DIFF_CHUNK_COUNT:-}}"; SF_PERSONA_COUNT="${SF_PERSONA_COUNT:-}"
   SF_PER_CHUNK="$(bash "$BUDGET_HELPER" generation-factor per_chunk_seconds "$BACKEND" 2>/dev/null || true)"
   SF_POST_BUDGET="$(bash "$BUDGET_HELPER" get review_post "$BACKEND" 2>/dev/null || true)"
   if [[ "$SF_MAX_ALLOWANCE" =~ ^[1-9][0-9]*$ && "$SF_CHUNK_COUNT" =~ ^[1-9][0-9]*$ && "$SF_PERSONA_COUNT" =~ ^[1-9][0-9]*$ && "$SF_PER_CHUNK" =~ ^[1-9][0-9]*$ ]]; then
@@ -492,18 +510,33 @@ review_hard_dispatch() {
     if [[ "$ACQUIRE_RC" -ne 0 ]] || ! jq -e '.state == "acquired" and (.lease_id|type)=="string" and (.token_fp|type)=="string" and (.planned_overdue_at|type)=="number"' "$ACQUIRE_JSON" >/dev/null 2>&1; then SAVED_RC=2; sf_state_set '.saved_rc=$rc | .phase="admission_failed"' --argjson rc "$SAVED_RC" || true; sf_write_envelope unavailable not_applicable "per_pr admission failed" || true; break; fi
     SF_ACQUIRE_JSON="$(jq -c '.' "$ACQUIRE_JSON")"
     SF_LEASE_ID="$(jq -r '.lease_id' <<<"$SF_ACQUIRE_JSON")"
-    sf_state_set '.per_pr.acquired=true | .per_pr.lease_id=$lease_id | .lease_id=$lease_id | .owner_token_file=$owner_token_file | .phase="acquired" | .post_state="not_started"' \
-  --arg lease_id "$SF_LEASE_ID" --arg owner_token_file "$SF_TOKEN_FILE" || { SAVED_RC=5; break; }
-    SF_OBJECT="$(jq -cn --arg tmpdir "$DISPATCH_TMPDIR" --arg owner_token_file "$SF_TOKEN_FILE" --arg canonical_key "$SF_CANONICAL_KEY" --arg lease_id "$SF_LEASE_ID" --arg forge_host "$FORGE_HOST" --arg helper "$SF_HELPER" --arg lease_file_ref "$DISPATCH_STATE" \
-      '{managed_by:"review-hard",tmpdir:$tmpdir,owner_token_file:$owner_token_file,lease_file_ref:$lease_file_ref,canonical_key:$canonical_key,lease_id:$lease_id,forge_host:$forge_host,scope:"per_pr",helper:$helper}')" || { SAVED_RC=5; break; }
-    printf '%s' "$SF_OBJECT" > "$DISPATCH_TMPDIR/singleflight.json"; chmod 600 "$DISPATCH_TMPDIR/singleflight.json"
+    if ! sf_state_set '.per_pr.acquired=true | .per_pr.lease_id=$lease_id | .lease_id=$lease_id | .owner_token_file=$owner_token_file | .phase="acquired" | .post_state="not_started"' \
+      --arg lease_id "$SF_LEASE_ID" --arg owner_token_file "$SF_TOKEN_FILE"; then
+      abort_after_acquire
+      break
+    fi
+    if ! SF_OBJECT="$(jq -cn --arg tmpdir "$DISPATCH_TMPDIR" --arg owner_token_file "$SF_TOKEN_FILE" --arg canonical_key "$SF_CANONICAL_KEY" --arg lease_id "$SF_LEASE_ID" --arg forge_host "$FORGE_HOST" --arg helper "$SF_HELPER" --arg lease_file_ref "$DISPATCH_STATE" \
+      '{managed_by:"review-hard",tmpdir:$tmpdir,owner_token_file:$owner_token_file,lease_file_ref:$lease_file_ref,canonical_key:$canonical_key,lease_id:$lease_id,forge_host:$forge_host,scope:"per_pr",helper:$helper}')"; then
+      abort_after_acquire
+      break
+    fi
+    if ! printf '%s' "$SF_OBJECT" > "$DISPATCH_TMPDIR/singleflight.json" \
+      || ! chmod 600 "$DISPATCH_TMPDIR/singleflight.json"; then
+      abort_after_acquire
+      break
+    fi
     export DISPATCH_TMPDIR DISPATCH_STATE SF_CANONICAL_KEY SF_TOKEN_FILE SF_LEASE_ID \
       REVIEW_HARD_SINGLEFLIGHT_JSON="$DISPATCH_TMPDIR/singleflight.json"
-    sf_state_set '.phase="engine_running" | .post_state="in_progress"' || true
-    DISPATCH_HANDOFF="$(jq -cn --arg backend "$BACKEND" --arg tmpdir "$DISPATCH_TMPDIR" --arg dispatch_state "$DISPATCH_STATE" \
+    if ! sf_state_set '.phase="engine_running" | .post_state="in_progress"'; then
+      abort_after_acquire
+      break
+    fi
+    if ! DISPATCH_HANDOFF="$(jq -cn --arg backend "$BACKEND" --arg tmpdir "$DISPATCH_TMPDIR" --arg dispatch_state "$DISPATCH_STATE" \
       --arg canonical_key "$SF_CANONICAL_KEY" --arg lease_id "$SF_LEASE_ID" --arg singleflight "$DISPATCH_TMPDIR/singleflight.json" \
-      '{backend:$backend,tmpdir:$tmpdir,dispatch_state:$dispatch_state,canonical_key:$canonical_key,lease_id:$lease_id,singleflight:$singleflight}')" \
-      || { SAVED_RC=5; break; }
+      '{backend:$backend,tmpdir:$tmpdir,dispatch_state:$dispatch_state,canonical_key:$canonical_key,lease_id:$lease_id,singleflight:$singleflight}')"; then
+      abort_after_acquire
+      break
+    fi
     printf 'review-dispatch handoff: %s\n' "$DISPATCH_HANDOFF"
     SAVED_RC=0
     break
@@ -597,7 +630,11 @@ else
   ENGINE_FAILURE_REASON="engine skill の実行が完了せず所定の handoff/result を返さなかった"
 fi
 if [[ "$ENGINE_RC" -ne 0 ]]; then
-  if [[ "$BACKEND" == magi && "$ENGINE_RC" -eq 2 && "$(jq -r '.post_state // empty' "$DISPATCH_STATE")" == post_failed ]]; then
+  ENGINE_POST_STATE="$(jq -r '.post_state // empty' "$DISPATCH_STATE" 2>/dev/null || true)"
+  if [[ "$BACKEND" == magi && "$ENGINE_POST_STATE" == posted ]]; then
+    SAVED_RC=1
+    "${WRITE_ENVELOPE[@]}" --status failed --post-state posted --reason "MAGI review-post の投稿後に終了したため投稿状況を確認できません" || true
+  elif [[ "$BACKEND" == magi && "$ENGINE_RC" -eq 2 && "$ENGINE_POST_STATE" == post_failed ]]; then
     SAVED_RC=2
     "${WRITE_ENVELOPE[@]}" --status failed --post-state post_failed --reason "review-post managed guard failure; GitHub mutation 未実行" || true
   else
@@ -641,6 +678,11 @@ if [[ "$ENGINE_CONTINUE" == true && "$BACKEND" == codex ]]; then
     SAVED_RC=2
     "${STATE_SET[@]}" --filter '.saved_rc=$rc | .phase="post_failed" | .post_state="post_failed"' --argjson rc "$SAVED_RC" || true
     "${WRITE_ENVELOPE[@]}" --status failed --post-state post_failed --reason "review-post managed guard failure; GitHub mutation 未実行" || true
+    ENGINE_CONTINUE=false
+  elif [[ "$POST_RC" -eq 3 ]]; then
+    SAVED_RC=1
+    "${STATE_SET[@]}" --filter '.saved_rc=$rc | .phase="post_partial" | .post_state="posted"' --argjson rc "$SAVED_RC" || true
+    "${WRITE_ENVELOPE[@]}" --status failed --post-state posted --reason "review-post fencing failure after GitHub mutation; 投稿済みまたは投稿状況不明" || true
     ENGINE_CONTINUE=false
   elif [[ "$POST_RC" -ne 0 ]]; then
     SAVED_RC=1

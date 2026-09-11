@@ -104,10 +104,12 @@ GROUNDING_FAILED（アンカーを確認できなかったため全件を通常P
 
 以下が `/review-post` の実行本体である。`gh` が返す URL は result の `github_writes` に保存し、
 サマリを含むいずれかの API 呼び出しが失敗した場合は成功済みの write を保存したうえで終了コード1とする。
-contract violation は終了コード2、サマリのみ投稿・投稿対象0件・grounding fallback 後の投稿成功は終了コード0とする。
+contract violation は終了コード2、summary mutation 成功後の managed fencing 失敗は終了コード3、サマリのみ投稿・
+投稿対象0件・grounding fallback 後の投稿成功は終了コード0とする。終了コード3では後続の GitHub mutation を
+停止し、既に成功した write を含む result を必ず生成するため、投稿済みまたは投稿状況不明として扱う。
 終了コード2には、request / 入力 artifact の契約違反に加えて、managed single-flight の lease admission
-failure（singleflight 不正、post lock 内の lease_id 不一致、renew の `not_owner` / I/O 失敗）を含める。
-いずれも GitHub API の GET を含む mutation 前の検証で停止し、GitHub mutation 未実行を保証する。
+failure（singleflight 不正、post lock 内の lease_id 不一致、summary mutation 前の renew / verify の
+`not_owner` / I/O 失敗）を含める。summary mutation 前の失敗は GitHub mutation 未実行を保証する。
 
 ```bash
 #!/usr/bin/env bash
@@ -676,8 +678,17 @@ DELIVERY_JSON="$(jq -n -c --argjson results "$ADJUDICATION_RESULTS" --arg inline
 REUSED_JSON='{}'
 GITHUB_WRITES='[]'
 GITHUB_FAILED=false
+POST_MUTATION_STARTED=false
+POST_FENCING_FAILED=false
+POST_FENCING_REASON=""
 POST_LOCK_READY=true
 POST_LOCK_ACQUIRED=false
+
+mark_post_fencing_failure() {
+  POST_FENCING_FAILED=true
+  POST_FENCING_REASON="$1"
+  GITHUB_FAILED=true
+}
 
 # PR-2 の step 2 / 6 と、PR-3 の step 1 / 3 / 4 / 5 を managed request に接続する。
 # singleflight 欠如時だけ REVIEW_POST_USE_LOCK の明示 opt-in という従来動作を残す。
@@ -846,25 +857,29 @@ else
     if ! sf_verify "summary-patch"; then
       echo "review-post managed lease admission failure: summary PATCH 直前の verify に失敗しました" >&2
       exit 2
-    fi
-    SUMMARY_URL="$(review_post_api gh api -X PATCH "repos/$OWNER/$REPO/issues/comments/$SUMMARY_COMMENT_ID" \
-      -f body="$SUMMARY_MARKDOWN" --jq '.html_url' 2>"$SUMMARY_ERR")" || SUMMARY_EXIT=$?
-    if [[ "$SUMMARY_EXIT" -eq 0 ]]; then
-      record_write "summary" "$SUMMARY_URL" update
     else
-      GITHUB_FAILED=true
+      SUMMARY_URL="$(review_post_api gh api -X PATCH "repos/$OWNER/$REPO/issues/comments/$SUMMARY_COMMENT_ID" \
+        -f body="$SUMMARY_MARKDOWN" --jq '.html_url' 2>"$SUMMARY_ERR")" || SUMMARY_EXIT=$?
+      if [[ "$SUMMARY_EXIT" -eq 0 ]]; then
+        record_write "summary" "$SUMMARY_URL" update
+        POST_MUTATION_STARTED=true
+      else
+        GITHUB_FAILED=true
+      fi
     fi
   else
     if ! sf_verify "summary-post"; then
       echo "review-post managed lease admission failure: summary POST 直前の verify に失敗しました" >&2
       exit 2
-    fi
-    SUMMARY_URL="$(review_post_api gh api -X POST "repos/$OWNER/$REPO/issues/$PR_NUM/comments" \
-      -f body="$SUMMARY_MARKDOWN" --jq '.html_url' 2>"$SUMMARY_ERR")" || SUMMARY_EXIT=$?
-    if [[ "$SUMMARY_EXIT" -eq 0 ]]; then
-      record_write "summary" "$SUMMARY_URL"
     else
-      GITHUB_FAILED=true
+      SUMMARY_URL="$(review_post_api gh api -X POST "repos/$OWNER/$REPO/issues/$PR_NUM/comments" \
+        -f body="$SUMMARY_MARKDOWN" --jq '.html_url' 2>"$SUMMARY_ERR")" || SUMMARY_EXIT=$?
+      if [[ "$SUMMARY_EXIT" -eq 0 ]]; then
+        record_write "summary" "$SUMMARY_URL"
+        POST_MUTATION_STARTED=true
+      else
+        GITHUB_FAILED=true
+      fi
     fi
   fi
 fi
@@ -892,6 +907,7 @@ post_pr_comment() {
   local status=0
   if ! sf_verify "fallback-$id"; then
     echo "review-post managed lease admission failure: fallback POST 直前の verify に失敗しました" >&2
+    mark_post_fencing_failure "fallback POST 直前の managed fencing に失敗しました"
     return 2
   fi
   comment_body="$(printf '[%s] **[%s] %s** `%s:%s`\n\n%s' "$prefix" "$severity" "$persona" "$path" "$line" "$body")"
@@ -910,11 +926,11 @@ post_pr_comment() {
 if [[ "$MANAGED_SINGLEFLIGHT" == true && "$SUMMARY_EXIT" -eq 0 && "$POST_INLINE" == "true" && "$BLOCK_COUNT" -gt 0 ]]; then
   if ! sf_renew "inline" "in_progress"; then
     echo "review-post managed lease admission failure: inline phase への renew に失敗しました" >&2
-    exit 2
+    mark_post_fencing_failure "inline phase への managed fencing renew に失敗しました"
   fi
 fi
 
-if [[ "$SUMMARY_EXIT" -eq 0 && "$POST_INLINE" == "true" && "$BLOCK_COUNT" -gt 0 ]]; then
+if [[ "$SUMMARY_EXIT" -eq 0 && "$POST_INLINE" == "true" && "$BLOCK_COUNT" -gt 0 && "$POST_FENCING_FAILED" != true ]]; then
   PULL_REMAINING="$(jq -c --arg engine "$ENGINE_LABEL" --arg head_sha "$HEAD_SHA" --arg my_login "$MY_LOGIN" '
     reduce .[] as $comment ({};
       if ($comment.body | type) != "string" then .
@@ -996,7 +1012,8 @@ if [[ "$SUMMARY_EXIT" -eq 0 && "$POST_INLINE" == "true" && "$BLOCK_COUNT" -gt 0 
       INLINE_EXIT=0
       if ! sf_verify "inline-$ID"; then
         echo "review-post managed lease admission failure: inline POST 直前の verify に失敗しました" >&2
-        exit 2
+        mark_post_fencing_failure "inline POST 直前の managed fencing に失敗しました"
+        break
       fi
       INLINE_URL="$(review_post_api gh api -X POST "repos/$OWNER/$REPO/pulls/$PR_NUM/comments" \
         -f body="$COMMENT_BODY" -f path="$ANCHORED_PATH" -F line="$ANCHORED_LINE" \
@@ -1007,7 +1024,7 @@ if [[ "$SUMMARY_EXIT" -eq 0 && "$POST_INLINE" == "true" && "$BLOCK_COUNT" -gt 0 
       elif grep -Eq '(^|[^0-9])422([^0-9]|$)' "$INLINE_ERR"; then
         post_pr_comment "$ID" "$SEVERITY" "$PERSONA" "$ORIGINAL_PATH" "$ORIGINAL_LINE" "$BODY" "$PREFIX" "$FINDING_MARKER" || {
           FALLBACK_RC=$?
-          [[ "$FALLBACK_RC" -eq 2 ]] && exit 2
+          [[ "$FALLBACK_RC" -eq 2 ]] && break
         }
       else
         GITHUB_FAILED=true
@@ -1015,7 +1032,7 @@ if [[ "$SUMMARY_EXIT" -eq 0 && "$POST_INLINE" == "true" && "$BLOCK_COUNT" -gt 0 
     else
       post_pr_comment "$ID" "$SEVERITY" "$PERSONA" "$ORIGINAL_PATH" "$ORIGINAL_LINE" "$BODY" "$PREFIX" "$FINDING_MARKER" || {
         FALLBACK_RC=$?
-        [[ "$FALLBACK_RC" -eq 2 ]] && exit 2
+        [[ "$FALLBACK_RC" -eq 2 ]] && break
       }
     fi
   done < <(jq -c --argjson rows "$BLOCK_ROWS" '$rows[]' <<<"$BLOCK_ROWS")
@@ -1033,7 +1050,11 @@ if [[ "$MANAGED_SINGLEFLIGHT" == true ]]; then
   [[ "$GITHUB_FAILED" == true ]] && POST_FINAL_STATE="unknown"
   if ! sf_renew "post-complete" "$POST_FINAL_STATE"; then
     echo "review-post managed lease admission failure: post phase 完了の renew に失敗しました" >&2
-    exit 2
+    if [[ "$POST_MUTATION_STARTED" == true ]]; then
+      mark_post_fencing_failure "post phase 完了の managed fencing renew に失敗しました"
+    else
+      exit 2
+    fi
   fi
 fi
 if [[ "$POST_LOCK_ACQUIRED" == true ]]; then
@@ -1098,6 +1119,9 @@ if ! jq -n \
   exit 1
 fi
 
+if [[ "$POST_FENCING_FAILED" == true ]]; then
+  exit 3
+fi
 if [[ "$GITHUB_FAILED" == true ]]; then
   exit 1
 fi
@@ -1131,8 +1155,11 @@ summary も新規 POST する）。マーカーのない旧コメントは dedup
 API に原子的な idempotency key がないため、managed 実行では host-local post lock を必ず併用する。
 非 managed の直接実行は `REVIEW_POST_USE_LOCK=1` の明示時だけ lock を取得し、別ホスト間の排他は保証対象外である。
 managed 実行は lock 内で `review-singleflight.sh verify` を行い、サマリ mutation 直前に per_pr lease を
-`review-singleflight.sh renew`（acquire / release はしない）する。renew または verify が失敗した場合は
-GitHub write 前に exit 2 とし、dispatch 側で `post_state=post_failed` / `dispatch_status=failed` に写像する。
+`review-singleflight.sh renew`（acquire / release はしない）する。summary mutation 前の renew または verify が
+失敗した場合は GitHub write 前に exit 2 とし、dispatch 側で `post_state=post_failed` / `dispatch_status=failed` に
+写像する。summary mutation 成功後の inline/fallback 直前 verify、phase renew、または post-complete renew の
+失敗は後続 mutation を止め、成功済み write を含む result を生成して exit 3 とし、dispatch 側では
+`post_state=posted`（投稿済みまたは投稿状況不明）として扱う。
 force-release は同じ post lock を保持しているため進行中の POST の終了を待ち、旧 owner を kill しない。
 
 ```text

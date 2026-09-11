@@ -594,7 +594,7 @@ sweep_leases() {
     if [[ $? -ne 0 ]]; then close_sweep_mutex; skipped_invalid=$((skipped_invalid+1)); continue; fi
     METADATA_JSON="$raw"; SCOPE=per_pr
     if ! jq -e --arg hash "$hash" --argjson now "$current_now" '
-      type=="object" and .schema_version==1 and .scope=="per_pr" and (.key_hash|type=="string")
+      type=="object" and .schema_version==1 and .scope=="per_pr"
       and (.canonical_key|type=="string" and length>0) and (.lease_id|type=="string" and length>0)
       and (.token_fp|type=="string" and test("^[0-9a-f]{8}$"))
       and (.acquired_at|type=="number" and floor==. and .>=0 and .<=$now)

@@ -201,9 +201,9 @@ mkdir -p "$SUCCESS_DIR" "$RAW_DIR"
 FAILED_PERSONAS_JSON='[]'
 sf_phase_gate() {
   local phase="$1"
-  local sf_file="${DISPATCH_TMPDIR:-}/singleflight.json"
+  local sf_file="${DISPATCH_TMPDIR:+$DISPATCH_TMPDIR/singleflight.json}"
   local helper key token_file lease_id phase_started_at
-  [ -r "$sf_file" ] || return 0
+  [ -n "$sf_file" ] && [ -r "$sf_file" ] || return 0
   helper="$(jq -r '.helper // empty' "$sf_file")"
   key="$(jq -r '.canonical_key // empty' "$sf_file")"
   token_file="$(jq -r '.owner_token_file // empty' "$sf_file")"
@@ -661,8 +661,8 @@ if [ -n "$ARTIFACT_NOTE" ]; then
   echo "canonical artifact: 生成失敗（⚠ $ARTIFACT_NOTE）"
 fi
 
-SINGLEFLIGHT_FILE="${DISPATCH_TMPDIR:-}/singleflight.json"
-if [ -r "$SINGLEFLIGHT_FILE" ] && jq -e 'type == "object"' "$SINGLEFLIGHT_FILE" >/dev/null 2>&1; then
+SINGLEFLIGHT_FILE="${DISPATCH_TMPDIR:+$DISPATCH_TMPDIR/singleflight.json}"
+if [ -n "$SINGLEFLIGHT_FILE" ] && [ -r "$SINGLEFLIGHT_FILE" ] && jq -e 'type == "object"' "$SINGLEFLIGHT_FILE" >/dev/null 2>&1; then
   SINGLEFLIGHT_JSON="$(jq -c '.' "$SINGLEFLIGHT_FILE")"
 else
   SINGLEFLIGHT_JSON="${REVIEW_HARD_SINGLEFLIGHT_JSON:-}"

@@ -61,6 +61,23 @@ env -i PATH="$PATH" bash -c '
 RESULT_FILE="$TMPDIR_PATH/review-dispatch-result.json"
 jq -e '.dispatch_status == "unavailable" and .post_state == "not_applicable" and (.failure_reason | length) > 0' "$RESULT_FILE" >/dev/null
 
+# write-envelope も欠落した dispatch-state を受け付けず、既存 result を捏造しない。
+MISSING_TMPDIR="$TEST_ROOT/missing-state"
+mkdir -p -- "$MISSING_TMPDIR"
+set +e
+bash "$STATE_HELPER" write-envelope --dispatch-state "$MISSING_TMPDIR/dispatch-state.json" --dispatch-tmpdir "$MISSING_TMPDIR" \
+  --sf-helper "$SF_HELPER" --envelope-helper "$ENVELOPE_HELPER" --canonical-key $'github.com\nowner/repo\n411' \
+  --backend codex --status unavailable --post-state not_applicable --reason "missing state test" \
+  >"$TEST_ROOT/missing-state.out" 2>"$TEST_ROOT/missing-state.err"
+MISSING_STATE_RC=$?
+set -e
+if [[ "$MISSING_STATE_RC" -ne 0 && ! -e "$MISSING_TMPDIR/review-dispatch-result.json" ]]; then
+  echo "PASS: write-envelope は欠落した dispatch-state を拒否する"
+else
+  echo "FAIL: write-envelope は欠落した dispatch-state を拒否する"
+  exit 1
+fi
+
 # 3つ目の呼び出しも独立プロセスで cleanup を実行し、lease/state を更新する。
 env -i PATH="$PATH" bash -c '
   set -euo pipefail

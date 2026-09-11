@@ -98,6 +98,7 @@ write_envelope() {
   [[ -n "$dispatch_state" && -n "$dispatch_tmpdir" && -n "$sf_helper" && -n "$envelope_helper" \
     && -n "$canonical_key" && -n "$backend" && -n "$status" && -n "$post_state" && -n "$reason" ]] || usage
   require_absolute_path dispatch-state "$dispatch_state"
+  require_file dispatch-state "$dispatch_state"
   require_absolute_path dispatch-tmpdir "$dispatch_tmpdir"
   require_absolute_path sf-helper "$sf_helper"
   require_absolute_path envelope-helper "$envelope_helper"

@@ -88,6 +88,37 @@ if grep -Fq 'POST:summary-post' "$TEST_ROOT/events.log" \
   && jq -e '.last_checkpoint_at == 100' "$TEST_ROOT/runtime/claude-review-sf/per_pr/"*.json >/dev/null 2>&1; then result=0; else result=1; fi
 record_result "managed request は post lock と mutation 直前 renew を有効化する" "$result"
 
+ORIGINAL_KEY="$KEY"
+ORIGINAL_LEASE_ID="$LEASE_ID"
+# summary mutation 後に同じ managed lease を fence するため、valid ケースの lease を解放して再取得する。
+RELEASE_VALID_OUT="$(REVIEW_SINGLEFLIGHT_TEST_MODE=1 REVIEW_SINGLEFLIGHT_NOW=100 XDG_RUNTIME_DIR="$TEST_ROOT/runtime" \
+  bash "$HELPER" release --scope per_pr --key "$ORIGINAL_KEY" --owner-token-file "$TEST_ROOT/dispatch/sf-owner-token" \
+  --lease-id "$ORIGINAL_LEASE_ID")"
+KEY="$ORIGINAL_KEY"
+make_token_and_lease
+make_request partial "$LEASE_ID"
+: >"$TEST_ROOT/events.log"
+env PATH="$TEST_ROOT/bin:$PATH" GH_EVENT_LOG="$TEST_ROOT/events.log" XDG_RUNTIME_DIR="$TEST_ROOT/runtime" \
+  REVIEW_SINGLEFLIGHT_TEST_MODE=1 REVIEW_SINGLEFLIGHT_NOW=100 \
+  bash "$TEST_ROOT/review-post.sh" "$TEST_ROOT/partial.request.json" >"$TEST_ROOT/partial.out" 2>"$TEST_ROOT/partial.err" &
+PARTIAL_PID=$!
+for _ in $(seq 1 50); do
+  grep -Fq 'POST:summary-post' "$TEST_ROOT/events.log" 2>/dev/null && break
+  sleep 0.05
+done
+RELEASE_PARTIAL_OUT="$(REVIEW_SINGLEFLIGHT_TEST_MODE=1 REVIEW_SINGLEFLIGHT_NOW=100 XDG_RUNTIME_DIR="$TEST_ROOT/runtime" \
+  bash "$HELPER" release --scope per_pr --key "$KEY" --owner-token-file "$TEST_ROOT/dispatch/sf-owner-token" --lease-id "$LEASE_ID")"
+set +e
+wait "$PARTIAL_PID"
+PARTIAL_RC=$?
+set -e
+KEY="$ORIGINAL_KEY"
+make_token_and_lease
+if [[ "$PARTIAL_RC" -eq 3 ]] \
+  && jq -e '.github_writes | map(select(.kind == "summary")) | length == 1' "$TEST_ROOT/partial.result.json" >/dev/null 2>&1 \
+  && [[ "$(grep -c '^POST:summary-post' "$TEST_ROOT/events.log")" -eq 1 ]]; then result=0; else result=1; fi
+record_result "summary mutation 後の fencing failure は exit 3 で result を残し追加投稿を止める" "$result"
+
 make_request invalid "$LEASE_ID-wrong"
 : >"$TEST_ROOT/events.log"
 set +e

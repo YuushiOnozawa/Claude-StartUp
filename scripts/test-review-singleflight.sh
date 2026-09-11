@@ -126,6 +126,19 @@ META_SWEEP_OUT="$(run_sf sweep --scope per_pr)"
 if jq -e --arg path "$META_HASH_JSON" '(.broken_leases | map(select(.path == $path and .reason == "key_hash_mismatch")) | length) == 1' <<<"$META_SWEEP_OUT" >/dev/null; then result=0; else result=1; fi
 record_result "sweep は metadata key_hash の不整合も壊れた lease として列挙する" "$result"
 
+MISSING_META_KEY=$'github.com\nowner/missing-meta-hash\n15'
+new_token "$TEST_ROOT/token-missing-meta-hash"
+run_sf acquire --scope per_pr --key "$MISSING_META_KEY" --owner-token-file "$TEST_ROOT/token-missing-meta-hash" \
+  --engine magi-hard --overdue-seconds 100 >/dev/null
+MISSING_META_HASH="$(printf 'per_pr\0%s' "$MISSING_META_KEY" | sha256sum | cut -d' ' -f1)"
+MISSING_META_JSON="$TEST_ROOT/runtime/claude-review-sf/per_pr/$MISSING_META_HASH.json"
+jq 'del(.key_hash)' "$MISSING_META_JSON" >"$MISSING_META_JSON.next" && mv -- "$MISSING_META_JSON.next" "$MISSING_META_JSON" && chmod 600 -- "$MISSING_META_JSON"
+MISSING_META_SWEEP_OUT="$(run_sf sweep --scope per_pr)"
+if jq -e --arg path "$MISSING_META_JSON" \
+  '(.broken_leases | map(select(.path == $path and .reason == "key_hash_mismatch" and .metadata_key_hash == "")) | length) == 1' \
+  <<<"$MISSING_META_SWEEP_OUT" >/dev/null; then result=0; else result=1; fi
+record_result "sweep は key_hash 欠落でも canonical key を再計算して broken_leases に列挙する" "$result"
+
 set +e
 NO_REASON_OUT="$(run_sf release --force-release --scope per_pr --key "$KEY" --expected-lease-id "$LEASE_ID" 2>/dev/null)"
 NO_REASON_RC=$?

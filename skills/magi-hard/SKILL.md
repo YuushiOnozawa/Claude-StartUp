@@ -151,9 +151,9 @@ record_magi_persona_result() {
 
 sf_phase_gate() {
   local phase="$1"
-  local sf_file="${DISPATCH_TMPDIR:-}/singleflight.json"
+  local sf_file="${DISPATCH_TMPDIR:+$DISPATCH_TMPDIR/singleflight.json}"
   local helper key token_file lease_id phase_started_at
-  [ -r "$sf_file" ] || return 0
+  [ -n "$sf_file" ] && [ -r "$sf_file" ] || return 0
   helper="$(jq -r '.helper // empty' "$sf_file")"
   key="$(jq -r '.canonical_key // empty' "$sf_file")"
   token_file="$(jq -r '.owner_token_file // empty' "$sf_file")"
@@ -796,8 +796,8 @@ ARTIFACT_PATH_VALUE="${ARTIFACT_FILE:-}"
 ADJUDICATION_PATH_VALUE="${ADJUDICATION_RESULT:-}"
 # /review-hard が managed invocation context に明示的に渡す JSON。未 managed の直接起動では空にする。
 # token/lease の正本自体は DISPATCH_TMPDIR のファイルであり、次の Bash 呼び出しへの env 継承には依存しない。
-SINGLEFLIGHT_FILE="${DISPATCH_TMPDIR:-}/singleflight.json"
-if [ -r "$SINGLEFLIGHT_FILE" ] && jq -e 'type == "object"' "$SINGLEFLIGHT_FILE" >/dev/null 2>&1; then
+SINGLEFLIGHT_FILE="${DISPATCH_TMPDIR:+$DISPATCH_TMPDIR/singleflight.json}"
+if [ -n "$SINGLEFLIGHT_FILE" ] && [ -r "$SINGLEFLIGHT_FILE" ] && jq -e 'type == "object"' "$SINGLEFLIGHT_FILE" >/dev/null 2>&1; then
   SINGLEFLIGHT_JSON="$(jq -c '.' "$SINGLEFLIGHT_FILE")"
 else
   SINGLEFLIGHT_JSON="${REVIEW_HARD_SINGLEFLIGHT_JSON:-}"
@@ -876,14 +876,20 @@ elif [ "$POST_RC" -eq 2 ] && [ ! -s "$REVIEW_POST_RESULT" ]; then
   return 2
 elif [ "$POST_RC" -ne 0 ]; then
   POST_STATE=posted
+  if [ -n "${DISPATCH_STATE:-}" ] && [ -r "$DISPATCH_STATE" ]; then
+    jq --arg reason "review-post の終了コードが非0で投稿状況を確認できません" \
+      '.post_state="posted" | .phase="post_unknown" | .failure_reason=$reason | .saved_rc=1' \
+      "$DISPATCH_STATE" > "$DISPATCH_STATE.tmp" && mv -f "$DISPATCH_STATE.tmp" "$DISPATCH_STATE"
+  fi
   echo "MAGI_HARD_FAILED: review-post の投稿状況を確認できません" >&2
   return 1
 fi
-if [ -r "${DISPATCH_TMPDIR:-}/singleflight.json" ]; then
-  SF_HELPER_POST="$(jq -r '.helper' "$DISPATCH_TMPDIR/singleflight.json")"
-  SF_KEY_POST="$(jq -r '.canonical_key' "$DISPATCH_TMPDIR/singleflight.json")"
-  SF_TOKEN_POST="$(jq -r '.owner_token_file' "$DISPATCH_TMPDIR/singleflight.json")"
-  SF_LEASE_POST="$(jq -r '.lease_id' "$DISPATCH_TMPDIR/singleflight.json")"
+SINGLEFLIGHT_FILE_POST="${DISPATCH_TMPDIR:+$DISPATCH_TMPDIR/singleflight.json}"
+if [ -n "$SINGLEFLIGHT_FILE_POST" ] && [ -r "$SINGLEFLIGHT_FILE_POST" ]; then
+  SF_HELPER_POST="$(jq -r '.helper' "$SINGLEFLIGHT_FILE_POST")"
+  SF_KEY_POST="$(jq -r '.canonical_key' "$SINGLEFLIGHT_FILE_POST")"
+  SF_TOKEN_POST="$(jq -r '.owner_token_file' "$SINGLEFLIGHT_FILE_POST")"
+  SF_LEASE_POST="$(jq -r '.lease_id' "$SINGLEFLIGHT_FILE_POST")"
   bash "$SF_HELPER_POST" renew --scope per_pr --key "$SF_KEY_POST" --owner-token-file "$SF_TOKEN_POST" --lease-id "$SF_LEASE_POST" \
     --current-phase POST_COMPLETE --post-state complete >"$MAGI_RUN_DIR/singleflight-post-complete.json" 2>"$MAGI_RUN_DIR/singleflight-post-complete.err" || return 2
 fi

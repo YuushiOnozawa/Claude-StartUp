@@ -67,6 +67,78 @@ else
 fi
 record_result "handoff 後のテスト lease を明示的に release できる" "$RELEASE_RC"
 
+# acquire 時点で chunk/persona 数が未確定なら codex の max_configured_allowance を使う。
+set +e
+FALLBACK_OUTPUT="$(env -u SF_CHUNK_COUNT -u DIFF_CHUNK_COUNT -u SF_PERSONA_COUNT \
+  OWNER=owner REPO=repo PR_NUM=42 HEAD_SHA=abc123 FORGE_HOST=github.com \
+  REVIEW_HARD_BACKEND=codex XDG_RUNTIME_DIR="$TEST_ROOT/runtime" \
+  REVIEW_SINGLEFLIGHT_TEST_MODE=1 REVIEW_SINGLEFLIGHT_FS_TYPE=overlay REVIEW_SINGLEFLIGHT_NOW=100 \
+  bash "$SNIPPET" 2>"$TEST_ROOT/fallback.err")"
+FALLBACK_RC=$?
+set -e
+FALLBACK_HANDOFF="$(awk '/^review-dispatch handoff: /{sub(/^review-dispatch handoff: /,"",$0); path=$0} END{print path}' <<<"$FALLBACK_OUTPUT")"
+FALLBACK_TMPDIR="$(jq -r '.tmpdir // empty' <<<"$FALLBACK_HANDOFF" 2>/dev/null || true)"
+FALLBACK_KEY=$'github.com\nowner/repo\n42'
+FALLBACK_HASH="$(printf 'per_pr\0%s' "$FALLBACK_KEY" | sha256sum | cut -d' ' -f1)"
+CODEX_MAX_ALLOWANCE="$(bash "$REPO_ROOT/skills/flow-common/execution-budget.sh" max-allowance codex)"
+if [[ "$FALLBACK_RC" -eq 0 && -n "$FALLBACK_TMPDIR" ]] \
+  && jq -e --argjson expected "$CODEX_MAX_ALLOWANCE" \
+    '.planned_overdue_at == $expected' "$TEST_ROOT/runtime/claude-review-sf/per_pr/$FALLBACK_HASH.json" >/dev/null; then
+  result=0
+else
+  result=1
+fi
+record_result "chunk/persona 未確定時の codex planned_overdue_at は max_configured_allowance を使う" "$result"
+FALLBACK_LEASE="$(jq -r '.lease_id // empty' <<<"$FALLBACK_HANDOFF" 2>/dev/null || true)"
+if [[ -n "$FALLBACK_LEASE" ]]; then
+  XDG_RUNTIME_DIR="$TEST_ROOT/runtime" REVIEW_SINGLEFLIGHT_TEST_MODE=1 REVIEW_SINGLEFLIGHT_FS_TYPE=overlay REVIEW_SINGLEFLIGHT_NOW=100 \
+    bash "$HELPER" release --scope per_pr --key "$FALLBACK_KEY" --owner-token-file "$FALLBACK_TMPDIR/sf-owner-token" \
+    --lease-id "$FALLBACK_LEASE" >/dev/null
+fi
+
+# acquire 後の dispatch-state 更新失敗は handoff を返さず、取得済み lease を release する。
+STATE_FAIL_HELPER="$TEST_ROOT/state-fail-after-acquire.sh"
+cat >"$STATE_FAIL_HELPER" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\$*" == *'.per_pr.acquired=true'* ]]; then
+  echo 'injected state update failure' >&2
+  exit 19
+fi
+exec bash "$REPO_ROOT/scripts/review-dispatch-state.sh" "\$@"
+EOF
+chmod 700 -- "$STATE_FAIL_HELPER"
+FAILURE_KEY=$'github.com\nowner/repo\n44'
+set +e
+FAILURE_OUTPUT="$(OWNER=owner REPO=repo PR_NUM=44 HEAD_SHA=abc123 FORGE_HOST=github.com \
+  REVIEW_HARD_BACKEND=codex STATE_HELPER="$STATE_FAIL_HELPER" XDG_RUNTIME_DIR="$TEST_ROOT/runtime" \
+  REVIEW_SINGLEFLIGHT_TEST_MODE=1 REVIEW_SINGLEFLIGHT_FS_TYPE=overlay REVIEW_SINGLEFLIGHT_NOW=100 \
+  bash "$SNIPPET" 2>"$TEST_ROOT/state-failure.err")"
+FAILURE_RC=$?
+set -e
+REACQUIRE_TOKEN="$TEST_ROOT/reacquire-token"
+(umask 077; printf '%s\n' reacquire-token-secure >"$REACQUIRE_TOKEN")
+chmod 600 -- "$REACQUIRE_TOKEN"
+set +e
+REACQUIRE_OUTPUT="$(XDG_RUNTIME_DIR="$TEST_ROOT/runtime" REVIEW_SINGLEFLIGHT_TEST_MODE=1 REVIEW_SINGLEFLIGHT_FS_TYPE=overlay REVIEW_SINGLEFLIGHT_NOW=100 \
+  bash "$HELPER" acquire --scope per_pr --key "$FAILURE_KEY" --owner-token-file "$REACQUIRE_TOKEN" \
+  --engine codex-hard --overdue-seconds 100 2>"$TEST_ROOT/reacquire.err")"
+REACQUIRE_RC=$?
+set -e
+if [[ "$FAILURE_RC" -eq 5 && ! "$FAILURE_OUTPUT" =~ 'review-dispatch handoff:' \
+  && "$REACQUIRE_RC" -eq 0 && "$(jq -r '.state' <<<"$REACQUIRE_OUTPUT")" == acquired ]]; then
+  result=0
+else
+  result=1
+fi
+record_result "acquire 後の state 更新失敗は lease を release して handoff を返さない" "$result"
+REACQUIRE_LEASE="$(jq -r '.lease_id // empty' <<<"$REACQUIRE_OUTPUT")"
+if [[ -n "$REACQUIRE_LEASE" ]]; then
+  XDG_RUNTIME_DIR="$TEST_ROOT/runtime" REVIEW_SINGLEFLIGHT_TEST_MODE=1 REVIEW_SINGLEFLIGHT_FS_TYPE=overlay REVIEW_SINGLEFLIGHT_NOW=100 \
+    bash "$HELPER" release --scope per_pr --key "$FAILURE_KEY" --owner-token-file "$REACQUIRE_TOKEN" \
+    --lease-id "$REACQUIRE_LEASE" >/dev/null
+fi
+
 TOKEN="$TEST_ROOT/fence-token"
 (umask 077; printf '%s\n' fence-token-secure > "$TOKEN")
 chmod 600 "$TOKEN"
