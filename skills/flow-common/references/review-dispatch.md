@@ -481,7 +481,7 @@ review_hard_dispatch() {
       sf_state_set '.per_pr.acquired=false | .saved_rc=$rc | .phase="aborted"' --argjson rc "$SAVED_RC" || state_rc=$?
       if [[ "$state_rc" -ne 0 ]]; then
         echo "review-dispatch: abort 後の dispatch-state.json 更新に失敗しました（release_rc=$release_rc）。正本が実態と乖離している可能性があります。stale_suspected として扱ってください" >&2
-        sf_state_set '.saved_rc=$rc | .phase="cleanup_failed"' --argjson rc "$SAVED_RC" || fallback_rc=$?
+        sf_state_set '.per_pr.acquired=false | .saved_rc=$rc | .phase="cleanup_failed"' --argjson rc "$SAVED_RC" || fallback_rc=$?
         if [[ "$fallback_rc" -ne 0 ]]; then
           echo "review-dispatch: abort 後の dispatch-state.json フォールバック更新にも失敗しました（release_rc=$release_rc）。正本が実態と乖離している可能性があります。stale_suspected として扱ってください" >&2
         fi

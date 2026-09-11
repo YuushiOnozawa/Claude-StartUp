@@ -201,6 +201,61 @@ else
 fi
 record_result "release 成功後の abort state 更新失敗は明示して cleanup_failed へフォールバックする" "$result"
 
+# acquire 後の engine_running 更新失敗で abort に入り、cleanup_failed フォールバックでも acquired=false を記録する。
+ENGINE_ABORT_STATE_FAIL_HELPER="$TEST_ROOT/state-fail-on-engine-running.sh"
+cat >"$ENGINE_ABORT_STATE_FAIL_HELPER" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\$*" == *'.per_pr.acquired=true'* ]]; then
+  printf '%s\n' acquired_true >> "$TEST_ROOT/engine-abort-state-filters"
+fi
+if [[ "\$*" == *'.phase="engine_running"'* ]]; then
+  state_path=""
+  while ((\$#)); do
+    if [[ "\$1" == "--dispatch-state" && \$# -ge 2 ]]; then
+      state_path="\$2"
+      break
+    fi
+    shift
+  done
+  printf '%s\n' "\$state_path" > "$TEST_ROOT/engine-abort-failure-state-path"
+  printf '%s\n' engine_running >> "$TEST_ROOT/engine-abort-state-filters"
+  echo 'injected engine_running state update failure' >&2
+  exit 19
+fi
+if [[ "\$*" == *'.phase="aborted"'* ]]; then
+  printf '%s\n' aborted >> "$TEST_ROOT/engine-abort-state-filters"
+  echo 'injected abort state update failure' >&2
+  exit 19
+fi
+if [[ "\$*" == *'.phase="cleanup_failed"'* ]]; then
+  printf '%s\n' cleanup_failed >> "$TEST_ROOT/engine-abort-state-filters"
+fi
+exec bash "$REPO_ROOT/scripts/review-dispatch-state.sh" "\$@"
+EOF
+chmod 700 -- "$ENGINE_ABORT_STATE_FAIL_HELPER"
+set +e
+ENGINE_ABORT_OUTPUT="$(OWNER=owner REPO=repo PR_NUM=46 HEAD_SHA=abc123 FORGE_HOST=github.com \
+  REVIEW_HARD_BACKEND=codex STATE_HELPER="$ENGINE_ABORT_STATE_FAIL_HELPER" XDG_RUNTIME_DIR="$TEST_ROOT/runtime" \
+  REVIEW_SINGLEFLIGHT_TEST_MODE=1 REVIEW_SINGLEFLIGHT_FS_TYPE=overlay REVIEW_SINGLEFLIGHT_NOW=100 \
+  bash "$SNIPPET" 2>"$TEST_ROOT/engine-abort-state-failure.err")"
+ENGINE_ABORT_RC=$?
+set -e
+ENGINE_ABORT_STATE="$(<"$TEST_ROOT/engine-abort-failure-state-path")"
+ENGINE_ABORT_TMPDIR="$(jq -r '.tmpdir' "$ENGINE_ABORT_STATE")"
+if [[ "$ENGINE_ABORT_RC" -eq 5 && ! "$ENGINE_ABORT_OUTPUT" =~ 'review-dispatch handoff:' ]] \
+  && jq -e '.per_pr.acquired == false and .saved_rc == 5 and .phase == "cleanup_failed"' "$ENGINE_ABORT_STATE" >/dev/null \
+  && jq -e '.state == "released"' "$ENGINE_ABORT_TMPDIR/release-after-acquire.json" >/dev/null \
+  && [[ "$(grep -Fc acquired_true "$TEST_ROOT/engine-abort-state-filters")" -eq 1 ]] \
+  && [[ "$(grep -Fc engine_running "$TEST_ROOT/engine-abort-state-filters")" -eq 1 ]] \
+  && [[ "$(grep -Fc aborted "$TEST_ROOT/engine-abort-state-filters")" -eq 1 ]] \
+  && [[ "$(grep -Fc cleanup_failed "$TEST_ROOT/engine-abort-state-filters")" -eq 1 ]]; then
+  result=0
+else
+  result=1
+fi
+record_result "acquire 記録後の engine_running 更新失敗は cleanup_failed でも acquired=false にする" "$result"
+
 TOKEN="$TEST_ROOT/fence-token"
 (umask 077; printf '%s\n' fence-token-secure > "$TOKEN")
 chmod 600 "$TOKEN"
