@@ -51,6 +51,7 @@ if ! jq -e '
   | (
       type == "object"
       and (required_keys | all(.[]; . as $key | ($envelope | has($key))))
+      and (($envelope | keys | sort) == (required_keys | sort))
       and (.schema_version | type == "string" and . == "1")
       and (.artifact_type | type == "string" and . == "review-dispatch-result")
       and (.review_kind | type == "string" and IN("fast", "hard"))

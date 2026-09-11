@@ -315,10 +315,11 @@ dispatch が担う。`validity_global_failure:true` は block_layer=audit とし
   `failure_reason` 非空とする。`github_writes` が空でも未投稿の証明にはならない（サーバ受理後の
   タイムアウトや応答解析失敗でも空になり得る）ため、`github_writes` の中身で post_failed と posted を
   分けない。hard の LGTM は `dispatch_status != complete` の述語で止まる。
-- 終了コード 2（`review-post.md` の契約上、request / 入力 artifact の契約違反であり、この検証より前に
-  GitHub API を呼び出してはならない ＝ 未投稿を保証できる）は dispatch_status=failed、
-  post_state=post_failed、gate_decision=indeterminate、blocking_count=null とする。
-  `/review-hard` の再実行は安全。
+- 終了コード 2（`review-post.md` の契約上、request / 入力 artifact の契約違反、または managed lease admission
+  failure であり、この検証より前に GitHub mutation を呼び出してはならない ＝ 未投稿を保証できる）は
+  `dispatch_status=failed`、`post_state=post_failed`、`gate_decision=indeterminate`、`blocking_count=null`、
+  `manual_review_required=true` とする。verify の lease_id 不一致、released / force-released、owner token 消失、
+  post lock 内の再確認失敗、投稿直前 renew の `not_owner` / I/O 失敗を含む。`/review-hard` の再実行は安全である。
 - `/review-post` を起動した後の異常終了、result ファイルなし、または result の parse 不能（終了コード 2
   以外で write 状況が不明）は dispatch_status=failed、post_state=posted（保守的）、
   gate_decision=indeterminate、blocking_count=null、`failure_reason` 非空とする。
@@ -336,13 +337,401 @@ dispatch が担う。`validity_global_failure:true` は block_layer=audit とし
 
 投稿しない hard レビューが必要な場合は、従来どおり /codex-hard を直接使う。
 
+## 単一飛行制御（single-flight, hard 専用）
+
+この節は `review_kind==hard` のゲート下にのみ適用する。`/review-fast` は一切変更せず、lease、post lock、
+`review-post` の managed request を持たない。#411 の helper が扱う lease scope は `per_pr` のみであり、
+broker 層の lease は追加しない（PR-2 の `codex-broker-run.sh` が、実際の Codex task 呼び出し境界を担当する）。
+
+`/review-hard` は次の順に実行する。
+
+1. **A1 PR 識別解決**: `forge_host`、owner、repo、number、`head_sha` を解決し、owner/repo を小文字化した
+   canonical key `"{forge_host}\n{owner}/{repo}\n{pr_number}"` を作る。`head_sha` は key に含めず metadata に保存する。
+2. **A2 backend 選択**: `magi` または `codex` を決定する。lease の metadata と unavailable envelope の
+   `backend` は、この選択後の値を使う。
+3. **A3 入力検証**: PR、backend、diff、依存コマンド、request 契約を検証する。ここまでは lease を取得しない。
+4. **A4 state bootstrap**: `DISPATCH_TMPDIR=$(mktemp -d)` を作り、`umask 077` 下で UUID の
+   `sf-owner-token` と atomic rename の `dispatch-state.json` を作る。owner token、lease_id、cleanup 状態は
+   このファイル正本で引き渡し、独立 Bash 呼び出し間の env / shell variable 継承に依存しない。
+5. **H1 startup sweep**: `review-singleflight.sh sweep --scope per_pr` を実行する。`stale_suspected` は列挙
+   するだけで削除しない。
+6. **H2 admission**: run 開始時に実際の chunk 数・persona/task 数から `planned_overdue_at` を導出し、
+   backend 選択後に次の完全な helper 契約で実行する。`SF_ENGINE=review-hard` とし、
+   `SF_PLANNED_OVERDUE` は `execution-budget.sh max-allowance <backend>` を上限に実 chunk/persona 数から算出し、
+   算出不能時は max-allowance をそのまま使う。
+
+   ```bash
+   SF_ENGINE=review-hard
+   SF_PLANNED_OVERDUE="$(bash "$BUDGET_HELPER" max-allowance "$BACKEND" 2>/dev/null || true)"
+   bash "$SF_HELPER" acquire --scope per_pr --key "$SF_CANONICAL_KEY" \
+     --owner-token-file "$DISPATCH_TMPDIR/sf-owner-token" \
+     --engine "$SF_ENGINE" --head-sha "$HEAD_SHA" \
+     --overdue-seconds "$SF_PLANNED_OVERDUE" \
+     --owner-session-id "$SF_SESSION_ID" --owner-run-id "$SF_RUN_ID" --host "$SF_HOST" \
+     --artifact-path "$DISPATCH_TMPDIR/engine-artifact.json" --log-path "$DISPATCH_TMPDIR/engine.log" \
+     > "$DISPATCH_TMPDIR/acquire.json"
+   SF_ACQUIRE_JSON="$(jq -c '.' "$DISPATCH_TMPDIR/acquire.json")"
+   ```
+
+acquire が `held` または `stale_suspected`（その他の fail-closed を含む）なら、待機・自動 takeover・backend
+再選択をせず、次の canonical hard envelope を作って exit 2 で停止する。stderr には holder の `lease_id`、
+`token_fp`、owner session/run、開始時刻、engine、残り時間、`status` の確認手順、そのまま貼れる
+`--force-release --expected-lease-id <id> --reason "<text>"` 手順を出す。`owner_token` は stdout、stderr、
+status、envelope、ログのいずれにも出さない。「TTL 失効済みでも旧 owner が生存していれば force-release は
+二重投稿を招き得る」警告も表示し、backend 再選択 UI は表示しない。
+
+fail-fast envelope は builder 自身がキー集合を canonical 15 個と完全一致することを検証してから
+`$DISPATCH_TMPDIR/review-dispatch-result.json` に書く（validator が余分なキーを弾かないため）。値は次のとおり。
+
+```text
+schema_version:          "1"
+artifact_type:           "review-dispatch-result"
+review_kind:             "hard"
+backend:                 <A2 の選択値>
+dispatch_status:         "unavailable"
+gate_decision:           "indeterminate"
+lgtm_eligible:           false
+blocking_count:          null
+manual_review_required:  true
+manual_review:           null
+artifact_ref:             null
+adjudication_ref:         null
+post_state:               "not_applicable"
+failure_reason:           <非空の lock admission 理由>
+native_result:            {}
+```
+
+builder 自己検証後に `bash scripts/review-dispatch-envelope.sh validate "$REVIEW_DISPATCH_RESULT"` を通し、
+`$REVIEW_DISPATCH_RESULT` には絶対パスだけを返す。builder または validator が失敗した場合も同じ
+canonical failed envelope を再生成し、再生成不能なら `$REVIEW_DISPATCH_RESULT` を未設定のまま明示的に
+fail-closed とする。
+
+acquire 成功後は `dispatch-state.json` の `per_pr.acquired=true` と `lease_id` を永続化し、
+`DISPATCH_TMPDIR`、`DISPATCH_STATE`、`SF_CANONICAL_KEY`、取得した `SF_LEASE_ID`、および
+`singleflight.json` のパスを handoff として返して終了する。各 phase 開始前は
+`bash scripts/review-singleflight.sh verify --scope per_pr --key "$CANONICAL_KEY"`
+（`owner_token_file` と `lease_id` を明示）で owner token / lease_id を再確認し、不一致・失効・token 消失時は
+後続 phase と GitHub 副作用へ進まない。engine（`/magi-hard` または `/codex-hard`）へは
+`singleflight` object を request JSON に渡し、engine が `/review-post` request へそのまま引き継ぐ。
+
+以下の Bash ブロックは A4/H1/H2、managed object の生成、acquire、fail-fast envelope の生成・検証、handoff の
+返却までを実装する。engine、review-post、CLEANUP はこの関数の呼び出し元である対話的 Claude セッションの責務である。
+
+```bash
+review_hard_dispatch() {
+  local SAVED_RC=0 ACQUIRE_RC=0 STATE_TMP
+  local ACQUIRE_JSON DISPATCH_HANDOFF
+  WORKTREE_ROOT="${WORKTREE_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+  BACKEND="${REVIEW_HARD_BACKEND:-${BACKEND:-}}"
+  [[ "$BACKEND" == magi || "$BACKEND" == codex ]] || return 2
+  FORGE_HOST="${FORGE_HOST:-github.com}"
+  SF_CANONICAL_KEY="${CANONICAL_KEY:-$(printf '%s\n%s/%s\n%s' "$FORGE_HOST" "${OWNER,,}" "${REPO,,}" "$PR_NUM")}"
+  HEAD_SHA="${HEAD_SHA:?HEAD_SHA is required}"
+  SF_ENGINE=review-hard
+  SF_SESSION_ID="${SF_SESSION_ID:-${CLAUDE_SESSION_ID:-unknown-session}}"
+  SF_RUN_ID="${SF_RUN_ID:-${RUN_ID:-unknown-run}}"
+  SF_HOST="${SF_HOST:-$(hostname 2>/dev/null || printf '%s' unknown)}"
+  SF_HELPER="${SF_HELPER:-$WORKTREE_ROOT/scripts/review-singleflight.sh}"
+  [[ -r "$SF_HELPER" ]] || SF_HELPER="${HOME:-}/.claude/scripts/review-singleflight.sh"
+  ENVELOPE_HELPER="${ENVELOPE_HELPER:-$WORKTREE_ROOT/scripts/review-dispatch-envelope.sh}"
+  [[ -r "$ENVELOPE_HELPER" ]] || ENVELOPE_HELPER="${HOME:-}/.claude/scripts/review-dispatch-envelope.sh"
+  STATE_HELPER="${STATE_HELPER:-$WORKTREE_ROOT/scripts/review-dispatch-state.sh}"
+  [[ -r "$STATE_HELPER" ]] || STATE_HELPER="${HOME:-}/.claude/scripts/review-dispatch-state.sh"
+  BUDGET_HELPER="$WORKTREE_ROOT/skills/flow-common/execution-budget.sh"
+  [[ -r "$BUDGET_HELPER" ]] || BUDGET_HELPER="${HOME:-}/.claude/skills/flow-common/execution-budget.sh"
+  [[ -r "$SF_HELPER" && -r "$ENVELOPE_HELPER" && -r "$STATE_HELPER" ]] || return 2
+  SF_HELPER="$(realpath -m -- "$SF_HELPER")"
+  ENVELOPE_HELPER="$(realpath -m -- "$ENVELOPE_HELPER")"
+  STATE_HELPER="$(realpath -m -- "$STATE_HELPER")"
+
+  DISPATCH_TMPDIR="$(mktemp -d)" || return 2
+  chmod 700 "$DISPATCH_TMPDIR" || return 2
+  DISPATCH_STATE="$DISPATCH_TMPDIR/dispatch-state.json"
+  SF_TOKEN_FILE="$DISPATCH_TMPDIR/sf-owner-token"
+  ( umask 077 && jq -n \
+      --arg tmpdir "$DISPATCH_TMPDIR" --arg dispatch_state "$DISPATCH_STATE" --arg backend "$BACKEND" \
+      --arg state_helper "$STATE_HELPER" --arg sf_helper "$SF_HELPER" --arg envelope_helper "$ENVELOPE_HELPER" \
+      --arg canonical_key "$SF_CANONICAL_KEY" --arg owner_token_file "$SF_TOKEN_FILE" \
+      '{schema_version:"1",phase:"init",tmpdir:$tmpdir,dispatch_state:$dispatch_state,backend:$backend,state_helper:$state_helper,sf_helper:$sf_helper,envelope_helper:$envelope_helper,canonical_key:$canonical_key,owner_token_file:$owner_token_file,singleflight_file:($tmpdir + "/singleflight.json"),lease_id:null,per_pr:{acquired:false},saved_rc:0,post_state:"not_started"}' \
+      > "$DISPATCH_STATE.tmp" && mv -f "$DISPATCH_STATE.tmp" "$DISPATCH_STATE" ) || return 2
+  ( umask 077 && python3 -c 'import uuid;print(uuid.uuid4())' > "$SF_TOKEN_FILE" ) || return 2
+  sf_state_set() {
+    local filter="$1"; shift
+    bash "$STATE_HELPER" set --dispatch-state "$DISPATCH_STATE" --filter "$filter" "$@"
+  }
+  sf_state_set '.owner_token_file=$token_file' --arg token_file "$SF_TOKEN_FILE" || return 5
+
+  SF_MAX_ALLOWANCE="$(bash "$BUDGET_HELPER" max-allowance "$BACKEND" 2>/dev/null || true)"
+  SF_CHUNK_COUNT="${SF_CHUNK_COUNT:-${DIFF_CHUNK_COUNT:-1}}"; SF_PERSONA_COUNT="${SF_PERSONA_COUNT:-6}"
+  SF_PER_CHUNK="$(bash "$BUDGET_HELPER" generation-factor per_chunk_seconds "$BACKEND" 2>/dev/null || true)"
+  SF_POST_BUDGET="$(bash "$BUDGET_HELPER" get review_post "$BACKEND" 2>/dev/null || true)"
+  if [[ "$SF_MAX_ALLOWANCE" =~ ^[1-9][0-9]*$ && "$SF_CHUNK_COUNT" =~ ^[1-9][0-9]*$ && "$SF_PERSONA_COUNT" =~ ^[1-9][0-9]*$ && "$SF_PER_CHUNK" =~ ^[1-9][0-9]*$ ]]; then
+    [[ "$SF_POST_BUDGET" =~ ^[1-9][0-9]*$ ]] || SF_POST_BUDGET=3120
+    SF_PLANNED_OVERDUE=$((SF_CHUNK_COUNT * SF_PERSONA_COUNT * SF_PER_CHUNK + SF_POST_BUDGET))
+    (( SF_PLANNED_OVERDUE > SF_MAX_ALLOWANCE )) && SF_PLANNED_OVERDUE="$SF_MAX_ALLOWANCE"
+  else
+    SF_PLANNED_OVERDUE="${SF_MAX_ALLOWANCE:-3120}"
+  fi
+  [[ "$SF_PLANNED_OVERDUE" =~ ^[1-9][0-9]*$ ]] || SF_PLANNED_OVERDUE=3120
+
+  sf_write_envelope() {
+    local status="$1" post_state="$2" reason="$3"
+    bash "$STATE_HELPER" write-envelope --dispatch-state "$DISPATCH_STATE" --dispatch-tmpdir "$DISPATCH_TMPDIR" \
+      --sf-helper "$SF_HELPER" --envelope-helper "$ENVELOPE_HELPER" --canonical-key "$SF_CANONICAL_KEY" \
+      --backend "$BACKEND" --status "$status" --post-state "$post_state" --reason "$reason" || return $?
+    REVIEW_DISPATCH_RESULT="$(realpath -m -- "$DISPATCH_TMPDIR/review-dispatch-result.json")"; export REVIEW_DISPATCH_RESULT
+  }
+  while :; do
+    if ! bash "$SF_HELPER" sweep --scope per_pr >"$DISPATCH_TMPDIR/sweep.json" 2>"$DISPATCH_TMPDIR/sweep.err"; then SAVED_RC=2; sf_state_set '.saved_rc=$rc | .phase="sweep_failed"' --argjson rc "$SAVED_RC" || true; sf_write_envelope unavailable not_applicable "singleflight sweep failed" || true; break; fi
+    ACQUIRE_RC=0; ACQUIRE_JSON="$DISPATCH_TMPDIR/acquire.json"
+    bash "$SF_HELPER" acquire --scope per_pr --key "$SF_CANONICAL_KEY" --owner-token-file "$DISPATCH_TMPDIR/sf-owner-token" \
+      --engine "$SF_ENGINE" --head-sha "$HEAD_SHA" --overdue-seconds "$SF_PLANNED_OVERDUE" \
+      --owner-session-id "$SF_SESSION_ID" --owner-run-id "$SF_RUN_ID" --host "$SF_HOST" \
+      --artifact-path "$DISPATCH_TMPDIR/engine-artifact.json" --log-path "$DISPATCH_TMPDIR/engine.log" \
+      >"$ACQUIRE_JSON" 2>"$DISPATCH_TMPDIR/acquire.err" || ACQUIRE_RC=$?
+    if [[ "$ACQUIRE_RC" -ne 0 ]] || ! jq -e '.state == "acquired" and (.lease_id|type)=="string" and (.token_fp|type)=="string" and (.planned_overdue_at|type)=="number"' "$ACQUIRE_JSON" >/dev/null 2>&1; then SAVED_RC=2; sf_state_set '.saved_rc=$rc | .phase="admission_failed"' --argjson rc "$SAVED_RC" || true; sf_write_envelope unavailable not_applicable "per_pr admission failed" || true; break; fi
+    SF_ACQUIRE_JSON="$(jq -c '.' "$ACQUIRE_JSON")"
+    SF_LEASE_ID="$(jq -r '.lease_id' <<<"$SF_ACQUIRE_JSON")"
+    sf_state_set '.per_pr.acquired=true | .per_pr.lease_id=$lease_id | .lease_id=$lease_id | .owner_token_file=$owner_token_file | .phase="acquired" | .post_state="not_started"' \
+  --arg lease_id "$SF_LEASE_ID" --arg owner_token_file "$SF_TOKEN_FILE" || { SAVED_RC=5; break; }
+    SF_OBJECT="$(jq -cn --arg tmpdir "$DISPATCH_TMPDIR" --arg owner_token_file "$SF_TOKEN_FILE" --arg canonical_key "$SF_CANONICAL_KEY" --arg lease_id "$SF_LEASE_ID" --arg forge_host "$FORGE_HOST" --arg helper "$SF_HELPER" --arg lease_file_ref "$DISPATCH_STATE" \
+      '{managed_by:"review-hard",tmpdir:$tmpdir,owner_token_file:$owner_token_file,lease_file_ref:$lease_file_ref,canonical_key:$canonical_key,lease_id:$lease_id,forge_host:$forge_host,scope:"per_pr",helper:$helper}')" || { SAVED_RC=5; break; }
+    printf '%s' "$SF_OBJECT" > "$DISPATCH_TMPDIR/singleflight.json"; chmod 600 "$DISPATCH_TMPDIR/singleflight.json"
+    export DISPATCH_TMPDIR DISPATCH_STATE SF_CANONICAL_KEY SF_TOKEN_FILE SF_LEASE_ID \
+      REVIEW_HARD_SINGLEFLIGHT_JSON="$DISPATCH_TMPDIR/singleflight.json"
+    sf_state_set '.phase="engine_running" | .post_state="in_progress"' || true
+    DISPATCH_HANDOFF="$(jq -cn --arg backend "$BACKEND" --arg tmpdir "$DISPATCH_TMPDIR" --arg dispatch_state "$DISPATCH_STATE" \
+      --arg canonical_key "$SF_CANONICAL_KEY" --arg lease_id "$SF_LEASE_ID" --arg singleflight "$DISPATCH_TMPDIR/singleflight.json" \
+      '{backend:$backend,tmpdir:$tmpdir,dispatch_state:$dispatch_state,canonical_key:$canonical_key,lease_id:$lease_id,singleflight:$singleflight}')" \
+      || { SAVED_RC=5; break; }
+    printf 'review-dispatch handoff: %s\n' "$DISPATCH_HANDOFF"
+    SAVED_RC=0
+    break
+  done
+  return "$SAVED_RC"
+}
+review_hard_dispatch
+
+```json
+{
+  "managed_by": "review-hard",
+  "tmpdir": "<DISPATCH_TMPDIR>",
+  "owner_token_file": "<DISPATCH_TMPDIR>/sf-owner-token",
+  "lease_file_ref": "<DISPATCH_TMPDIR>/dispatch-state.json",
+  "scope": "per_pr",
+  "canonical_key": "<forge_host>\n<owner>/<repo>\n<number>",
+  "lease_id": "<current per_pr lease_id>",
+  "forge_host": "<resolved forge_host>"
+}
+```
+
+`dispatch-state.json` は handoff 後の独立 Bash 呼び出しが自己完結できる正本でもある。次の値を保存し、
+呼び出し元は handoff の `dispatch_state` だけを次の各ブロックの先頭へ明示的に再代入する。
+`tmpdir`、`backend`、`state_helper`、`sf_helper`、`envelope_helper`、`canonical_key`、
+`owner_token_file`、`lease_id`、`singleflight_file` は state から `jq -er` で再導出する。
+この方式を選ぶ理由は、engine 実行をまたぐ呼び出し元の記憶・環境変数継承に依存せず、handoff の JSON だけを
+再入力すれば後続ブロックを再現できるためである。
+
+## engine 実行と cleanup（呼び出し元の責務）
+
+`review_hard_dispatch()` が成功して handoff を返した後は、この Bash 関数を実行した対話的 Claude セッション自身が、
+返された `backend` に応じて `skills/magi-hard/SKILL.md` または `skills/codex-hard/SKILL.md` を Read し、その手順に従って
+engine skill を実行する。Markdown の Bash ブロックを `/magi-hard` や `/codex-hard` の外部スクリプトとして起動してはならない。
+`DISPATCH_TMPDIR`、`DISPATCH_STATE`（`dispatch-state.json` の絶対パス）、`SF_CANONICAL_KEY`、`SF_LEASE_ID`、
+`singleflight.json` のパス、および singleflight object は handoff の値をそのまま request に引き継ぐ。
+
+以下の結果処理ブロックと cleanup ブロックは、engine skill を実行した Bash 呼び出しとは別のプロセスで実行してよい。
+前の呼び出しで定義した関数・shell variable・export は引き継がれないため、各ブロックの先頭で handoff の
+`dispatch_state` 絶対パスを `DISPATCH_STATE="<handoff JSON の .dispatch_state>"` として再代入し、そこから必要な値を
+`jq -er` で再導出する。以下のブロック中の `<...>` は、直前に保存した handoff JSON の実値へ置換する。
+
+engine skill は `dispatch handoff: {"request":"<絶対パス>","result":"<絶対パス>"}` 行を返し、呼び出し元は
+その request/result を検証する。各 phase 開始前には次を実行し、owner token と lease_id を再確認する。
+
+```bash
+bash scripts/review-singleflight.sh verify --scope per_pr --key "$SF_CANONICAL_KEY" \
+  --owner-token-file "$SF_TOKEN_FILE" --lease-id "$SF_LEASE_ID"
+```
+
+verify が不一致・失効・token 消失で失敗した場合は、後続 phase と GitHub 副作用へ進まない。engine skill の実行が完了せず
+所定の handoff/result を返さなかった場合（handoff 行が出力されない、エラー終了、または skill 自体を Read できない場合を含む）は、
+旧 `ENGINE_RC=127` の分岐と同じ「backend 利用不可」判定として扱い、`dispatch_status=unavailable`、
+`post_state=not_applicable`、`gate_decision=indeterminate`、`blocking_count=null`、
+`manual_review_required=true`、非空の `failure_reason` を持つ envelope を返す。実行後の検証失敗や投稿状況不明は、
+既存の hard の `failed` / `posted` 写像に従う。
+
+engine skill の完了後は `skills/review-post/SKILL.md` を Read して手順に従い、engine が生成した
+`REVIEW_POST_REQUEST` を `/review-post "$REVIEW_POST_REQUEST"` として実行する。実行後は `$REVIEW_POST_RESULT` を読み、
+投稿完了、または終了コード 1/2 の理由を確認する。magi backend では `/magi-hard` のステップ6、codex backend では handoff の
+request を `/review-post` へ渡す段階がこの責務に当たる。
+
+engine skill の出力から handoff 行の JSON 部分を `$DISPATCH_TMPDIR/handoff.json` に保存し、実際の skill の終了コードを
+`ENGINE_RC` に設定してから、次の結果処理を行う。ここで行う envelope の写像、result 検証、canonical envelope の検証は、
+従来の dispatch runtime と同じである。
+
+```bash
+DISPATCH_STATE="<handoff JSON の .dispatch_state の絶対パス>"
+[[ "$DISPATCH_STATE" == /* && -r "$DISPATCH_STATE" ]] || { echo "review-dispatch: dispatch state がありません" >&2; exit 1; }
+DISPATCH_TMPDIR="$(jq -er '.tmpdir' "$DISPATCH_STATE")"
+BACKEND="$(jq -er '.backend' "$DISPATCH_STATE")"
+STATE_HELPER="$(jq -er '.state_helper' "$DISPATCH_STATE")"
+SF_HELPER="$(jq -er '.sf_helper' "$DISPATCH_STATE")"
+ENVELOPE_HELPER="$(jq -er '.envelope_helper' "$DISPATCH_STATE")"
+SF_CANONICAL_KEY="$(jq -er '.canonical_key' "$DISPATCH_STATE")"
+SF_TOKEN_FILE="$(jq -er '.owner_token_file' "$DISPATCH_STATE")"
+SF_LEASE_ID="$(jq -er '.lease_id' "$DISPATCH_STATE")"
+SINGLEFLIGHT_FILE="$(jq -er '.singleflight_file' "$DISPATCH_STATE")"
+[[ "$DISPATCH_TMPDIR" == /* && "$STATE_HELPER" == /* && "$SF_HELPER" == /* && "$ENVELOPE_HELPER" == /* \
+  && "$SF_TOKEN_FILE" == /* && "$SF_LEASE_ID" != "null" && "$SINGLEFLIGHT_FILE" == /* ]] \
+  || { echo "review-dispatch: dispatch state の値が不正です" >&2; exit 1; }
+[[ -r "$STATE_HELPER" && -r "$SF_HELPER" && -r "$ENVELOPE_HELPER" ]] || { echo "review-dispatch: helper がありません" >&2; exit 1; }
+STATE_SET=(bash "$STATE_HELPER" set --dispatch-state "$DISPATCH_STATE")
+WRITE_ENVELOPE=(bash "$STATE_HELPER" write-envelope --dispatch-state "$DISPATCH_STATE" --dispatch-tmpdir "$DISPATCH_TMPDIR" \
+  --sf-helper "$SF_HELPER" --envelope-helper "$ENVELOPE_HELPER" --canonical-key "$SF_CANONICAL_KEY" --backend "$BACKEND")
+
+ENGINE_CONTINUE=true
+if [[ ! "${ENGINE_RC:-}" =~ ^(0|[1-9][0-9]*)$ ]]; then
+  ENGINE_RC=1
+  ENGINE_FAILURE_REASON="engine skill の終了コードが未設定または不正"
+else
+  ENGINE_FAILURE_REASON="engine skill の実行が完了せず所定の handoff/result を返さなかった"
+fi
+if [[ "$ENGINE_RC" -ne 0 ]]; then
+  if [[ "$BACKEND" == magi && "$ENGINE_RC" -eq 2 && "$(jq -r '.post_state // empty' "$DISPATCH_STATE")" == post_failed ]]; then
+    SAVED_RC=2
+    "${WRITE_ENVELOPE[@]}" --status failed --post-state post_failed --reason "review-post managed guard failure; GitHub mutation 未実行" || true
+  else
+    SAVED_RC=1
+    "${WRITE_ENVELOPE[@]}" --status unavailable --post-state not_applicable --reason "$ENGINE_FAILURE_REASON" || true
+  fi
+  "${STATE_SET[@]}" --filter '.saved_rc=$rc | .phase="engine_failed"' --argjson rc "$SAVED_RC" || true
+  ENGINE_CONTINUE=false
+fi
+
+HANDOFF_JSON="$DISPATCH_TMPDIR/handoff.json"
+if [[ "$ENGINE_CONTINUE" == true ]] \
+  && { ! jq -e 'type=="object" and (.request|type)=="string" and (.result|type)=="string"' "$HANDOFF_JSON" >/dev/null 2>&1; }; then
+  SAVED_RC=1
+  "${STATE_SET[@]}" --filter '.saved_rc=$rc | .phase="handoff_failed"' --argjson rc "$SAVED_RC" || true
+  "${WRITE_ENVELOPE[@]}" --status unavailable --post-state not_applicable --reason "engine skill の実行が完了せず所定の handoff/result を返さなかった" || true
+  ENGINE_CONTINUE=false
+fi
+
+if [[ "$ENGINE_CONTINUE" == true ]]; then
+  REQUEST_FILE="$(jq -r '.request' "$HANDOFF_JSON")"
+  RESULT_FILE="$(jq -r '.result' "$HANDOFF_JSON")"
+  if [[ "$REQUEST_FILE" != /* || "$RESULT_FILE" != /* || ! -r "$REQUEST_FILE" ]]; then
+    SAVED_RC=1
+    "${STATE_SET[@]}" --filter '.saved_rc=$rc | .phase="handoff_ref_failed"' --argjson rc "$SAVED_RC" || true
+    "${WRITE_ENVELOPE[@]}" --status failed --post-state posted --reason "handoff ref が不正" || true
+    ENGINE_CONTINUE=false
+  fi
+fi
+
+if [[ "$ENGINE_CONTINUE" == true && "$BACKEND" == codex ]]; then
+  # この直前に Claude 自身が Read 済みの review-post skill に従って /review-post を実行し、
+  # その終了コードを POST_RC に設定しておく。
+  if [[ ! "${POST_RC:-}" =~ ^(0|[1-9][0-9]*)$ ]]; then
+    POST_RC=1
+    POST_FAILURE_REASON="review-post の終了コードが未設定または不正"
+  else
+    POST_FAILURE_REASON="review-post の終了コードが非0"
+  fi
+  if [[ "$POST_RC" -eq 2 && ! -s "$RESULT_FILE" ]]; then
+    SAVED_RC=2
+    "${STATE_SET[@]}" --filter '.saved_rc=$rc | .phase="post_failed" | .post_state="post_failed"' --argjson rc "$SAVED_RC" || true
+    "${WRITE_ENVELOPE[@]}" --status failed --post-state post_failed --reason "review-post managed guard failure; GitHub mutation 未実行" || true
+    ENGINE_CONTINUE=false
+  elif [[ "$POST_RC" -ne 0 ]]; then
+    SAVED_RC=1
+    "${STATE_SET[@]}" --filter '.saved_rc=$rc | .phase="post_unknown" | .post_state="unknown"' --argjson rc "$SAVED_RC" || true
+    "${WRITE_ENVELOPE[@]}" --status failed --post-state posted --reason "$POST_FAILURE_REASON" || true
+    ENGINE_CONTINUE=false
+  fi
+fi
+
+if [[ "$ENGINE_CONTINUE" == true ]]; then
+  if [[ ! -s "$RESULT_FILE" ]] || ! jq -e 'type=="object" and (.status|IN("posted","no_findings")) and (.counts.block|type)=="number" and (.counts.block|floor)==.counts.block and .counts.block >= 0' "$RESULT_FILE" >/dev/null 2>&1; then
+    SAVED_RC=1
+    "${STATE_SET[@]}" --filter '.saved_rc=$rc | .phase="result_failed"' --argjson rc "$SAVED_RC" || true
+    "${WRITE_ENVELOPE[@]}" --status failed --post-state posted --reason "review-post-result.json が欠落または不正" || true
+    ENGINE_CONTINUE=false
+  fi
+fi
+
+if [[ "$ENGINE_CONTINUE" == true ]]; then
+  BLOCK_COUNT="$(jq -r '.counts.block' "$RESULT_FILE")"
+  lgtm=true
+  GATE=lgtm
+  [[ "$BLOCK_COUNT" -gt 0 ]] && { lgtm=false; GATE=block; }
+  REQUEST_ARTIFACT="$(jq -r '.inputs.findings_artifact // empty' "$REQUEST_FILE")"
+  REQUEST_ADJUDICATION="$(jq -r '.inputs.adjudication_result // empty' "$REQUEST_FILE")"
+  jq -n --arg backend "$BACKEND" --arg gate "$GATE" --argjson lgtm "$lgtm" --argjson count "$BLOCK_COUNT" \
+    --arg artifact "$REQUEST_ARTIFACT" --arg adjudication "$REQUEST_ADJUDICATION" --arg native "$RESULT_FILE" \
+    '{schema_version:"1",artifact_type:"review-dispatch-result",review_kind:"hard",backend:$backend,dispatch_status:"complete",gate_decision:$gate,lgtm_eligible:$lgtm,blocking_count:$count,manual_review_required:false,manual_review:null,artifact_ref:(if $artifact=="" then null else $artifact end),adjudication_ref:(if $adjudication=="" then null else $adjudication end),post_state:"posted",failure_reason:null,native_result:{review_post_result:$native}}' > "$DISPATCH_TMPDIR/review-dispatch-result.json"
+  if ! bash "$ENVELOPE_HELPER" validate "$DISPATCH_TMPDIR/review-dispatch-result.json" >/dev/null; then
+    SAVED_RC=2
+    "${STATE_SET[@]}" --filter '.saved_rc=$rc | .phase="envelope_failed"' --argjson rc "$SAVED_RC" || true
+    "${WRITE_ENVELOPE[@]}" --status failed --post-state posted --reason "dispatch envelope validator failed" || true
+  else
+    REVIEW_DISPATCH_RESULT="$(realpath -m -- "$DISPATCH_TMPDIR/review-dispatch-result.json")"
+    export REVIEW_DISPATCH_RESULT
+    printf 'review-dispatch result: %s\n' "$REVIEW_DISPATCH_RESULT"
+    SAVED_RC=0
+    "${STATE_SET[@]}" --filter '.saved_rc=$rc | .phase="complete" | .post_state="posted"' --argjson rc 0 || true
+  fi
+fi
+```
+
+engine と review-post の後、`dispatch-state.json` の `saved_rc` を正本にする状態機械を更新し、全エラー経路を CLEANUP に収束させる。
+lease release は次のように execution-budget の cleanup（10秒以内）で行い、失敗時は lease を `stale_suspected` として残したことを報告する。
+
+```bash
+timeout 10 bash "$SF_HELPER" release --scope per_pr --key "$SF_CANONICAL_KEY" \
+  --owner-token-file "$SF_TOKEN_FILE" --lease-id "$SF_LEASE_ID"
+```
+
+cleanup の順序は per_pr lease の release だけであり、broker lease をこの helper に持たせない。`saved_rc`、lease release、
+post 状態の更新が終わるまで `DISPATCH_TMPDIR` を削除しない。
+
+cleanup の状態機械は次のように handoff 後の呼び出し元側で定義し、engine と review-post の結果を処理した後に呼び出す。
+
+```bash
+DISPATCH_STATE="<handoff JSON の .dispatch_state の絶対パス>"
+[[ "$DISPATCH_STATE" == /* && -r "$DISPATCH_STATE" ]] || { echo "review-dispatch: dispatch state がありません" >&2; exit 1; }
+DISPATCH_TMPDIR="$(jq -er '.tmpdir' "$DISPATCH_STATE")"
+STATE_HELPER="$(jq -er '.state_helper' "$DISPATCH_STATE")"
+SF_HELPER="$(jq -er '.sf_helper' "$DISPATCH_STATE")"
+SF_CANONICAL_KEY="$(jq -er '.canonical_key' "$DISPATCH_STATE")"
+SF_TOKEN_FILE="$(jq -er '.owner_token_file' "$DISPATCH_STATE")"
+SF_LEASE_ID="$(jq -er '.lease_id' "$DISPATCH_STATE")"
+SINGLEFLIGHT_FILE="$(jq -er '.singleflight_file' "$DISPATCH_STATE")"
+[[ "$DISPATCH_TMPDIR" == /* && "$STATE_HELPER" == /* && "$SF_HELPER" == /* && "$SF_TOKEN_FILE" == /* \
+  && "$SF_LEASE_ID" != "null" && "$SINGLEFLIGHT_FILE" == /* ]] \
+  || { echo "review-dispatch: cleanup 用 dispatch state の値が不正です" >&2; exit 1; }
+[[ -r "$STATE_HELPER" && -r "$SF_HELPER" ]] || { echo "review-dispatch: cleanup helper がありません" >&2; exit 1; }
+
+# 旧 sf_cleanup() の処理は独立プロセスの cleanup サブコマンドへ移した。
+# このサブコマンドが timeout 10 bash "$SF_HELPER" release を実行し、state を更新する。
+# engine/post の結果処理と dispatch envelope の出力が終わった後に実行する。
+bash "$STATE_HELPER" cleanup --dispatch-state "$DISPATCH_STATE" --dispatch-tmpdir "$DISPATCH_TMPDIR" \
+  --sf-helper "$SF_HELPER" --canonical-key "$SF_CANONICAL_KEY" \
+  --owner-token-file "$SF_TOKEN_FILE" --lease-id "$SF_LEASE_ID"
+```
+
+### Issue #415 との関係
+
+#411 は `/review-hard` 呼び出し前の per-PR admission control と managed `/review-post` fencing、#415 は開始済み
+child の追跡・回収・orphan lifecycle 対策である。層が違うため代替関係になく、#411 の `sweep` は #411 自身が
+作った lease の `stale_suspected` 列挙に限られる。
+
 ## backend 利用不可時
 
-「backend 利用不可」は engine skill（/magi-fast、/magi-hard、/codex-fast、/codex-hard）を起動すら
-できない場合を指す。Codex companion 不在、Ollama へ到達できず /magi-* が起動段階で失敗した場合などが
-該当する。
+「backend 利用不可」は engine skill（/magi-fast、/magi-hard、/codex-fast、/codex-hard）の実行が完了せず、
+所定の handoff/result を返さない場合を指す。skill を Read できない、Codex companion 不在、Ollama へ到達できず
+/magi-* が起動段階で失敗した場合などが該当する。
 
-この場合は次の envelope にする。hard では engine skill を起動できず投稿自体が発生しないため
+この場合は次の envelope にする。hard では engine skill の完了報告がなく投稿自体が発生しないため
 `post_state=not_applicable` とする（fast は元々 `not_applicable`）。
 
 ```text
