@@ -137,9 +137,14 @@ Ollama の出力は JSON array のみとする。この段階では `body` を�
 `scripts/ollama-run.sh` は8GB VRAM環境のKV cache溢れ回避のため既定値を16384に下げているが、Normalizerは`qwen3:4b-instruct`（4Bパラメータで、他ペルソナの7B〜23BクラスよりKV cacheのVRAM負荷が小さい）で実測検証済みのため、例外的に`OLLAMA_NUM_CTX=65536`を指定する。
 
 ```bash
-OLLAMA_NUM_CTX=65536 OLLAMA_TEMPERATURE=0 bash ~/.claude/scripts/ollama-run.sh "qwen3:4b-instruct" "$MAGI_TMPDIR/normalizer-system.txt" < "$MAGI_TMPDIR/normalizer-prompt.txt" > "$MAGI_TMPDIR/normalizer-raw.txt" 2>/dev/null
+BUDGET_HELPER="skills/flow-common/execution-budget.sh"
+[[ -r "$BUDGET_HELPER" ]] || BUDGET_HELPER="$HOME/.claude/skills/flow-common/execution-budget.sh"
+NORMALIZER_BUDGET=$(bash "$BUDGET_HELPER" get normalizer magi 2>/dev/null || true)
+: "${NORMALIZER_BUDGET:=900}"
+OLLAMA_NUM_CTX=65536 OLLAMA_TEMPERATURE=0 timeout "$NORMALIZER_BUDGET" bash ~/.claude/scripts/ollama-run.sh "qwen3:4b-instruct" "$MAGI_TMPDIR/normalizer-system.txt" < "$MAGI_TMPDIR/normalizer-prompt.txt" > "$MAGI_TMPDIR/normalizer-raw.txt" 2>/dev/null
 ```
 
+`timeout "$NORMALIZER_BUDGET"` は `execution-budget.json: normalizer` の hard 上限である。終了コード124を含め、
 command が non-zero exit で失敗した場合は、`normalizer.json` に次の形式を書き込んで停止する。以後の扱いは呼び出し元が判断する（Haiku fallbackへ）。
 
 ```json

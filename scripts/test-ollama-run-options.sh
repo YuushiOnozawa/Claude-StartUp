@@ -463,9 +463,45 @@ if [[ "$CASE_13_START_SEEN" -eq 1 ]] \
     NR == 2 { complete_ok = NF == 4 && $4 == "interrupted:TERM" && $3 ~ /^[0-9]+$/ }
     END { exit !(NR == 2 && start_ok && complete_ok) }
   ' "$CASE_13_LOG_FILE"; then
-  record_result "SIGTERM 時に interrupted:TERM の完了ログを記録する" 0
+record_result "SIGTERM 時に interrupted:TERM の完了ログを記録する" 0
 else
   record_result "SIGTERM 時に interrupted:TERM の完了ログを記録する" 1
+fi
+
+# 14. flock 待機中の signal cleanup は、他プロセスが使用中のモデルを unload しない。
+CASE_14_DIR="$TEST_ROOT/case-14"
+CASE_14_CAPTURE_DIR="$CASE_14_DIR/capture"
+CASE_14_LOCK_DIR="$CASE_14_DIR/lock"
+mkdir -p "$CASE_14_CAPTURE_DIR" "$CASE_14_LOCK_DIR"
+(
+  exec 8>"$CASE_14_LOCK_DIR/ollama.lock"
+  flock 8
+  : > "$CASE_14_DIR/holder-ready"
+  sleep 10
+) &
+CASE_14_HOLDER_PID=$!
+for _ in {1..50}; do
+  [[ -f "$CASE_14_DIR/holder-ready" ]] && break
+  sleep 0.1
+done
+printf '%s\n' 'test prompt' | env \
+  OLLAMA_BASE_URL=http://127.0.0.1:11434 \
+  OLLAMA_LOCK_DIR="$CASE_14_LOCK_DIR" \
+  OLLAMA_RUN_LOG="$CASE_14_DIR/ollama-run.log" \
+  PATH="$FAKE_CURL_DIR:$ORIGINAL_PATH" \
+  CURL_CAPTURE_DIR="$CASE_14_CAPTURE_DIR" \
+  bash "$SCRIPT" some-model >"$CASE_14_DIR/stdout" 2>"$CASE_14_DIR/stderr" &
+CASE_14_PID=$!
+sleep 0.3
+kill -TERM "$CASE_14_PID" 2>/dev/null || true
+CASE_14_STATUS=0
+wait "$CASE_14_PID" || CASE_14_STATUS=$?
+kill "$CASE_14_HOLDER_PID" 2>/dev/null || true
+wait "$CASE_14_HOLDER_PID" 2>/dev/null || true
+if [[ "$CASE_14_STATUS" -eq 143 ]] && [[ ! -e "$CASE_14_CAPTURE_DIR/call-1.json" ]]; then
+  record_result "flock 待機中の SIGTERM ではモデルを unload しない" 0
+else
+  record_result "flock 待機中の SIGTERM ではモデルを unload しない" 1
 fi
 
 echo ""

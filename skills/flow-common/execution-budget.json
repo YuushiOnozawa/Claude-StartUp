@@ -1,0 +1,139 @@
+{
+  "schema_version": "1",
+  "phases": {
+    "ollama_call_wall_clock": {
+      "class": "hard",
+      "magi": 900,
+      "codex": 900,
+      "forcing_location": "caller timeout and scripts/ollama-run.sh flock wait",
+      "notes": "flock 待ち + 推論の合計 wall-clock。flock を900秒待った後にさらに900秒推論する予算ではない。"
+    },
+    "generation_total": {
+      "class": "derived",
+      "magi": null,
+      "codex": null,
+      "forcing_location": "derived.generation_total の式",
+      "notes": "magi = ollama_call_wall_clock × chunk上限(8) × ペルソナ数(5)、codex = 既存 8×600 予算。値は derived の式から算出する。"
+    },
+    "diff_cap": {
+      "class": "gate",
+      "magi": null,
+      "codex": null,
+      "forcing_location": "skills/magi-hard/SKILL.md and skills/dev-flow-fast/references/codex-review-hard.md step 1",
+      "limits": {
+        "changed_lines": 3200,
+        "chunks": 8,
+        "reject_when": "changed_lines_exceeded AND chunks_exceeded",
+        "soft_warning_lines": {
+          "minimum": 800,
+          "recommended_split_by": 1200
+        }
+      },
+      "notes": "magi-diff-filter.sh 適用後の unified diff で、+++ / --- を除く追加行と削除行を総変更行数として数える。binary diff は行数に丸めず拒否する。generated と lockfile は自動除外せず、filter 後に残る限り通常の変更行・チャンクとして数える。総変更行数 > 3200 かつチャンク数 > 8 の両方を満たす場合だけ拒否する。800行以上で warning、1200行までを分割推奨帯とする。"
+    },
+    "casper": {
+      "class": "soft",
+      "magi": 900,
+      "codex": 900,
+      "forcing_location": "skills/flow-common/references/casper-engine.md chunk boundary",
+      "notes": "末尾チャンクは Agent() で timeout ラップ不可、止まらない。"
+    },
+    "normalizer": {
+      "class": "hard",
+      "magi": 900,
+      "codex": 900,
+      "forcing_location": "skills/magi-common/references/normalizer.md caller timeout",
+      "notes": "Ollama 呼び出し全体を timeout で強制する。"
+    },
+    "audit": {
+      "class": "hard",
+      "magi": 900,
+      "codex": null,
+      "forcing_location": "skills/magi-common/references/codex-audit.md",
+      "notes": "timeout は AUDIT_SKIPPED の fail-soft 経路へ合流する。"
+    },
+    "importance": {
+      "class": "hard",
+      "magi": 900,
+      "codex": null,
+      "forcing_location": "skills/magi-common/references/codex-importance.md",
+      "notes": "timeout は IMPORTANCE_SKIPPED の fail-soft 経路へ合流する。"
+    },
+    "review_post": {
+      "class": "mixed",
+      "magi": 3120,
+      "codex": 3120,
+      "forcing_location": "skills/flow-common/references/review-post.md",
+      "breakdown": {
+        "api_timeout_seconds": 60,
+        "page_limit": 10,
+        "endpoint_count": 2,
+        "pagination_hard_seconds": 1200,
+        "identity_hard_seconds": 60,
+        "summary_hard_seconds": 60,
+        "inline_posts_soft_seconds": 1800
+      },
+      "notes": "合計は paginate 1200 + gh api user 60 + サマリ 60 + inline post ループ 1800s soft。個々の fallback 投稿も60秒で制限する。"
+    },
+    "cleanup": {
+      "class": "hard",
+      "magi": 10,
+      "codex": 10,
+      "forcing_location": "managed run cleanup",
+      "notes": "release は即時、失敗は stale_suspected 報告。"
+    }
+  },
+  "derived": {
+    "generation_total": {
+      "magi": {
+        "operation": "multiply",
+        "phase": "ollama_call_wall_clock",
+        "factors": {
+          "chunk_limit": 8,
+          "persona_count": 5
+        }
+      },
+      "codex": {
+        "operation": "multiply",
+        "factors": {
+          "chunk_limit": 8,
+          "per_chunk_seconds": 600
+        }
+      }
+    },
+    "max_configured_allowance": {
+      "magi": {
+        "operation": "sum",
+        "phases": ["generation_total", "casper", "normalizer", "audit", "importance", "review_post", "cleanup"]
+      },
+      "codex": {
+        "operation": "sum",
+        "phases": ["generation_total", "casper", "normalizer", "audit", "importance", "review_post", "cleanup"]
+      }
+    }
+  },
+  "wiring": [
+    {"file":"skills/magi-common/references/execution-steps.md","variable":"OLLAMA_BUDGET","helper_args":["get","ollama_call_wall_clock","magi"]},
+    {"file":"skills/magi-common/references/normalizer.md","variable":"NORMALIZER_BUDGET","helper_args":["get","normalizer","magi"]},
+    {"file":"skills/magi-common/references/codex-audit.md","variable":"AUDIT_BUDGET","helper_args":["get","audit","magi"]},
+    {"file":"skills/magi-common/references/codex-importance.md","variable":"IMPORTANCE_BUDGET","helper_args":["get","importance","magi"]},
+    {"file":"skills/flow-common/references/casper-engine.md","variable":"CASPER_BUDGET","helper_args":["get","casper","magi"]},
+    {"file":"skills/flow-common/references/review-post.md","variable":"REVIEW_POST_API_TIMEOUT","helper_args":["review-post","api_timeout"]},
+    {"file":"skills/flow-common/references/review-post.md","variable":"REVIEW_POST_PAGE_LIMIT","helper_args":["review-post","page_limit"]},
+    {"file":"skills/flow-common/references/review-post.md","variable":"REVIEW_POST_INLINE_SOFT","helper_args":["review-post","inline_soft"]},
+    {"file":"skills/magi-hard/SKILL.md","variable":"DIFF_CAP_CHANGED_LINES","helper_args":["diff-cap","changed_lines"]},
+    {"file":"skills/magi-hard/SKILL.md","variable":"DIFF_CAP_CHUNKS","helper_args":["diff-cap","chunks"]},
+    {"file":"skills/magi-hard/SKILL.md","variable":"DIFF_CAP_SOFT_WARNING","helper_args":["diff-cap","soft_warning"]},
+    {"file":"skills/magi-hard/SKILL.md","variable":"DIFF_CAP_RECOMMENDED","helper_args":["diff-cap","recommended_split_by"]},
+    {"file":"skills/dev-flow-fast/references/codex-review-hard.md","variable":"DIFF_CAP_CHANGED_LINES","helper_args":["diff-cap","changed_lines"]},
+    {"file":"skills/dev-flow-fast/references/codex-review-hard.md","variable":"DIFF_CAP_CHUNKS","helper_args":["diff-cap","chunks"]},
+    {"file":"skills/dev-flow-fast/references/codex-review-hard.md","variable":"DIFF_CAP_SOFT_WARNING","helper_args":["diff-cap","soft_warning"]},
+    {"file":"skills/dev-flow-fast/references/codex-review-hard.md","variable":"DIFF_CAP_RECOMMENDED","helper_args":["diff-cap","recommended_split_by"]},
+    {"file":"skills/dev-flow-fast/references/codex-review-hard.md","variable":"CODEX_TASK_BUDGET","helper_args":["generation-factor","per_chunk_seconds","codex"]}
+  ],
+  "policy": {
+    "auto_takeover": false,
+    "auto_takeover_allowed_when": "no soft/mixed/unbounded phase",
+    "notes": "soft、mixed、unbounded phase が1件でもあれば auto_takeover は必ず false。planned_overdue_at は run 固有値をこの JSON に保存せず、run 開始時に実際の chunk 数と persona 数から導出する。"
+  }
+}

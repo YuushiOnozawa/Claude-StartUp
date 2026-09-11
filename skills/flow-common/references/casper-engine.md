@@ -49,6 +49,33 @@ CASPER は常に次の override で実行する。
 チャンク呼び出しの終了コードと stdout はそれぞれ保持する。1チャンクでも呼び出しに失敗した場合は
 engine 全体を失敗とし、部分的な raw を finding 0件として成功扱いにしてはならない。
 
+チャンク一覧を作成した直後、かつ最初の CASPER `Agent()` を始める前に、開始 epoch を
+`$CASPER_TMPDIR/started_at` へ保存する。
+
+```bash
+date +%s > "$CASPER_TMPDIR/started_at"
+```
+
+Claude は各チャンクの CASPER `Agent()` 呼び出しの**直前**に、毎回次の確認を行う。これは Bash の
+擬似ループではない。各確認は保存済み epoch を読み直すため、Bash 呼び出し間で変数が失われてもよい。
+
+```bash
+BUDGET_HELPER="skills/flow-common/execution-budget.sh"
+[[ -r "$BUDGET_HELPER" ]] || BUDGET_HELPER="$HOME/.claude/skills/flow-common/execution-budget.sh"
+CASPER_BUDGET=$(bash "$BUDGET_HELPER" get casper magi 2>/dev/null || true)
+: "${CASPER_BUDGET:=900}"
+CASPER_STARTED_AT=$(<"$CASPER_TMPDIR/started_at")
+if [[ "$(( $(date +%s) - CASPER_STARTED_AT ))" -ge "$CASPER_BUDGET" ]]; then
+  CASPER_ENGINE_STATUS="invoke_failed"
+  CASPER_ENGINE_FAILURE_STAGE="invoke_failed"
+  printf '%s\n' '{"failed_personas":["CASPER"],"failure_stage":"invoke_failed"}' > "$CASPER_FAILURE_SINK"
+fi
+```
+
+`CASPER_ENGINE_STATUS=invoke_failed` になった場合、Claude はそのチャンク以降の `Agent()` を開始せず、
+既存の failure sink と失敗経路へ合流する。この上限はチャンク境界だけで判定する soft budget であり、
+実行中の1チャンクは中断しない。
+
 ## Normalizer と構造検証
 
 raw 出力が呼び出し成功として得られた場合だけ、連結済み raw を `$NORMALIZE_INPUT` として

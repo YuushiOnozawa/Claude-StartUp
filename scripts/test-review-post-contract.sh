@@ -73,6 +73,7 @@ printf '%s\n' \
   'take_method=false' \
   'take_field=false' \
   'take_jq=false' \
+  'page=1' \
   'for arg in "$@"; do' \
   '  if [[ "$take_method" == true ]]; then' \
   '    method="${arg^^}"' \
@@ -104,6 +105,7 @@ printf '%s\n' \
   '    side=*) side_arg="${arg#side=}" ;;' \
   '  esac' \
   'done' \
+  'if [[ "$endpoint" =~ [\?\&]page=([0-9]+) ]]; then page="${BASH_REMATCH[1]}"; fi' \
   'case "$endpoint" in' \
   '  user) kind=user ;;' \
   '  */pulls/*/comments*) kind=inline ;;' \
@@ -144,9 +146,11 @@ printf '%s\n' \
   '    exit 1' \
   '  fi' \
   '  if [[ "$kind" == issue && -n "${STUB_ISSUE_COMMENTS:-}" ]]; then' \
-  '    cat "$STUB_ISSUE_COMMENTS"' \
+  '    if [[ -n "${STUB_ISSUE_RAW:-}" ]]; then cat "$STUB_ISSUE_RAW"; else jq --argjson page "$page" ".[(($page - 1) * 100):($page * 100)]" "$STUB_ISSUE_COMMENTS"; fi' \
   '  elif [[ "$kind" == inline && -n "${STUB_PULL_COMMENTS:-}" ]]; then' \
-  '    cat "$STUB_PULL_COMMENTS"' \
+  '    jq --argjson page "$page" ".[(($page - 1) * 100):($page * 100)]" "$STUB_PULL_COMMENTS"' \
+  '  else' \
+  '    printf "%s\n" "[]"' \
   '  fi' \
   '  exit 0' \
   'fi' \
@@ -245,6 +249,7 @@ run_post() {
   local patch_fail="${6:-}"
   local user_json="${7:-}"
   local user_fail="${8:-}"
+  local issue_raw="${9:-}"
   local post_path="$STUB_DIR:$PATH"
   local ground_mode=""
   local gh_mode="$mode"
@@ -259,7 +264,7 @@ run_post() {
     GROUND_STUB_LOG="$TEST_ROOT/grounder-called.log" GH_LOG="$GH_LOG" GH_MODE="$gh_mode" \
     STUB_ISSUE_COMMENTS="$issue_fixture" STUB_PULL_COMMENTS="$pull_fixture" \
     STUB_GET_FAIL="$get_fail" STUB_PATCH_FAIL="$patch_fail" \
-    STUB_USER_JSON="$user_json" STUB_USER_FAIL="$user_fail" \
+    STUB_USER_JSON="$user_json" STUB_USER_FAIL="$user_fail" STUB_ISSUE_RAW="$issue_raw" \
     bash "$POST_SCRIPT" "$request" \
     >"$TEST_ROOT/stdout" 2>"$TEST_ROOT/stderr"; then
     POST_EXIT=0
@@ -327,7 +332,10 @@ append_comment() {
   local id="$2"
   local body="$3"
   local login="${4:-review-bot}"
-  jq -n -c --argjson id "$id" --arg body "$body" --arg login "$login" '{id:$id,body:$body,login:$login}' >>"$file"
+  local current='[]'
+  if [[ -s "$file" ]]; then current="$(<"$file")"; fi
+  jq -n --argjson current "$current" --argjson id "$id" --arg body "$body" --arg login "$login" \
+    '$current + [{id:$id,body:$body,user:{login:$login}}]' >"$file"
 }
 
 post_bodies_have_markers() {
@@ -781,6 +789,43 @@ else
   result=1
 fi
 record_result "issues/pulls 一覧取得失敗は result を生成し全 mutation を抑止する" "$result"
+
+# 10ページ目が100件なら11ページ目以降の存在を否定できないため、mutation を抑止する。
+make_case idempotency-pagination-cap
+cp "$TEST_ROOT/anchor-contract/pr.diff" "$CASE_DIR/pr.diff"
+cp "$TEST_ROOT/anchor-contract/artifact.json" "$CASE_DIR/artifact.json"
+cp "$TEST_ROOT/anchor-contract/adjudication.json" "$CASE_DIR/adjudication.json"
+ISSUE_FIXTURE="$CASE_DIR/issues.json"
+jq -n '[range(0;1001) | {id:., body:"older comment", user:{login:"review-bot"}}]' > "$ISSUE_FIXTURE"
+write_request "$CASE_DIR/request.json" magi "$CASE_DIR/artifact.json" "$CASE_DIR/adjudication.json" \
+  "$CASE_DIR/pr.diff" true "" "" "" "$CASE_DIR/result.json"
+run_post "$CASE_DIR/request.json" ground-all "$ISSUE_FIXTURE"
+if [[ "$POST_EXIT" -eq 1 ]] \
+  && assert_result "$CASE_DIR/result.json" '.github_writes == [] and all(.items[]; .delivery == "not_posted")' \
+  && [[ "$(count_method_kind GET issue)" -eq 10 ]] \
+  && [[ "$(count_method_kind POST issue)" -eq 0 ]] && [[ "$(count_method_kind POST inline)" -eq 0 ]]; then
+  result=0
+else
+  result=1
+fi
+record_result "11ページ分の可能性がある一覧は完全性不明として全 mutation を抑止する" "$result"
+
+# API の各ページは単一 JSON array だけを受理し、object と JSONL は fail-closed にする。
+PAGE_SCHEMA_RESULT=0
+for malformed in object jsonl; do
+  MALFORMED_FILE="$CASE_DIR/$malformed.json"
+  if [[ "$malformed" == object ]]; then
+    printf '%s\n' '{"id":1,"body":"bad","user":{"login":"review-bot"}}' > "$MALFORMED_FILE"
+  else
+    printf '%s\n%s\n' '[]' '[]' > "$MALFORMED_FILE"
+  fi
+  run_post "$CASE_DIR/request.json" ground-all "$ISSUE_FIXTURE" "" "" "" "" "" "$MALFORMED_FILE"
+  if [[ "$POST_EXIT" -ne 1 ]] || [[ "$(count_method_kind POST issue)" -ne 0 ]] \
+    || [[ "$(count_method_kind POST inline)" -ne 0 ]]; then
+    PAGE_SCHEMA_RESULT=1
+  fi
+done
+record_result "pagination は単一 object / JSONL を拒否して mutation を抑止する" "$PAGE_SCHEMA_RESULT"
 
 # 422 退避済み finding は pulls が空でも issues 側から再利用する。
 make_case idempotency-fallback-rerun
