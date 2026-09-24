@@ -10,21 +10,22 @@ Mining baseline SHA: 557f90b247c1821ad482e00fa26ce72de14bf7ad
 | INV-002 | Issue #411 / MC-002; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | 同一 target の同時 run は1本だけが実行権を持ち、他は無期限に待たず終端する | M2-FX-002 |
 | INV-003 | Issue #411 / MC-003 / mining@b8721a5; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | 異なる target の外部 executor も同時に高々1本で、各 run の終端結果が失われない | M2-FX-003 |
 | INV-004 | C1 / MC-004; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | owner 消失や stale ownership があっても待機は有界で、無限待機しない | M2-FX-004 |
-| INV-005 | C2 / MC-005; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | 3,200行・8チャンクを境界として、超過入力を無界処理または成功扱いにしない | M2-FX-005 |
-| INV-006 | C3–C6 / MC-006–MC-009; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | ローカル LLM 180秒 / 外部 API 60秒 / 補助 executor 900秒 / Codex 600秒 の各上限で終端し、timeout を成功扱いせず残留資源を残さない | M2-FX-006 |
+| INV-005 | C2 / MC-005; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | diff 3,200行ちょうど・その内側、および chunk 8ちょうど・その内側は受理して処理成功し、各直上は非完了または拒否として、超過入力を無界処理または成功扱いにしない | M2-FX-005 |
+| INV-006 | C3–C6 / MC-006–MC-009; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | ローカル LLM 180秒 / 外部 API 60秒 / 補助 executor 900秒 / Codex 600秒の各上限で終端し、外部 API が応答前に timeout した場合は `posted_unknown` 相当で自動再投稿せず、送信前失敗による未投稿確定・再試行可とは区別し、timeout を成功扱いせず残留資源を残さない | M2-FX-006 |
 | INV-007 | ERR-20260713-002 / ERR-20260717-001 / MC-010; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | completion marker の有無だけに依存せず、情報不足は非完了として扱う | M2-FX-007 |
-| INV-008 | 構造的欠陥6 / MC-011 / mining@f11852d; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | 空・不正・一貫しない構造化出力は共通契約で拒否し、成功や投稿へ進めない | M2-FX-008 |
+| INV-008 | 構造的欠陥6 / MC-011 / mining@f11852d; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | 空・不正・複数の JSON 値が連結された出力・一貫しない構造化出力は、種類を問わずすべての executor 経路で同じ構造契約により拒否し、成功や投稿へ進めない | M2-FX-008 |
 | INV-009 | 構造的欠陥7 / MC-012; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | 宣言された全 job に終端結果を残し、無音 skip を成功扱いにしない | M2-FX-009 |
 | INV-010 | MC-013 / mining@f11852d; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | `line:0` だけを理由に finding を捨てず、観測可能な結果として保持する | M2-FX-010 |
 | INV-011 | MC-014 / mining@b289e62 / mining@fdf3b70; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | 外部書き込み直前に head を再確認し、変化した旧 revision を書き込まない | M2-FX-011 |
-| INV-012 | MC-015 / mining@fdf3b70; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | 投稿開始後の成否不明を `posted_unknown` 相当で保持し、自動再投稿しない | M2-FX-012 |
+| INV-012 | MC-015 / mining@fdf3b70; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | 相手の受理後に成否を確認できない外部 API 呼び出しを `posted_unknown` 相当で保持し、stable marker の検索以外で再判定せず、自動再投稿しない。送信前失敗による未投稿確定・再試行可とは区別する | M2-FX-012 |
 | INV-013 | MC-016 / mining@b8721a5 / mining@83a6557 / mining@070aec4; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | 親終了後に active な子の処理・排他資源・一時資源を残さず、次 run を塞がない | M2-FX-013 |
 | INV-014 | Issue #411 / MC-017 / mining@fdf3b70 / mining@070aec4; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | lease 期限切れ後は新 owner だけを有効とし、旧 owner の遅い操作を fencing する | M2-FX-014 |
 | INV-015 | MC-018 / mining@f11852d / mining@043d009; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | exit 0 だけで成功とせず、不正・空・過大出力を有界に拒否する | M2-FX-015 |
 | INV-016 | MC-019 / mining@83a6557; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | executor の利用不能を `unavailable` 相当で明示し、自動 fallback や投稿へ進めない | M2-FX-016 |
 | INV-017 | MC-020 / mining@c819dba / mining@6088cc3; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | `publish=none` では外部書き込みを発生させず、投稿要求時だけ外部書き込みを行う | M2-FX-017 |
-| INV-018 | MC-021 / mining@83a6557 / mining@fdf3b70; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | target の同一性・所有権を示す入力が欠落・不一致・破損しているとき、外部書き込み前に明示的な失敗または評価不能で終端し、成功や投稿へ進まない | M2-FX-018 |
+| INV-018 | MC-021 / mining@83a6557 / mining@fdf3b70; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | target の同一性・所有権を示す入力の欠落・不一致・破損、未来の所有権記録、想定外の状態保存先、排他機構の利用不能・非対応を暗黙 fallback せず、外部書き込み前に明示的な失敗または評価不能で終端し、成功や投稿へ進まない | M2-FX-018 |
 | INV-019 | 構造的欠陥1 / 構造的欠陥9 / MC-022; mining@557f90b247c1821ad482e00fa26ce72de14bf7ad | source と runtime の実行 closure の不一致を検出し、完全一致時だけ全入口の到達可能性を観測する | M2-FX-019 |
+| INV-020 | 正本プラン「受け入れ条件（DoD）> 実行系」節 / 本レビュー指摘 | 秘密情報を stdout/stderr・結果・診断・artifact・ログへ残さず、一時資源を所有者のみの制限的な権限で作成し正常・異常・signal 終了後に残さず、正常な結果と診断・エラー出力を別経路へ分離する | M2-FX-020 |
 
 ## Coverage / waiver
 
@@ -53,6 +54,7 @@ Mining baseline SHA: 557f90b247c1821ad482e00fa26ce72de14bf7ad
 | ERR-20260713-002 | FX-M2-007 | completion marker 欠落で対応 |
 | ERR-20260717-001 | FX-M2-007 | completion marker 欠落で対応 |
 | `line:0` | FX-M2-010 | line:0 を保持する契約で対応 |
+| 正本 DoD: 秘密情報・権限・出力経路分離 | FX-M2-020 | 秘密情報を漏えいさせず、一時資源を制限し、結果と診断・エラー出力を分離する契約で対応 |
 
 ### Waiver
 
@@ -96,6 +98,22 @@ Mining baseline SHA: 557f90b247c1821ad482e00fa26ce72de14bf7ad
 - 完了条件: 新コアが補助分析の可否を review/flow の完了条件や判定へ混入させず、補助分析 unavailable の場合も review/flow の終端が明示的に観測できる。
 - 未 triage でないこと: MC-027 として M9–M10 の scope audit と smoke 検査へ割り当て済みであり、未 triage ではない。
 
+#### WAIVER-M2-006 — `test-function-calling.sh`
+
+- 対象: `test-function-calling.sh`。
+- M2 で fixture 化しない理由: Ollama 未起動による SKIP。MAGI（ollama）系は v1 では unavailable stub（D6）で対象外。
+- 対応 milestone: ollama executor 有効化ゲート（v2）。
+- 完了条件: Ollama が起動した環境で当該テスト相当が PASS と記録される。
+- 未 triage でないこと: Ollama 未起動の SKIP として確認済みであり、この waiver に割り当て済みで未 triage ではない。
+
+#### WAIVER-M2-007 — `test-magi-format.sh`
+
+- 対象: `test-magi-format.sh`。
+- M2 で fixture 化しない理由: Ollama 未起動による SKIP。MAGI（ollama）系は v1 では unavailable stub（D6）で対象外。
+- 対応 milestone: ollama executor 有効化ゲート（v2）。
+- 完了条件: Ollama が起動した環境で当該テスト相当が PASS と記録される。
+- 未 triage でないこと: Ollama 未起動の SKIP として確認済みであり、この waiver に割り当て済みで未 triage ではない。
+
 ## Legacy baseline evidence
 
 固定 SHA は全行で同一である。実行は `git archive` で展開した固定 SHA の tracked 内容を隔離環境で行った（`git worktree add` は `.git/worktrees` が read-only のため使えなかった）。
@@ -106,10 +124,10 @@ Mining baseline SHA: 557f90b247c1821ad482e00fa26ce72de14bf7ad
 | `test-casper-engine-contract.sh` | `557f90b247c1821ad482e00fa26ce72de14bf7ad` | PASS (exit 0) | HOME/XDG_RUNTIME_DIR/TMPDIR 隔離・shim 4種・timeout 300 | — |
 | `test-codex-review-audit.sh` | `557f90b247c1821ad482e00fa26ce72de14bf7ad` | PASS (exit 0) | HOME/XDG_RUNTIME_DIR/TMPDIR 隔離・shim 4種・timeout 300 | — |
 | `test-codex-review-merge.sh` | `557f90b247c1821ad482e00fa26ce72de14bf7ad` | PASS (exit 0) | HOME/XDG_RUNTIME_DIR/TMPDIR 隔離・shim 4種・timeout 300 | — |
-| `test-function-calling.sh` | `557f90b247c1821ad482e00fa26ce72de14bf7ad` | SKIP (exit 0) | HOME/XDG_RUNTIME_DIR/TMPDIR 隔離・shim 4種・timeout 300 | テスト自身が Ollama 未起動として SKIP（shim 呼び出しなし） |
+| `test-function-calling.sh` | `557f90b247c1821ad482e00fa26ce72de14bf7ad` | SKIP (exit 0) | HOME/XDG_RUNTIME_DIR/TMPDIR 隔離・shim 4種・timeout 300 | WAIVER-M2-006: テスト自身が Ollama 未起動として SKIP（shim 呼び出しなし） |
 | `test-knowledge-rag-local.sh` | `557f90b247c1821ad482e00fa26ce72de14bf7ad` | PASS (exit 0) | HOME/XDG_RUNTIME_DIR/TMPDIR 隔離・shim 4種・timeout 300 | — |
 | `test-magi-diff-filter.sh` | `557f90b247c1821ad482e00fa26ce72de14bf7ad` | PASS (exit 0) | HOME/XDG_RUNTIME_DIR/TMPDIR 隔離・shim 4種・timeout 300 | — |
-| `test-magi-format.sh` | `557f90b247c1821ad482e00fa26ce72de14bf7ad` | SKIP (exit 0) | HOME/XDG_RUNTIME_DIR/TMPDIR 隔離・shim 4種・timeout 300 | テスト自身が Ollama 未起動として SKIP（shim 呼び出しなし） |
+| `test-magi-format.sh` | `557f90b247c1821ad482e00fa26ce72de14bf7ad` | SKIP (exit 0) | HOME/XDG_RUNTIME_DIR/TMPDIR 隔離・shim 4種・timeout 300 | WAIVER-M2-007: テスト自身が Ollama 未起動として SKIP（shim 呼び出しなし） |
 | `test-magi-ground-findings.sh` | `557f90b247c1821ad482e00fa26ce72de14bf7ad` | PASS (exit 0) | HOME/XDG_RUNTIME_DIR/TMPDIR 隔離・shim 4種・timeout 300 | — |
 | `test-ollama-run-options.sh` | `557f90b247c1821ad482e00fa26ce72de14bf7ad` | PASS (exit 0) | HOME/XDG_RUNTIME_DIR/TMPDIR 隔離・shim 4種・timeout 300 | — |
 | `test-review-adjudicate-findings.sh` | `557f90b247c1821ad482e00fa26ce72de14bf7ad` | PASS (exit 0) | HOME/XDG_RUNTIME_DIR/TMPDIR 隔離・shim 4種・timeout 300 | — |
@@ -128,7 +146,7 @@ Mining baseline SHA: 557f90b247c1821ad482e00fa26ce72de14bf7ad
 | `test-review-singleflight-fencing.sh` | `557f90b247c1821ad482e00fa26ce72de14bf7ad` | PASS (exit 0) | HOME/XDG_RUNTIME_DIR/TMPDIR 隔離・shim 4種・timeout 300 | — |
 | `test-review-singleflight.sh` | `557f90b247c1821ad482e00fa26ce72de14bf7ad` | PASS (exit 0) | HOME/XDG_RUNTIME_DIR/TMPDIR 隔離・shim 4種・timeout 300 | — |
 
-集計: PASS 23 / FAIL 0 / SKIP 2 / UNAVAILABLE 0（計25件）。SKIP 2件（`test-function-calling.sh` / `test-magi-format.sh`）は Ollama 未起動によるもので green とみなさない。両テストは MAGI（ollama）系で D6（v1 は unavailable stub）の範囲外のため、対象外の理由付きで waiver とする（Claude 裁定）。
+集計: PASS 23 / FAIL 0 / SKIP 2 / UNAVAILABLE 0（計25件）。SKIP 2件（`test-function-calling.sh` / `test-magi-format.sh`）は Ollama 未起動によるもので green とみなさない。両テストは MAGI（ollama）系で D6（v1 は unavailable stub）の範囲外のため、対象外の理由付きで waiver とする（WAIVER-M2-006 / WAIVER-M2-007、Claude 裁定）。
 
 ## 規律
 
