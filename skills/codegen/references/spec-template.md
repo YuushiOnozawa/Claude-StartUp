@@ -57,6 +57,12 @@ TASK_EOF
 bash "$CODEX_BROKER_RUN" task --prompt-file "$CODEGEN_PROMPT_FILE" --write
 ```
 
+**Run this command with `Bash(run_in_background: true)`** and keep the wrapper in the foreground (it rejects `--background`).
+Claude Code's task-notification delivers the output when the process exits, so completion is never missed.
+Do not run it as a plain foreground Bash call (a Bash timeout leaves the Codex turn orphaned while the broker lock is held),
+and do not use `codex-companion.mjs task --background` (no completion push, and it bypasses the broker lock).
+Do not poll or sleep while waiting; do other work or end the turn.
+
 ### If Codex unavailable — Haiku fallback
 
 Pass the task description to `Agent(subagent_type="general-purpose", model="haiku")` with instruction to output code only.
